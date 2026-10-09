@@ -1,40 +1,127 @@
 #!/usr/bin/env node
-/** Drives the build headlessly and proves the current milestone's loop can be completed. */
+/** Drives the build headlessly and proves the current milestone's loop can be completed.
+ *
+ *  Evidence discipline: `artifacts/shots/` and `artifacts/playtest.log` are created before
+ *  anything that can throw, and a crash still writes the log. The gate keeps failing — it
+ *  just stops failing silently.
+ *
+ *  Shots, all from one 1280×720 session so the critics compare like with like:
+ *    00-boot.png        first frame after boot
+ *    01-wide.png        the settled frame — lighting, palette and density are judged here
+ *    02-silhouette.png  01-wide downscaled to 25% (320×180) for rubric A1
+ *    03-late.png        ≥ 8 s in, so rubric A5 has two frames to diff for pops
+ */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import pw from 'playwright';
 import { startPreview } from './preview-server.mjs';
 
+const LOG = 'artifacts/playtest.log';
+const SHOTS = 'artifacts/shots';
+const VIEW = { width: 1280, height: 720 };
+const SILHOUETTE_SCALE = 0.25;        // rubric A1 judges the shape at 25% zoom
+const LATE_SHOT_AFTER_MS = 8_500;     // rubric A5 wants ≥ 8 s of running before the diff
+
+// First, before anything that can throw: the directories the critics read.
+await mkdir(SHOTS, { recursive: true });
+
+/** @type {string[]} */
+const log = [];
+/** @type {string[]} */
+const errors = [];
+const say = (s) => { log.push(s); console.log(s); };
+const flush = () => writeFile(LOG, log.concat(errors).join('\n') + '\n');
+
+say(`gate:smoke start ${new Date().toISOString()}`);
+say(`viewport ${VIEW.width}x${VIEW.height}`);
+await flush();
+
 if (!existsSync('dist/index.html')) {
-  console.log('gate:smoke SKIP — no build yet. Run `npm run build` first.');
+  say('gate:smoke SKIP — no build yet. Run `npm run build` first.');
+  await flush();
   process.exit(0);
 }
-const log = [];
-const say = (s) => { log.push(s); console.log(s); };
-const { chromium } = pw;
-const browser = await chromium.launch({
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-});
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-const errors = [];
-page.on('pageerror', (e) => errors.push(String(e)));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
-const { proc: server, url } = await startPreview(4174);
+/** @type {import('playwright').Browser | null} */
+let browser = null;
+/** @type {import('node:child_process').ChildProcess | null} */
+let server = null;
+
 try {
-  await page.goto(url, { waitUntil: 'load', timeout: 30_000 });
+  const { chromium } = pw;
+  browser = await chromium.launch({
+    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+  });
+  const page = await browser.newPage({ viewport: VIEW });
+  page.on('pageerror', (e) => errors.push(String(e)));
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+
+  const preview = await startPreview(4174);
+  server = preview.proc;
+  say(`preview: ${preview.url}`);
+
+  const loadedAt = Date.now();
+  await page.goto(preview.url, { waitUntil: 'load', timeout: 30_000 });
   await page.waitForTimeout(2500);
+
   const booted = await page.evaluate(() => Boolean(globalThis.__dragonveinStats));
   say(booted ? 'boot: OK' : 'boot: FAILED — the game never exposed __dragonveinStats');
-  await mkdir('artifacts/shots', { recursive: true });
-  await page.screenshot({ path: 'artifacts/shots/00-boot.png' });
-  say('shot: artifacts/shots/00-boot.png');
-  await mkdir('artifacts', { recursive: true });
-  await writeFile('artifacts/playtest.log', log.concat(errors).join('\n'));
+
+  await page.screenshot({ path: `${SHOTS}/00-boot.png` });
+  say(`shot: ${SHOTS}/00-boot.png  (t+${Date.now() - loadedAt}ms)`);
+  await flush();
+
+  // The settled frame. Give the sun, the shadow map and the instanced scatter a moment
+  // past boot so the art-critic is not scoring a half-warmed first frame.
+  await page.waitForTimeout(2000);
+  const wide = await page.screenshot({ path: `${SHOTS}/01-wide.png` });
+  say(`shot: ${SHOTS}/01-wide.png  (t+${Date.now() - loadedAt}ms)`);
+
+  // 02 is 01 downscaled, not a second render, so the silhouette the critic reads at 25%
+  // is provably the same frame it judged the lighting from.
+  const thumb = {
+    width: Math.round(VIEW.width * SILHOUETTE_SCALE),
+    height: Math.round(VIEW.height * SILHOUETTE_SCALE),
+  };
+  const shrink = await browser.newPage({ viewport: thumb });
+  await shrink.setContent(
+    `<style>html,body{margin:0;background:#000}img{display:block;` +
+    `width:${thumb.width}px;height:${thumb.height}px}</style>` +
+    `<img src="data:image/png;base64,${wide.toString('base64')}">`,
+  );
+  await shrink.evaluate(() => Promise.all([...document.images].map((i) => i.decode())));
+  await shrink.screenshot({ path: `${SHOTS}/02-silhouette.png` });
+  await shrink.close();
+  say(`shot: ${SHOTS}/02-silhouette.png  (${thumb.width}x${thumb.height}, ` +
+    `${SILHOUETTE_SCALE * 100}% of 01-wide, rubric A1)`);
+  await flush();
+
+  // The late frame: same camera, more elapsed time. A5 diffs this against 01-wide.
+  const remaining = LATE_SHOT_AFTER_MS - (Date.now() - loadedAt);
+  if (remaining > 0) await page.waitForTimeout(remaining);
+  await page.screenshot({ path: `${SHOTS}/03-late.png` });
+  say(`shot: ${SHOTS}/03-late.png  (t+${Date.now() - loadedAt}ms, rubric A5)`);
+
+  const stats = await page.evaluate(() => globalThis.__dragonveinStats?.() ?? null);
+  say(`stats: ${JSON.stringify(stats)}`);
+  say(`page errors: ${errors.length}`);
+  await flush();
+
   if (!booted || errors.length) {
-    console.error(errors.join('\n')); process.exit(1);
+    console.error(errors.join('\n'));
+    process.exitCode = 1;
+  } else {
+    say('gate:smoke OK');
   }
-  console.log('gate:smoke OK');
+  await flush();
+} catch (e) {
+  const message = e instanceof Error ? (e.stack ?? e.message) : String(e);
+  errors.push(message);
+  say(`gate:smoke CRASHED — see ${LOG}`);
+  await flush();
+  console.error(message);
+  process.exitCode = 1;
 } finally {
-  server.kill(); await browser.close();
+  server?.kill();
+  await browser?.close();
 }

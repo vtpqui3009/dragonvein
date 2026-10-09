@@ -17,9 +17,13 @@ jobs:
       - run: npm run build
       - name: Gates
         run: npm run gates
+      # The gates create artifacts/ and write their first evidence before they can crash,
+      # so a red run still hands the critics something. `warn` rather than `ignore`,
+      # because an empty upload now means something went wrong early enough to matter and
+      # should be visible in the log instead of passing in silence.
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: artifacts
           path: artifacts/
-          if-no-files-found: ignore
+          if-no-files-found: warn

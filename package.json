@@ -11,8 +11,8 @@
 
     "gates": "npm run typecheck && npm run lint && npm run test && npm run check:layers && npm run check:determinism && npm run check:assets && npm run gate:parity && npm run gate:meshgen && npm run gate:perf && npm run gate:smoke",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src tools --max-warnings 0",
-    "test": "vitest run --passWithNoTests",
+    "lint": "eslint src tools tests --max-warnings 0",
+    "test": "vitest run",
 
     "check:layers": "node tools/check-layers.mjs",
     "check:determinism": "node tools/check-determinism.mjs",

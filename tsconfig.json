@@ -4,6 +4,9 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
     "module": "ESNext",
     "moduleResolution": "bundler",
+    // the gate scripts under tools/ are plain Node ESM; allowJs lets .ts files (and the
+    // tests) import them and still type-check, without a second hand-written .d.mts copy.
+    "allowJs": true,
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
