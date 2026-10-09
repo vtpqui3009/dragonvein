@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.sourcemaps/
 artifacts/
 *.blend1
 __pycache__/

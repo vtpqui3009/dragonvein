@@ -131,7 +131,7 @@ describe('the gate scripts themselves are runnable', () => {
     for (const tool of [
       'check-assets.mjs', 'check-determinism.mjs', 'check-layers.mjs',
       'gate-meshgen.mjs', 'gate-parity.mjs', 'gate-perf.mjs', 'playtest.mjs',
-      'preview-server.mjs', 'site-config.mjs',
+      'preview-server.mjs', 'site-config.mjs', 'strip-sourcemaps.mjs',
     ]) {
       expect(() => execFileSync(process.execPath, ['--check', path.join(ROOT, 'tools', tool)]))
         .not.toThrow();

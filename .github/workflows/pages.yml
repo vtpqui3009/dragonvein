@@ -23,7 +23,11 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22', cache: npm }
       - run: npm ci
-      - run: npm run build
+      # `build:pages`, not `build`: it is `npm run build` plus a step that moves the
+      # source maps out of `dist/` before the artefact is made. The maps were 2 842 273
+      # bytes — 2.1x the whole 1.4 MB gzip budget — served to players who never ask for
+      # them. They are kept in `.sourcemaps/` for whoever needs to debug this build.
+      - run: npm run build:pages
       # `enablement: true` makes the action turn Pages on through the API and set the
       # build type to GitHub Actions. Without it the first run dies with
       # "Get Pages site failed ... Error: Not Found" (Pages run 37920381521), because the
