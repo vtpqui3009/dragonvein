@@ -5,6 +5,35 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 
 ---
 
+## 2026-10-09 — run 1 — M0 toolchain & deploy spine (IN_PROGRESS)
+
+**Milestone**: M0 — lowest-numbered milestone not `DONE`. Nothing else is touched this run.
+
+**Starting position.** `npm run gates` already exits 0 on this container, so the gates were
+not the blocker. Every workflow run on `main` is red, which is: CI 4/4 failed, Pages 4/4
+failed, Assets 2/2 failed. A green local gate run and a red CI run is exactly the state
+M0 exists to end, so M0's work this run is the runner and the deploy, not the game.
+
+**Acceptance criteria** (written before code, per CLAUDE.md §3.2; each is checkable)
+
+| # | criterion | check |
+|---|---|---|
+| AC1 | gates green locally | `npm ci && npm run build && npm run gates` exits 0 |
+| AC2 | CI green on the head commit of `main` | the `CI` run concludes `success`; `gate:perf` and `gate:smoke` reach a browser **on the runner**, not only locally |
+| AC3 | Pages serves the island | `Deploy to Pages` concludes `success`; the published URL returns 200 and references the built `three` chunk |
+| AC4 | the asset proof script imports its generator | `python3 -I -c "import dragon as D; D.place"` from `assetgen/` — no `AttributeError` |
+| AC5 | perf numbers recorded | `artifacts/perf.json`: `drawCalls ≤ 180`, `triangles ≤ 900000`, `errors: []`, and `frameBudgetEnforced` stated honestly |
+| AC6 | artefacts exist for the critics | `artifacts/shots/` holds `00-boot.png`, `01-wide.png`, `02-silhouette.png` (25% zoom, rubric A1), `03-late.png` (after ≥ 8 s, rubric A5) |
+| AC7 | the test step asserts something | `npm run test` runs real assertions about the spine contract, not `--passWithNoTests` vacuity |
+| AC8 | the placeholder is lit per the bible | `01-wide.png`: sky gradient from the `ART_BIBLE.md` palette, one sun with a visible contact shadow, cool fill, warm rim, and an overlay readable at 1280×720 (≥ 4.5:1) |
+| AC9 | a red gate still uploads its evidence | the CI run exposes an `artifacts/` upload even when a gate fails |
+
+**Out of scope, deliberately.** Orbit camera, day/night, bloom, quality tiers are M6.
+Asset generators and variant sheets are M1. Rubric lines A4 (variant sheets) and P3
+(bred-dragon mesh time) have no subject at M0 and the gates for them SKIP by design.
+
+---
+
 ## 2026-10-09 — run 0 — project setup (human-directed)
 
 **Did**
@@ -68,4 +97,3 @@ removes the dependency on proxy-injected credentials.
 the placeholder island.
 
 **Scores**: not applicable — no milestone claimed.
-- run started 2026-10-09T10:53:32Z
