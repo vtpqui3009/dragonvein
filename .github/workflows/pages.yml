@@ -24,7 +24,15 @@ jobs:
         with: { node-version: '22', cache: npm }
       - run: npm ci
       - run: npm run build
+      # `enablement: true` makes the action turn Pages on through the API and set the
+      # build type to GitHub Actions. Without it the first run dies with
+      # "Get Pages site failed ... Error: Not Found" (Pages run 37920381521), because the
+      # repository has no Pages site to configure yet. This is the only fix available
+      # from inside a workflow; if it still 404s, a human has to set
+      # Settings -> Pages -> Source -> GitHub Actions once.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
       - id: deployment
