@@ -6,6 +6,7 @@ files: every asset is a script, so a later run can re-tune it and a reviewer can
 ```
 genome.py            the gene spec and breeding maths (mirrored by src/core/genome.ts)
 dragon/builder.py    genome -> mesh. The reference implementation.
+dragon/__init__.py   re-exports builder's public surface, so `import dragon` works
 render_proof.py      renders the species lineup and the breeding triptych
 build_all.py         exports every generator to public/assets/**/*.glb (LOD0-2)
 render_all.py        renders variant sheets and turntables into artifacts/
