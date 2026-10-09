@@ -66,7 +66,7 @@ GENES: Dict[str, Tuple[float, float, str]] = {
     "spineCount":    (4, 14, "i"),
     "spineHeight":   (0.40, 1.60, "f"),
     # surface
-    "hue":           (0.00, 1.00, "f"),
+    "hue":           (0.00, 1.00, "c"),   # circular: 0.99 and 0.01 are neighbours
     "hueShift":      (-0.22, 0.22, "f"),   # belly/membrane offset from base hue
     "saturation":    (0.35, 1.00, "f"),
     "value":         (0.28, 0.92, "f"),
@@ -81,6 +81,19 @@ PATTERNS  = ["plain", "banded", "mottled", "gradient", "iridescent"]
 # Mutation rate per gene, per breeding. Rare genes mutate less so they stay rare.
 MUTATION_RATE = 0.06
 MUTATION_SPREAD = 0.14   # fraction of the gene's range
+
+def circ_mean(a: float, b: float) -> float:
+    """Mean of two hues on the colour wheel, taking the SHORT arc.
+
+    Averaging hue linearly is wrong and very visible: red (0.06) crossed with blue (0.57)
+    averages to 0.315, which is green — a child that resembles neither parent. The short
+    arc gives 0.815, a violet, which is what a red x blue cross should look like.
+    """
+    d = ((b - a + 0.5) % 1.0) - 0.5
+    return (a + d * 0.5) % 1.0
+
+def circ_clamp(v: float) -> float:
+    return v % 1.0
 
 @dataclass
 class Allele:
@@ -98,10 +111,12 @@ class Genome:
     # ---------- expression ----------
     def express(self, name: str) -> float:
         a, b = self.g[name]
+        lo, hi, kind = GENES[name]
         if a.dominant and not b.dominant: v = a.value
         elif b.dominant and not a.dominant: v = b.value
+        elif kind == "c": return circ_clamp(circ_mean(a.value, b.value))
         else: v = (a.value + b.value) * 0.5          # co-dominant → blend
-        lo, hi, kind = GENES[name]
+        if kind == "c": return circ_clamp(v)
         v = min(max(v, lo), hi)
         return round(v) if kind in ("i", "e") else v
 
@@ -120,7 +135,7 @@ class Genome:
         """0..1. Extremes and hidden elements are what collectors chase."""
         p = self.phenotype; score = 0.0
         for k, (lo, hi, kind) in GENES.items():
-            if kind != "f": continue
+            if kind not in ("f",): continue
             t = (p[k] - lo) / (hi - lo)
             score += abs(t - 0.5) * 2            # distance from the average
         score /= sum(1 for _, (_, _, k) in GENES.items() if k == "f")
@@ -195,7 +210,8 @@ def breed(a: Genome, b: Genome, seed: int) -> Genome:
         pair = [Allele(from_a.value, from_a.dominant), Allele(from_b.value, from_b.dominant)]
         for al in pair:
             if r.chance(MUTATION_RATE):
-                al.value = min(max(al.value + r.range(-1, 1) * (hi - lo) * MUTATION_SPREAD, lo), hi)
+                nv = al.value + r.range(-1, 1) * (hi - lo) * MUTATION_SPREAD
+                al.value = circ_clamp(nv) if kind == "c" else min(max(nv, lo), hi)
             if r.chance(MUTATION_RATE * 0.5):
                 al.dominant = not al.dominant
         child.g[k] = pair

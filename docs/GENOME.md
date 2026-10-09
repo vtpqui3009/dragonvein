@@ -47,12 +47,34 @@ express(gene):
 | crestType | none/frill/fin/antler | e | skull crest geometry |
 | spineCount | 4–14 | i | dorsal spike count |
 | spineHeight | 0.40–1.60 | f | dorsal spike height |
-| hue | 0.00–1.00 | f | base scale hue |
+| hue | 0.00–1.00 | **c** | base scale hue — circular, see below |
 | hueShift | −0.22–0.22 | f | belly and membrane offset |
 | saturation | 0.35–1.00 | f | |
 | value | 0.28–0.92 | f | |
 | pattern | plain/banded/mottled/gradient/iridescent | e | surface shader |
 | glow | 0.00–1.00 | f | emission on horns and spikes |
+
+## Circular genes
+
+`hue` is marked kind `c`. It is a position on a colour wheel, where 0.99 and 0.01 are
+neighbours, so it must never be averaged linearly.
+
+This was a real defect, caught by the first breeding render. An ember parent (hue 0.06,
+red) crossed with a tide parent (hue 0.57, blue) produced a child at `(0.06 + 0.57) / 2 =
+0.315` — **green**. The child resembled neither parent, which is exactly the failure the
+`gameplay-critic`'s G2 line exists to catch.
+
+Co-dominant hue blends along the **short arc** instead:
+
+```
+d = ((b - a + 0.5) mod 1.0) - 0.5     # shortest signed distance on the wheel
+mean = (a + d / 2) mod 1.0
+```
+
+The same pair now yields 0.815, a violet — a colour a red × blue cross should plausibly
+produce. Mutation on a circular gene wraps rather than clamping.
+
+Any future gene that is an angle or a wheel position must be declared `c`.
 
 ## Elements
 

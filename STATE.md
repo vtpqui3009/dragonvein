@@ -24,6 +24,15 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 - Wrote the harness: `CLAUDE.md`, 12 agent definitions, the rubric, the roadmap, and
   gates for layers, determinism, assets, parity, mesh-gen time, performance and smoke.
 
+**Defect found and fixed during the proof**
+
+- **Hue inherited linearly instead of circularly.** Hue is a wheel position, so averaging
+  an ember parent (0.06, red) with a tide parent (0.57, blue) gave 0.315 — green — and the
+  child resembled neither parent. Fixed by blending co-dominant hue along the short arc;
+  the same pair now gives 0.815, a violet. Documented in `docs/GENOME.md` §Circular genes.
+  Worth noting that the `gameplay-critic` G2 line in `docs/RUBRIC.md` was written to catch
+  exactly this, and it did, before any runtime code existed.
+
 **Defects carried forward** (found during the proof, not yet fixed)
 
 - Tail ornaments read as detached specks on some genomes — the attachment point does not
@@ -33,6 +42,15 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 - Colours wash out under AgX + the current fill light; the lighting rig needs rebalancing
   before it becomes the reference bar.
 - `proof_breeding.png` framing still crops the top parent on some layouts.
+
+**Scheduling blocker**
+
+- The 2×/day routine (`trig_012oAnWHVszEghmZMUhShCXo`) was created and test-fired. Its
+  fresh sessions can clone the public repo but **cannot push**: the git proxy returns 403
+  because `vtpqui3009/dragonvein` is not in the routine's source list, and `create_trigger`
+  exposes no parameter to set sources. The test run correctly refused to do a milestone it
+  could not push. Until the repo is attached to the routine, every scheduled run will stop
+  at bootstrap.
 
 **Next**: M0 — toolchain and deploy spine. `npm run gates` green, CI green, Pages serving
 the placeholder island.
