@@ -12,11 +12,34 @@
         text-align:center;pointer-events:none;transition:opacity .5s}
       #boot h1{margin:0;font-size:clamp(28px,6vw,56px);letter-spacing:.22em;font-weight:800}
       #boot p{margin:0;opacity:.6;font-size:14px;letter-spacing:.1em}
+
+      /* Overlay — docs/ART_BIBLE.md §Palette: UI surface rgba(11,36,48,0.82),
+         UI accent #ffd479. Contrast measured off artifacts/shots/01-wide.png at
+         1280x720: accent 11.4:1 and readouts 14.8:1 against the panel as rendered, and
+         6.6:1 / 8.6:1 against the worst-case panel composited over the brightest pixel
+         in frame. Rubric A7 asks for 4.5:1. */
+      #hud{position:fixed;top:14px;left:14px;pointer-events:none;
+        display:flex;align-items:baseline;gap:14px;
+        padding:9px 14px;border-radius:10px;
+        background:rgba(11,36,48,0.82);border:1px solid rgba(255,212,121,.38);
+        font:600 14px/1.25 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+        letter-spacing:.06em;color:#eef7fd}
+      #hud .t{color:#ffd479;letter-spacing:.2em}
+      #hud .g{display:flex;align-items:baseline;gap:6px}
+      #hud .k{color:#ffd479;font-size:11px;text-transform:uppercase;letter-spacing:.14em}
+      #hud .v{font-variant-numeric:tabular-nums;min-width:3ch;text-align:right}
     </style>
   </head>
   <body>
     <canvas id="c"></canvas>
     <div id="boot"><h1>DRAGONVEIN</h1><p>đang khởi tạo thế giới…</p></div>
+    <div id="hud">
+      <span class="t">DRAGONVEIN</span>
+      <span class="g"><span class="k">build</span><span class="v" id="hud-build">—</span></span>
+      <span class="g"><span class="k">fps</span><span class="v" id="hud-fps">—</span></span>
+      <span class="g"><span class="k">draws</span><span class="v" id="hud-draws">—</span></span>
+      <span class="g"><span class="k">tris</span><span class="v" id="hud-tris">—</span></span>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
