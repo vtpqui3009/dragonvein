@@ -339,41 +339,323 @@ const hud = {
   fps: document.getElementById('hud-fps'),
   draws: document.getElementById('hud-draws'),
   tris: document.getElementById('hud-tris'),
+  status: document.getElementById('hud-status'),
 };
 if (hud.build) hud.build.textContent = __BUILD_VERSION__;
 
 function resize(): void {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
-  if (canvas.width !== w || canvas.height !== h) {
+  // Compare the *backing store* against the size `setSize` would give it, not against the
+  // CSS box. `canvas.width` is `clientWidth * pixelRatio`, so on any display with
+  // devicePixelRatio > 1 — which is every machine this game is aimed at — comparing it
+  // against `clientWidth` is permanently unequal, and `setSize` therefore ran on every
+  // single frame. Measured at deviceScaleFactor 2 (backing store 2560x1440), before this
+  // guard and after: cpu frame cost p50 1.1 -> 0.8 ms, worst frame 9.2 -> 1.9 ms. Heap
+  // churn did not move (65.8 vs 68.4 kB/frame, inside the noise), because Blink skips the
+  // drawing-buffer reset when the new size equals the old one — so the cost this removes
+  // is three.js's own per-frame work, not an allocation.
+  const ratio = renderer.getPixelRatio();
+  if (canvas.width !== Math.floor(w * ratio) || canvas.height !== Math.floor(h * ratio)) {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }
 }
 
-// --- frame loop: counters only, no allocation ------------------------------------------
+// --- frame-cost instrumentation (read by tools/gate-perf.mjs) ---------------------------
+/**
+ * The gate used to time frames by differencing `requestAnimationFrame` timestamps. That
+ * measures *presented-frame cadence*, which the compositor quantises to the vsync tick:
+ * every one of 120 samples came back an exact integer multiple of 16.667 ms (max deviation
+ * 0.010 ms). An instrument whose finest resolution is the whole 16.6 ms budget can never
+ * show that a frame fits it, and a vsync-perfect frame reports 16.667 ms — over a 16.6 ms
+ * budget by a rounding artefact, not by being slow.
+ *
+ * The budget is about frame *cost*, so cost is what is measured here:
+ *   - `cpuFrameMs`         main-thread wall time spent producing the frame.
+ *   - `gpuFrameMs`         `EXT_disjoint_timer_query_webgl2`, where the context has it.
+ *                          SwiftShader does not; the reason is recorded rather than the
+ *                          figure being quietly omitted.
+ *   - `presentIntervalMs`  the old cadence figure, under a name that says what it is.
+ *
+ * The ring buffers are pre-allocated `Float64Array`s. The frame loop must not allocate,
+ * and an instrument that allocated would corrupt the heap-churn budget it sits beside.
+ */
+const PERF_CAPACITY = 512;
+
+class Samples {
+  private readonly buf: Float64Array;
+  private written = 0;
+
+  constructor(capacity: number) { this.buf = new Float64Array(capacity); }
+
+  /** Allocation-free: the only write path, and it runs inside the frame loop. */
+  push(v: number): void {
+    this.buf[this.written % this.buf.length] = v;
+    this.written++;
+  }
+
+  /** Number of samples currently retained — the window `toArray` returns. */
+  get count(): number { return Math.min(this.written, this.buf.length); }
+
+  /** Oldest-to-newest copy of the retained window. Allocates — never call it per frame. */
+  toArray(): number[] {
+    const len = Math.min(this.written, this.buf.length);
+    const out = new Array<number>(len);
+    for (let i = 0; i < len; i++) out[i] = this.buf[(this.written - len + i) % this.buf.length] ?? 0;
+    return out;
+  }
+
+  reset(): void { this.written = 0; }
+}
+
+const cpuFrameMs = new Samples(PERF_CAPACITY);
+const presentIntervalMs = new Samples(PERF_CAPACITY);
+const gpuFrameMs = new Samples(PERF_CAPACITY);
+
+/** The slice of `EXT_disjoint_timer_query_webgl2` this file uses. */
+interface DisjointTimerQuery {
+  readonly TIME_ELAPSED_EXT: number;
+  readonly GPU_DISJOINT_EXT: number;
+}
+
+/** The slice of `WEBGL_lose_context` this file uses. */
+interface LoseContextExtension {
+  restoreContext: () => void;
+}
+
+const gl = renderer.getContext();
+const isWebGL2 = typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext;
+const gl2 = isWebGL2 ? (gl as WebGL2RenderingContext) : null;
+
+// A pool, because a timer query's result is not ready in the frame that issued it — under
+// SwiftShader it lags about three frames, and a pool of 4 left two thirds of frames
+// untimed (38 samples from 129 frames). Nothing here ever blocks on a result.
+const GPU_QUERY_POOL = 16;
+const idleQueries: WebGLQuery[] = [];
+const busyQueries: WebGLQuery[] = [];
+let gpuTimer: DisjointTimerQuery | null = null;
+let gpuTimerUnavailableReason = '';
+let gpuDisjointEvents = 0;
+/**
+ * Held from before any loss, on purpose. A lost context returns `null` from every
+ * `getExtension` call, so asking for `WEBGL_lose_context` *after* the loss — which is what
+ * `renderer.forceContextRestore()` does — gets nothing and logs "WEBGL_lose_context
+ * extension not supported". Measured: `restoreSupported` was `true` before a loss and
+ * `false` 300 ms after it, and five restore attempts recovered nothing. The handle cached
+ * here still works, which is the whole point of `restoreContext()`.
+ */
+let loseContext: LoseContextExtension | null = null;
+
+/**
+ * (Re-)acquire the context's extensions and the timer query pool. Called at startup and
+ * again after a context restore, because every GL object from the dead context —
+ * extension handles and queries included — is invalid once the context goes.
+ */
+function acquireContextExtensions(): void {
+  idleQueries.length = 0;
+  busyQueries.length = 0;
+  loseContext = (gl2?.getExtension('WEBGL_lose_context') as LoseContextExtension | null) ?? null;
+  gpuTimer = (gl2?.getExtension('EXT_disjoint_timer_query_webgl2') as DisjointTimerQuery | null) ?? null;
+  // Why there is no GPU figure, stated rather than left as a silent `null`.
+  gpuTimerUnavailableReason = gl2 === null
+    ? 'the renderer did not get a WebGL2 context, and EXT_disjoint_timer_query_webgl2 is WebGL2-only'
+    : gpuTimer === null
+      ? 'EXT_disjoint_timer_query_webgl2 is not exposed by this context; software rasterisers ' +
+        '(SwiftShader, llvmpipe) have no GPU timer to expose, and Chromium also withholds it ' +
+        'when the GPU process is not trusted'
+      : '';
+  if (gl2 && gpuTimer) {
+    for (let i = 0; i < GPU_QUERY_POOL; i++) {
+      const q = gl2.createQuery();
+      if (q) idleQueries.push(q);
+    }
+  }
+}
+acquireContextExtensions();
+
+/** Drain whichever queries have landed. FIFO, so `gpuFrameMs` stays in frame order. */
+function collectGpuTimings(): void {
+  if (!gl2 || !gpuTimer) return;
+  while (busyQueries.length > 0) {
+    const q = busyQueries[0];
+    if (!q) { busyQueries.shift(); continue; }
+    if (gl2.getQueryParameter(q, gl2.QUERY_RESULT_AVAILABLE) !== true) break;
+    busyQueries.shift();
+    // A disjoint event means the GPU was interrupted and every outstanding timing is
+    // untrustworthy. Count it; do not average rubbish into the figure.
+    if (gl2.getParameter(gpuTimer.GPU_DISJOINT_EXT) === true) gpuDisjointEvents++;
+    else gpuFrameMs.push(Number(gl2.getQueryParameter(q, gl2.QUERY_RESULT)) / 1e6);
+    idleQueries.push(q);
+  }
+}
+
+// --- WebGL context loss ----------------------------------------------------------------
+/**
+ * CLAUDE.md §0 names a weak Intel iGPU as the target machine. On that hardware a driver
+ * reset is a normal event, not a lab trick: the browser takes the GL context away, the
+ * canvas goes dead, and every GL object the page holds becomes invalid.
+ *
+ * Before this, nothing in the page listened for it and nothing ever asked for a restore,
+ * so an induced loss killed the canvas for the rest of the session — measured
+ * `lost: true, restored: false` after 4 s — and only a manual reload brought it back.
+ *
+ * `three.WebGLRenderer` installs its own listeners: its `webglcontextlost` handler calls
+ * `preventDefault()` (without which the browser never fires `webglcontextrestored` at
+ * all) and its `webglcontextrestored` handler re-initialises the renderer's GL state. What
+ * was missing is the two things three cannot do for us: *ask* for the context back, and
+ * tell the player. Both are here.
+ */
+const CONTEXT_RESTORE_ATTEMPTS = 5;
+const CONTEXT_RESTORE_BACKOFF_MS = 400;
+
+let contextLost = false;
+let contextLostAt = 0;
+let contextRestoreAttempts = 0;
+let contextRestoredCount = 0;
+let framesSkippedWhileContextLost = 0;
+let restoreTimer = 0;
+
+function attemptContextRestore(): void {
+  if (!contextLost || contextRestoreAttempts >= CONTEXT_RESTORE_ATTEMPTS) {
+    paintHud();
+    return;
+  }
+  contextRestoreAttempts++;
+  // `restoreContext()` on the handle cached before the loss is the only restore lever a
+  // page has. A loss the *driver* caused is restored by the browser on its own schedule
+  // and all a page can do is wait for the event — but asking costs nothing, recovers the
+  // induced case immediately, and the retry with backoff covers the case where the first
+  // ask lands while the GPU process is still coming back.
+  loseContext?.restoreContext();
+  restoreTimer = window.setTimeout(
+    attemptContextRestore, CONTEXT_RESTORE_BACKOFF_MS * contextRestoreAttempts);
+  paintHud();
+}
+
+canvas.addEventListener('webglcontextlost', () => {
+  contextLost = true;
+  contextLostAt = performance.now();
+  contextRestoreAttempts = 0;
+  // Repaint now rather than waiting up to 250 ms for the sampler: the overlay must not
+  // keep showing a frame rate for a canvas that has stopped rendering.
+  paintHud();
+  // Deferred, not called straight from here: `restoreContext()` from inside the
+  // `webglcontextlost` handler raises `INVALID_OPERATION: restoreContext: context
+  // restoration not allowed`, because the loss event has not finished dispatching. One
+  // task later it is allowed.
+  restoreTimer = window.setTimeout(attemptContextRestore, 0);
+});
+
+canvas.addEventListener('webglcontextrestored', () => {
+  contextLost = false;
+  contextRestoredCount++;
+  clearTimeout(restoreTimer);
+  // Every GL object from the dead context is gone, the timer queries included.
+  acquireContextExtensions();
+  // `resize()` only acts on a size *change*, so after a restore it would leave the
+  // renderer's viewport state at whatever the fresh context defaulted to.
+  renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+  last = performance.now();
+  paintHud();
+});
+
+// --- frame loop ------------------------------------------------------------------------
+// This loop used to claim "counters only, no allocation". The claim was wrong as a
+// description of the frame, and here is the measurement that replaces it.
+//
+// This file's own per-frame code is clean: in a replica of this scene with
+// `renderer.render` removed and everything else kept, heap churn is 380 B/frame, which is
+// the browser's bare rAF floor. Put the render call back and it is 36.2-38.1 kB/frame at
+// 1920x1080 with 20 draw calls (seven gate runs, 3.8 % spread).
+//
+// All of that difference is inside `three.WebGLRenderer.render`: ~4 kB fixed plus ~2 kB
+// per draw call, in the render-list sort, the uniform upload path and
+// `WebGLPrograms.getParameters`. It is not removable from this file. It *is* now
+// budgeted — `gate:perf` fails above 40 KiB/frame — and the way to pay for a bigger scene
+// is fewer draw calls, not a bigger budget. See docs/PERF_BUDGET.md §Heap churn.
 let frameMs = 0;
 let last = performance.now();
 let framesSinceSample = 0;
 let msSinceSample = 0;
 let fps = 0;
+let framesRendered = 0;
+let bootMs = 0;
+let lastCpuMs = 0;
 
 function frame(now: number): void {
   frameMs = now - last;
   last = now;
+
+  if (contextLost) {
+    // rAF keeps firing after the context dies, and three's `render()` turns into a no-op.
+    // Timing that no-op would record a flattering ~0 ms frame cost, and feeding the rAF
+    // deltas to the fps counter is exactly how the overlay came to print `FPS 60` over a
+    // dead canvas. So: record nothing, count the frame as skipped, and keep asking for
+    // frames so the loop is alive the instant the context comes back.
+    framesSkippedWhileContextLost++;
+    requestAnimationFrame(frame);
+    return;
+  }
+
   framesSinceSample++;
   msSinceSample += frameMs;
+  presentIntervalMs.push(frameMs);
+
+  const startedAt = performance.now();
   resize();
   island.rotation.y = now * 0.00012;
+
+  collectGpuTimings();
+  const timed = gpuTimer && idleQueries.length > 0 ? idleQueries.pop() ?? null : null;
+  if (gl2 && gpuTimer && timed) gl2.beginQuery(gpuTimer.TIME_ELAPSED_EXT, timed);
   renderer.render(scene, camera);
+  if (gl2 && gpuTimer && timed) {
+    gl2.endQuery(gpuTimer.TIME_ELAPSED_EXT);
+    busyQueries.push(timed);
+  }
+
+  lastCpuMs = performance.now() - startedAt;
+  cpuFrameMs.push(lastCpuMs);
+  framesRendered++;
+  // `performance.now()` is measured from navigation start, so the first frame's end *is*
+  // boot-to-first-frame. No second clock to disagree with.
+  if (bootMs === 0) bootMs = performance.now();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
-// The overlay is refreshed on a timer, not inside frame(): formatting a number allocates
-// a string, and the frame loop stays allocation-free (docs/PERF_BUDGET.md).
-setInterval(() => {
+/**
+ * The overlay is refreshed on a timer, not inside frame(): formatting a number allocates
+ * a string, and the per-frame code of this file has to stay off the heap-churn budget
+ * (docs/PERF_BUDGET.md §Heap churn).
+ *
+ * It also has to tell the truth about a dead context. `renderer.info.render` freezes at
+ * its last good values when the context is lost, while rAF keeps ticking, so the old
+ * version divided live rAF ticks by live rAF time and printed `FPS 60 DRAWS 20
+ * TRIS 26984` over a canvas showing the browser's broken-image glyph. A readout whose
+ * whole job is to be honest about the frame was at its least honest exactly when it
+ * mattered.
+ */
+function paintHud(): void {
+  if (contextLost) {
+    fps = 0;
+    framesSinceSample = 0;
+    msSinceSample = 0;
+    if (hud.status) {
+      hud.status.textContent = contextRestoreAttempts < CONTEXT_RESTORE_ATTEMPTS
+        ? 'GPU CONTEXT LOST — RESTORING'
+        : 'GPU CONTEXT LOST — RELOAD TO RECOVER';
+      hud.status.hidden = false;
+    }
+    // Not zero, and not the stale number: there is no measurement to report.
+    if (hud.fps) hud.fps.textContent = '—';
+    if (hud.draws) hud.draws.textContent = '—';
+    if (hud.tris) hud.tris.textContent = '—';
+    return;
+  }
+  if (hud.status) hud.status.hidden = true;
   if (msSinceSample > 0) fps = (framesSinceSample * 1000) / msSinceSample;
   framesSinceSample = 0;
   msSinceSample = 0;
@@ -381,17 +663,125 @@ setInterval(() => {
   if (hud.fps) hud.fps.textContent = fps.toFixed(0);
   if (hud.draws) hud.draws.textContent = String(info.calls);
   if (hud.tris) hud.tris.textContent = String(info.triangles);
-}, 250);
+}
+setInterval(paintHud, 250);
 
-// The gates read this. Keep the shape stable even as the renderer is replaced.
+/**
+ * What `gate:perf` reads to describe the frame.
+ *
+ * Raw sample arrays, not percentiles: the gate owns the statistics and writes them into
+ * `artifacts/perf.json`, so there is exactly one implementation of "p95" in the project
+ * and the page cannot flatter itself.
+ */
+interface FrameCostReport {
+  /** Main-thread wall time spent producing each frame, in ms. */
+  cpuFrameMs: number[];
+  /** GPU time per frame in ms, or `null` when the context exposes no timer. */
+  gpuFrameMs: number[] | null;
+  /** Empty when a GPU figure is present; otherwise why there is none. */
+  gpuTimerUnavailableReason: string;
+  /** Timings thrown away because the GPU reported a disjoint event. */
+  gpuDisjointEvents: number;
+  /** rAF-to-rAF cadence, quantised to the vsync tick. Diagnostic, never a cost. */
+  presentIntervalMs: number[];
+  framesRendered: number;
+  /** `performance.now()` at the end of the first rendered frame: boot to first frame. */
+  bootMs: number;
+  viewport: {
+    cssWidth: number; cssHeight: number; devicePixelRatio: number;
+    drawingBufferWidth: number; drawingBufferHeight: number; pixelRatio: number;
+  };
+  /** What "Medium" means in this build, so the artefact can be checked against the claim. */
+  tier: {
+    name: string; configured: boolean; shadows: boolean;
+    shadowMapSize: number; postProcessing: boolean; note: string;
+  };
+  /** The health of the WebGL context. A gate run on a dead context is not a measurement. */
+  context: {
+    lost: boolean;
+    restoreAttempts: number;
+    restoredCount: number;
+    msSinceLoss: number | null;
+    framesSkippedWhileLost: number;
+    restoreSupported: boolean;
+  };
+}
+
+// The gates read these. Keep the shapes stable even as the renderer is replaced.
 declare global {
-  var __dragonveinStats: (() => { drawCalls: number; triangles: number; frameMs: number }) | undefined;
+  var __dragonveinStats: (() => {
+    drawCalls: number; triangles: number; frameMs: number; cpuFrameMs: number;
+  }) | undefined;
+  var __dragonveinPerf: {
+    reset: () => void;
+    /** Cheap progress poll. `read()` copies the whole window and would itself be a
+     *  measurable allocation if the gate called it in a loop — which it must not, because
+     *  the gate samples the heap through that same loop. */
+    counts: () => {
+      cpuFrameMs: number; gpuFrameMs: number; presentIntervalMs: number; framesRendered: number;
+    };
+    read: () => FrameCostReport;
+  } | undefined;
 }
 globalThis.__dragonveinStats = () => ({
   drawCalls: renderer.info.render.calls,
   triangles: renderer.info.render.triangles,
+  /** Present interval: rAF cadence, quantised to vsync. Kept for continuity. */
   frameMs,
+  /** What the frame actually cost the main thread. This is the one to budget against. */
+  cpuFrameMs: lastCpuMs,
 });
+
+globalThis.__dragonveinPerf = {
+  counts: () => ({
+    cpuFrameMs: cpuFrameMs.count,
+    gpuFrameMs: gpuFrameMs.count,
+    presentIntervalMs: presentIntervalMs.count,
+    framesRendered,
+  }),
+  reset: () => {
+    cpuFrameMs.reset();
+    gpuFrameMs.reset();
+    presentIntervalMs.reset();
+    gpuDisjointEvents = 0;
+  },
+  read: () => ({
+    cpuFrameMs: cpuFrameMs.toArray(),
+    gpuFrameMs: gpuTimer ? gpuFrameMs.toArray() : null,
+    gpuTimerUnavailableReason,
+    gpuDisjointEvents,
+    presentIntervalMs: presentIntervalMs.toArray(),
+    framesRendered,
+    bootMs,
+    viewport: {
+      cssWidth: canvas.clientWidth,
+      cssHeight: canvas.clientHeight,
+      devicePixelRatio,
+      drawingBufferWidth: renderer.domElement.width,
+      drawingBufferHeight: renderer.domElement.height,
+      pixelRatio: renderer.getPixelRatio(),
+    },
+    context: {
+      lost: contextLost,
+      restoreAttempts: contextRestoreAttempts,
+      restoredCount: contextRestoredCount,
+      msSinceLoss: contextLostAt === 0 ? null : performance.now() - contextLostAt,
+      framesSkippedWhileLost: framesSkippedWhileContextLost,
+      restoreSupported: loseContext !== null,
+    },
+    tier: {
+      name: 'medium-equivalent',
+      configured: false,
+      shadows: renderer.shadowMap.enabled,
+      shadowMapSize: sun.shadow.mapSize.x,
+      postProcessing: false,
+      note: 'Quality tiers are detected and switchable from M6 (docs/ROADMAP.md). M0 ' +
+        'renders at fixed settings that match the Medium row of docs/PERF_BUDGET.md ' +
+        '§Quality tiers — 1080p, one 1024 shadow map, no post — so the "@1080p Medium" ' +
+        'qualifier is checkable here, but nothing is detected or selectable yet.',
+    },
+  }),
+};
 
 const boot = document.getElementById('boot');
 if (boot) { boot.style.opacity = '0'; setTimeout(() => boot.remove(), 600); }

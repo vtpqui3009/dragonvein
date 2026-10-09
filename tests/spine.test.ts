@@ -87,14 +87,55 @@ describe('html entry', () => {
   );
 });
 
+describe('what the deploy actually ships', () => {
+  it('builds source maps hidden, so the deployed bundle references none', () => {
+    // `dist/` was shipping 2 842 273 bytes of map for a 526 772-byte chunk — 2.1x the
+    // entire 1.4 MB gzip budget — to GitHub Pages. `hidden` still writes them for local
+    // debugging; nothing on the site points at them.
+    expect(viteConfig.build?.sourcemap).toBe('hidden');
+  });
+
+  it('moves the maps out of dist/ before the Pages artefact is made', () => {
+    const pkg: { scripts: Record<string, string> } = JSON.parse(read('package.json'));
+    expect(pkg.scripts['build:pages']).toContain('strip-sourcemaps');
+    // The workflow has to use that script, or the strip step is decorative.
+    const workflow = read('.github/workflows/pages.yml');
+    expect(workflow).toContain('npm run build:pages');
+    expect(workflow).not.toMatch(/^\s*- run: npm run build$/m);
+  });
+});
+
 describe('stats contract read by the gates', () => {
   const main = read('src/main.ts');
 
-  it('publishes __dragonveinStats with the three fields gate:perf reads', () => {
+  it('publishes __dragonveinStats with the four fields gate:perf reads', () => {
     expect(main).toMatch(/globalThis\.__dragonveinStats\s*=/);
-    for (const field of ['drawCalls', 'triangles', 'frameMs']) {
+    for (const field of ['drawCalls', 'triangles', 'frameMs', 'cpuFrameMs']) {
       expect(main).toContain(field);
     }
+  });
+
+  it('survives a WebGL context loss instead of dying silently', () => {
+    // A driver reset is a normal event on the weak iGPU CLAUDE.md §0 targets. Before
+    // this, nothing listened and nothing asked for the context back, so an induced loss
+    // killed the canvas for the session.
+    expect(main).toContain("'webglcontextlost'");
+    expect(main).toContain("'webglcontextrestored'");
+    expect(main).toContain('restoreContext');
+    // The handle has to be taken before the loss: a lost context returns null from every
+    // getExtension call, so fetching it afterwards gets nothing and recovers nothing.
+    expect(main).toMatch(/getExtension\('WEBGL_lose_context'\)/);
+    expect(main).toMatch(/context:\s*\{/);
+  });
+
+  it('publishes the frame-cost instrument gate:perf measures', () => {
+    expect(main).toMatch(/globalThis\.__dragonveinPerf\s*=/);
+    // Cost and cadence must be separate keys. Collapsing them back into one is how the
+    // gate ended up comparing a vsync-quantised interval against a 16.6 ms budget.
+    for (const field of ['cpuFrameMs', 'gpuFrameMs', 'presentIntervalMs', 'bootMs']) {
+      expect(main).toContain(field);
+    }
+    expect(main).toContain('EXT_disjoint_timer_query_webgl2');
   });
 });
 
@@ -106,5 +147,18 @@ describe('budgets are not quietly relaxed', () => {
     expect(gate).toMatch(/frameMs:\s*16\.6\b/);
     expect(gate).toMatch(/drawCalls:\s*180\b/);
     expect(gate).toMatch(/triangles:\s*900_?000\b/);
+  });
+
+  it('gate:perf budgets frame cost, never presented-frame cadence', () => {
+    // The old instrument compared `report.frames.p95` — a cadence quantised to the vsync
+    // tick — against 16.6 ms, so a frame presented on every vsync reported 16.667 ms and
+    // failed by a rounding artefact. Both halves of this are guards against a revert.
+    const gate = read('tools/gate-perf.mjs');
+    expect(gate).not.toMatch(/report\.frames\.p95\s*>\s*BUDGET\.frameMs/);
+    expect(gate).toMatch(/frameCostP95\s*>\s*BUDGET\.frameMs/);
+    // Cadence is still recorded, under a name that says what it is.
+    expect(gate).toContain('presentIntervalMs');
+    expect(gate).toContain('--disable-gpu-vsync');
+    expect(gate).toContain('--disable-frame-rate-limit');
   });
 });

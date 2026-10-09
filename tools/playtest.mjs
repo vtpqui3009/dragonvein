@@ -10,6 +10,7 @@
  *    01-wide.png        the settled frame — lighting, palette and density are judged here
  *    02-silhouette.png  01-wide downscaled to 25% (320×180) for rubric A1
  *    03-late.png        ≥ 8 s in, so rubric A5 has two frames to diff for pops
+ *    04-context-restored.png   after an induced WebGL context loss (rubric G5)
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -21,6 +22,7 @@ const SHOTS = 'artifacts/shots';
 const VIEW = { width: 1280, height: 720 };
 const SILHOUETTE_SCALE = 0.25;        // rubric A1 judges the shape at 25% zoom
 const LATE_SHOT_AFTER_MS = 8_500;     // rubric A5 wants ≥ 8 s of running before the diff
+const CONTEXT_RESTORE_WAIT_MS = 4_000;   // the window the gameplay-critic's G5 repro used
 
 // First, before anything that can throw: the directories the critics read.
 await mkdir(SHOTS, { recursive: true });
@@ -104,6 +106,39 @@ try {
 
   const stats = await page.evaluate(() => globalThis.__dragonveinStats?.() ?? null);
   say(`stats: ${JSON.stringify(stats)}`);
+  say('note: stats.frameMs is the rAF present interval and is quantised to the vsync ' +
+    'tick; stats.cpuFrameMs is what the frame cost the main thread. gate:perf budgets ' +
+    'the cost — see docs/PERF_BUDGET.md §How the gate actually measures this.');
+
+  // --- the context-loss drill ----------------------------------------------------------
+  // A driver reset is routine on the weak iGPU this game targets, and an unrecovered one
+  // used to kill the canvas for the whole session while the overlay cheerfully carried on
+  // printing `FPS 60 DRAWS 20 TRIS 26984`. Run last, after every screenshot the art
+  // critic reads, so the shots are unaffected.
+  const before = await page.evaluate(() => globalThis.__dragonveinPerf?.read().context ?? null);
+  if (!before?.restoreSupported) {
+    say('context loss: SKIP — this browser exposes no WEBGL_lose_context, so a loss ' +
+      'cannot be induced or restored here');
+  } else {
+    await page.evaluate(() => {
+      const c = /** @type {HTMLCanvasElement | null} */ (document.getElementById('c'));
+      const gl = c?.getContext('webgl2');
+      gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    });
+    await page.waitForTimeout(CONTEXT_RESTORE_WAIT_MS);
+    const after = await page.evaluate(() => globalThis.__dragonveinPerf?.read().context ?? null);
+    const hud = await page.evaluate(() => document.getElementById('hud')?.innerText ?? '');
+    await page.screenshot({ path: `${SHOTS}/04-context-restored.png` });
+    say(`context loss: induced, waited ${CONTEXT_RESTORE_WAIT_MS}ms -> ` +
+      `${JSON.stringify(after)}`);
+    say(`context loss: overlay afterwards: ${hud.replace(/\n/g, ' | ')}`);
+    say(`shot: ${SHOTS}/04-context-restored.png  (gameplay rubric G5)`);
+    if (after?.lost !== false || (after?.restoredCount ?? 0) < 1) {
+      errors.push('WebGL context was lost and never came back: ' +
+        `${JSON.stringify(after)} — after a driver reset the canvas is dead until reload`);
+    }
+  }
+
   say(`page errors: ${errors.length}`);
   await flush();
 

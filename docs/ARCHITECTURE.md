@@ -72,16 +72,31 @@ interface Renderer {
   onEvent(e: DomainEvent): void;           // transient FX only
   setQuality(t: QualityTier): void;
   frame(dtMs: number): void;
-  stats(): { drawCalls:number; triangles:number; frameMs:number };
+  stats(): { drawCalls:number; triangles:number; frameMs:number; cpuFrameMs:number };
 }
 ```
 
+`frameMs` is the presentation interval (rAF to rAF) and is quantised to the vsync tick;
+`cpuFrameMs` is what the frame cost the main thread. `gate:perf` budgets the cost, never
+the interval — see `docs/PERF_BUDGET.md` §How the gate actually measures this. The full
+instrument the gate reads is `__dragonveinPerf` (`reset()` / `read()`), which also carries
+GPU time from `EXT_disjoint_timer_query_webgl2`, the viewport, the quality tier and
+boot-to-first-frame.
+
 Hard rules for `src/render/`:
-- No allocation inside `frame()`. Pre-allocate in `mount()`.
+- No allocation inside `frame()` from our own code — pre-allocate in `mount()`. Note that
+  `three.WebGLRenderer.render` itself allocates roughly 4 kB plus 2 kB per draw call and
+  that is not removable from here, so the enforceable rule is the measured total:
+  `gate:perf` fails above 40 KiB/frame (docs/PERF_BUDGET.md §Heap churn).
 - Every repeated prop goes through `InstancedMesh` — one draw call per prop type.
 - One `DirectionalLight` for the sun. Glow is emissive + bloom, not real lights.
   Real point lights are capped at 4.
 - Shadows: cascaded, 2 cascades, resolution from the quality tier.
+- Survive context loss. Listen for `webglcontextlost` (the default must be prevented, or
+  the browser never fires a restore), ask for the context back through a
+  `WEBGL_lose_context` handle taken *before* the loss, re-acquire every GL object on
+  `webglcontextrestored`, and make any readout say the context is dead rather than
+  reprinting the last good numbers. A driver reset is routine on the target hardware.
 
 ## Save
 

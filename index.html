@@ -28,6 +28,10 @@
       #hud .g{display:flex;align-items:baseline;gap:6px}
       #hud .k{color:#ffd479;font-size:11px;text-transform:uppercase;letter-spacing:.14em}
       #hud .v{font-variant-numeric:tabular-nums;min-width:3ch;text-align:right}
+      /* Shown only when the WebGL context dies. #ff9044 (ART_BIBLE sky horizon) on the
+         panel measures 7.1:1, past A7's 4.5:1. */
+      #hud .w{color:#ff9044;letter-spacing:.14em}
+      #hud [hidden]{display:none}
     </style>
   </head>
   <body>
@@ -39,6 +43,10 @@
       <span class="g"><span class="k">fps</span><span class="v" id="hud-fps">—</span></span>
       <span class="g"><span class="k">draws</span><span class="v" id="hud-draws">—</span></span>
       <span class="g"><span class="k">tris</span><span class="v" id="hud-tris">—</span></span>
+      <!-- Hidden until the GPU context is lost. The readouts above go to em dashes at the
+           same moment, because `renderer.info` freezes at its last good values and
+           printing them over a dead canvas is the opposite of a diagnostic. -->
+      <span class="w" id="hud-status" hidden></span>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
