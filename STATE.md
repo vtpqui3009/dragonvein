@@ -43,14 +43,26 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
   before it becomes the reference bar.
 - `proof_breeding.png` framing still crops the top parent on some layouts.
 
-**Scheduling blocker**
+**Scheduling — resolved, with a trade-off**
 
-- The 2×/day routine (`trig_012oAnWHVszEghmZMUhShCXo`) was created and test-fired. Its
-  fresh sessions can clone the public repo but **cannot push**: the git proxy returns 403
-  because `vtpqui3009/dragonvein` is not in the routine's source list, and `create_trigger`
-  exposes no parameter to set sources. The test run correctly refused to do a milestone it
-  could not push. Until the repo is attached to the routine, every scheduled run will stop
-  at bootstrap.
+The first routine created fresh sessions per firing. It was test-fired and failed exactly
+where it mattered: the fresh session could clone the public repo but got **403 on push**,
+because the git proxy only injects credentials for repositories in that session's source
+list, and `create_trigger` exposes no parameter to set sources. The environment editor in
+the web UI has no repository field either — repositories are chosen per session at
+creation, not per environment. The test run correctly refused to spend a full milestone it
+could not push.
+
+Resolved by binding the routine to the session that already holds the repository
+(`trig_01PAKbMpsfTMuZRj2eECRQxZ`, `persist_session: true`). Runs fire into an ongoing
+conversation at 09:07 and 21:07 Asia/Ho_Chi_Minh.
+
+The trade-off is context growth: a persistent session accumulates history and compacts
+repeatedly over weeks. The harness tolerates this by design — every run re-reads
+`CLAUDE.md`, `ROADMAP.md` and this file rather than relying on conversational memory — but
+if runs start degrading, the fix is to move back to fresh sessions with a fine-grained
+GitHub token stored in the environment's variables and git configured to use it, which
+removes the dependency on proxy-injected credentials.
 
 **Next**: M0 — toolchain and deploy spine. `npm run gates` green, CI green, Pages serving
 the placeholder island.
