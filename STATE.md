@@ -321,6 +321,48 @@ The procedure for a full verification is four steps in `docs/PERF_BUDGET.md`
 
 ---
 
+## 2026-10-10 — decision — rubric lines with no subject
+
+Run 3 found that M0 could not close under `docs/RUBRIC.md` as written: lines whose subject
+does not exist until a later milestone took the gameplay-critic's ceiling to 6.8 and the
+perf-critic's to 7.9, below the 8.0 bar. The three critics each worked around it in a
+different direction, so their scores stopped being comparable. The run did not edit the
+rubric — `CLAUDE.md` §7 — and raised it here instead. Correct on both counts.
+
+**Ruled: option 1, the run's own recommendation.** A line whose subject is absent from the
+build under test is scored `n/a` — out of the denominator, never 0, never blocking. This is
+the same remedy P1 got, for the same defect: the rubric was measuring things that were not
+there yet. Nothing being measured has changed. Budgets, thresholds and the 8.0 bar are
+untouched.
+
+Two guards, because `n/a` is otherwise a loophole:
+
+- `n/a` means the subject is **absent**, not unfinished. A variant sheet that exists and
+  reads badly scores and can block; no generator at all is `n/a`.
+- `docs/ROADMAP.md` now carries a table naming the milestone each line goes live. A line may
+  be `n/a` before that milestone and never at or after it.
+
+**Also fixed: P4 asked for something no browser can report.** "GC pauses < 2 ms" has no web
+API behind it. P4 now reads "no frame-loop allocation; heap churn within the per-frame byte
+budget", which is the figure the gate already measures. Another line I wrote that could not
+be satisfied by any amount of correct work.
+
+**P6 is live from M0, not M6.** The perf-critic is right that a 1280×720 pass with shadows
+and post off needs only the constants `gate:perf` already has. The roadmap table records it.
+
+### What this leaves on M0
+
+Under this ruling the instrument problems are gone and **art at 6.1 is the single genuine
+blocker** — real build work, all of it measured with pointers in `FINDINGS.md`: no contact
+shadow anywhere (3369 grass pixels under fourteen objects, zero darkening, which falsifies
+AC8's own claim), no warm rim reaching the canopy, nine islands and ~60 trees from one
+prefab each varying only by scale and rotation, bare satellites with no ambient motion, and
+an off-bible haze band over ~20% of the frame.
+
+That list is the right outcome: the scores now point at the frame instead of at the ruler.
+
+---
+
 ## 2026-10-10 — decisions — the three M0 blockers, resolved
 
 The owner opened the deployed build (recorded above) and delegated the two judgement calls:

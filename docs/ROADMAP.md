@@ -26,6 +26,26 @@ game and the world has to feel alive before any system matters.
 | M15 | **Flora wave 2 + props** | remaining flora, 8 decoration generators, full dressing pass | TODO |
 | M16 | Polish & perf | p95 under budget on Potato through Ultra; onboarding; first-session flow | TODO |
 
+## When each rubric line goes live
+
+`docs/RUBRIC.md` lets a critic score a line `n/a` while its subject does not exist. This
+table is what makes that checkable: a line may be `n/a` **before** its milestone and never
+at or after it. A run that marks a line `n/a` on or past its live milestone has written a
+defect, not a dispensation.
+
+| line | live from | subject |
+|---|---|---|
+| A1, A2, A3, A5, A6, A7, A8, A9 | M0 | anything rendered |
+| A4 variant sheets | M1 | the first generator |
+| P1, P2, P5 | M0 | any build |
+| P4 | M0 | the frame loop |
+| P3 bred-dragon mesh ≤ 120 ms | M3 | the runtime dragon builder |
+| P6 Potato tier | M0 | reachable now at 1280×720 with shadows and post off; does not wait for M6's tier system |
+| G1, G3, G6 | M0 | the milestone's own loop |
+| G4 state survives reload | M8 | the save |
+| G2 a bred dragon resembles its parents | M9 | breeding |
+| G5 no softlock or unreachable state | M8 | persisted state |
+
 ## Definition of done for an asset milestone
 
 An asset milestone is `DONE` only when, for every generator it adds:

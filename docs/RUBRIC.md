@@ -4,6 +4,33 @@ Three critics score each milestone independently, in fresh context, from artefac
 A milestone ships at **≥ 8.0 from all three** with gates green.
 Any `blocking` defect caps that critic at **5.9** regardless of other lines.
 
+## A line with no subject is `n/a`, not zero
+
+This rubric covers the whole project. Most milestones cannot exercise most of it. A line
+whose subject **does not exist yet at the milestone under test** is scored `n/a`: removed
+from the denominator, never scored 0, and never a blocking defect. The critic states which
+lines it dropped and why, and reports the score out of the remaining total.
+
+Without this rule the rubric is unreachable early by construction. Measured at M0: the
+gameplay-critic's ceiling was 6.8 (G2 needs breeding, which arrives at M9; G4 needs save,
+which arrives at M8) and the perf-critic's was 7.9 (P3 needs a bred dragon, M3). No amount
+of building closes a milestone whose maximum is below the bar. Worse, the three critics
+each resolved the gap differently and in opposite directions, so their numbers stopped
+being comparable — which is the real damage, because the whole point of three scores is
+that they can be read side by side.
+
+This is the same defect P1 had, and the same remedy: make the measurement match what exists,
+without touching what is being measured. Budgets, thresholds and the 8.0 bar are unchanged.
+
+Two guards against this becoming a loophole:
+
+- **A line is `n/a` only when its subject is absent from the build, not when it is
+  inconvenient.** If a variant sheet exists and reads badly, A4 is scored and can block. If
+  no generator exists yet, A4 is `n/a`. "Not finished" is a score, not an `n/a`.
+- **`docs/ROADMAP.md` names the milestone each line first becomes live.** A line may be
+  `n/a` before that milestone and never after it. A run that marks a line `n/a` at or past
+  its live milestone has written a defect, not a dispensation.
+
 Artefacts a critic receives: `artifacts/shots/*.png`, `artifacts/variants/*.png`,
 `artifacts/turntables/*.webm`, `artifacts/perf.json`, `artifacts/playtest.log`,
 `docs/concept/*`, and the milestone's acceptance criteria from `STATE.md`.
@@ -34,7 +61,7 @@ is still a dead world.
 | P1 | frame cost within budget, measured reproducibly on whatever renderer is present, **and** a dated real-hardware entry in `STATE.md` §Real-GPU verification log | 2.5 | the measurement is missing or does not reproduce — `blocking` |
 | P2 | Draw calls ≤ 180 | 1.8 | over — `blocking` |
 | P3 | Bred-dragon mesh build ≤ 120 ms | 1.8 | over — `blocking` |
-| P4 | No frame-loop allocation; GC pauses < 2 ms | 1.5 | heap sawtooth |
+| P4 | No frame-loop allocation; heap churn within the per-frame byte budget | 1.5 | heap sawtooth, or churn over budget |
 | P5 | Bundle ≤ 1.4 MB gzip; boot to first frame ≤ 2.5 s | 1.2 | over |
 | P6 | Potato tier holds 30 fps @720p | 1.2 | under |
 
