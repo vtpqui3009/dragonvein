@@ -479,3 +479,465 @@ scored zero or scored full.
   widening the budget.
 
 SCORE_MACHINE: 8.8
+
+---
+
+## art-critic — M0 Toolchain & deploy spine — run 2026-10-10 (rework cycle 2)
+SCORE: 6.9 / 10
+
+**Scope renormalisation.** M0 ships a lit, rotating placeholder island. There are no
+creature generators and no `artifacts/variants/*.png`, so **A4 (1.6) has no subject and is
+excluded from the denominator** rather than scored 0. Every other A-line has a subject.
+Denominator = 10.0 − 1.6 = **8.4**. Score = 5.78 / 8.4 × 10 = 6.88 → **6.9**.
+
+**Artefact-set caveat.** A build was rewriting `artifacts/` during this review. Every
+number below was re-measured against the files on disk at review end:
+`01-wide.png` md5 `9f18c2ad413fbb7ff50225f935cf4a87`,
+`04-context-restored.png` md5 `06e431f1f7791b8607c6a0432197c9c4`,
+`m0-island.webm` md5 `3b96df657d996fe4cda3b78bc20b4c9a`. All pointers reproduce on those.
+
+| # | line | awarded / max | basis |
+|---|---|---|---|
+| A1 | Silhouette reads at 25% zoom | **1.00** / 1.2 | Island reads as disc + inverted spire + spiked crown in `02-silhouette.png`; canopy interior merges into one mass |
+| A2 | Palette inside `ART_BIBLE.md` within ΔE 12 | **0.60** / 1.0 | Sky and hero island ΔE 0.0–7.6; 5 of 6 satellite decks ΔE 14.5–20.8; haze band ΔE 18.6 |
+| A3 | Lighting: key, fill, contact shadow | **0.70** / 1.2 | Key direction + hero-deck cast shadows present; fill absent inside shadow (2698 px at RGB sum < 30, min `[0,0,2]`); no warm rim; satellites receive no shadows |
+| A4 | Variant sheets show real variation | **excluded** | No subject at M0 — removed from denominator |
+| A5 | Nothing pops, teleports or interpenetrates | **0.70** / 1.2 | No pop found — `DRAWS 28` / `TRIS 28474` pixel-identical across all 5 shots; but the turntable is 2.88 s not 7 s, holds ~14 unique renders, and is stale relative to the shots |
+| A6 | Density: reads as a lived-in place | **0.80** / 1.4 | Hero deck genuinely dressed (16.0% edge density); 6 of 7 islands bare; 0 edge pixels in the bottom-left quarter of the frame |
+| A7 | HUD readable at 1280×720, 4.5:1 | **0.90** / 1.0 | Measured 11.44:1 (gold) and 14.82:1 (white); worst-case background never tested |
+| A8 | No z-fighting, seams, untextured magenta | **0.60** / 0.8 | 0 magenta px in all 5 shots; 23 isolated dark-stitch px (shadow acne) in `01-wide.png` |
+| A9 | Matches intent of the concept image | **0.48** / 0.6 | All concept elements present and exceeded in lighting; crystals non-emissive, island is a lathe-perfect bowl |
+| | **total** | **5.78 / 8.4** | **6.9** |
+
+### Defects
+
+- [major] **A2 — satellite-island decks are off-bible.** `artifacts/shots/01-wide.png`,
+  measured as the modal colour of each deck strip, ΔE2000 against the nearest
+  `ART_BIBLE.md` swatch:
+  `sat SE (x1100-1210, y288-298) #a29666 → ΔE 20.8`;
+  `sat W (x85-185, y288-298) #ae965a → ΔE 18.4`;
+  `sat NE (x890-960, y104-112) #5a967e → ΔE 16.0`;
+  `sat E (x995-1080, y196-205) #5a967e → ΔE 16.0`;
+  `sat N (x605-670, y38-46) #7e9672 → ΔE 14.5`.
+  Only `sat NW #5a9666 (ΔE 9.7)` is inside the ΔE 12 line. Two decks are frankly
+  **turquoise** (`#5a967e`, blue > red) — see the 4× crop of `x870-1100, y85-235`. This is
+  not aerial perspective: fog toward a `#ff9044` horizon cannot push green toward teal,
+  and the tan `#ae965a` island sits at the same depth as the teal ones. The hero island by
+  contrast is clean (foliage mid ΔE 1.5–1.7, foliage light ΔE 7.2, rock ΔE 6.9).
+  Reproduce: the deck-sampling snippet above over `01-wide.png`.
+
+- [major] **A3 — no fill light reaches shadowed geometry; shadows crush to black.**
+  `artifacts/shots/01-wide.png`, island bbox `x410-875, y250-500`: **2698 px (2.32% of the
+  bbox) have RGB sum < 30**, darkest pixel `[0, 0, 2]`. 10226 px (8.80%) are darker than
+  1.5× the bible's `deep shadow #1a1420`. Densest black cells in
+  `04-context-restored.png` are at `(x660-680, y380-420)` — 460 px of near-pure black
+  inside the canopy. `ART_BIBLE.md §Lighting` specifies a cool fill at ~20% of key; a 20%
+  fill cannot produce a shadowed *green* canopy at `(0,18,4)`. Reproduce:
+  `python3 -I` summing `np.asarray(img)[250:500,410:875].sum(axis=2) < 30`.
+
+- [major] **A3 — no warm rim on the island's backlit edge.** `01-wide.png`, sampling the
+  brightest pixel in `y400-500` at each of `x = 840, 850, 858, 864, 868`: the only
+  non-sky maximum is `[167,203,100]` at x850, which is a sunlit conifer face, not a rim.
+  At `x858-868` the brightest value is `[203,153,122]`, i.e. the sky itself. The island
+  silhouette steps straight from `#3e363d` rock to sky with no terminator highlight.
+  `ART_BIBLE.md §Lighting` lists the warm rim as one of three required lights.
+
+- [major] **A6 — all six satellite islands are undressed.** `01-wide.png`:
+  `sat W (x78-192, y280-305)`, `sat SE (x1090-1220, y280-305)`, `sat NW (x160-262,
+  y140-165)`, `sat N (x600-675, y25-50)`, `sat NE (x885-965, y100-118)`,
+  `sat E (x985-1085, y175-200)`. Each is a flat untextured disc carrying 5–8 identical
+  cones, with **zero** ground cover, zero scatter rocks and **zero cast shadows** on the
+  deck. `ART_BIBLE.md §Density`: "A dressed island is never bare between features."
+  Six of the seven islands in frame violate that line verbatim.
+
+- [major] **A6 — the bottom quarter of the frame is literally featureless.** `01-wide.png`,
+  Sobel-style edge density at threshold 12:
+  `x0-540, y540-720` → **0 edge pixels (0.000%)`;
+  `x745-1279, y540-720` → 16 px (0.017%);
+  `x0-400, y420-540` → **0 edge pixels**.
+  Compare the hero deck `x405-875, y250-540` → 16.03%. There is no cloud sea with form,
+  no distant geometry, no mid-ground — just a blurred brown gradient. Reproduce: the
+  `edge.py` band scan above.
+
+- [minor] **A6 — the island's largest surface carries no detail.** `01-wide.png`, the bowl
+  skirt `x410-875, y480-535` and the spire cone `x540-745, y540-645` (edge density
+  **1.6%**). Together roughly a third of the island's screen area is a smooth
+  `#3e363d → #2f2b35` gradient: no strata, no roots, no hanging growth, no scatter. It is
+  also visibly a *different, cooler* material from the warm bowl above it
+  (`#2f2b35` spire vs `#49362d` bowl at y505), which reads as two unrelated objects.
+
+- [minor] **A6 — the dressing is four archetypes.** `03-late.png` crop
+  `x410-870, y370-510` at 3×: every boulder is the same faceted hexagonal rock at a
+  different scale, every bush the same low-poly blob, every tree the same two-stacked
+  cone. Nothing is inhabited — no structures, no water, no creatures, no path furniture —
+  so the frame reads as a well-dressed terrarium rather than a lived-in place.
+
+- [minor] **A5 — the turntable does not meet its own spec and cannot resolve a short pop.**
+  `artifacts/turntables/m0-island.webm` is billed as 7 s. Measured:
+  `ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames artifacts/turntables/m0-island.webm`
+  → **72 frames**, last packet PTS **2.840 s**, container duration **2.880 s**. Of those 72
+  frames only ~14 are distinct renders: frames 1–13 are byte-identical (frame-to-frame
+  mean |Δ| = 0.00) and thereafter one new image arrives every ~5 video frames
+  (mean |Δ| spikes of 3.9–13.3 at f018, f024, f030, f036, f041, f046, f051, f056, f061,
+  f066, f071, with ≈0.2 between). Rotation therefore advances in one ~25 px step per
+  unique frame — see the stacked crop of f017 vs f018 at `crop=500:220:390:340` — and the
+  artefact cannot evidence the absence of any pop shorter than ~200 ms. Not scored
+  `blocking`: this is the renderer's ~6 fps on SwiftShader recorded faithfully, which is
+  P1's problem, not a content pop.
+
+- [minor] **A5 — the turntable is stale relative to the shots it is meant to corroborate.**
+  `ls -la --time-style=full-iso artifacts/` → `turntables/m0-island.webm` mtime
+  **02:44:42**, while `shots/00-boot.png`…`04-context-restored.png` are **02:48:32–02:48:49**.
+  The current `artifacts/playtest.log` ends with
+  `turntable: Page did not produce any video frames` and `page errors: 1`, and the current
+  `artifacts/perf.json` is a 342-byte stub reading
+  `"status": "incomplete" … "if this is the final content, the gate crashed."` A5's
+  dedicated artefact therefore belongs to a different run than the frames beside it.
+
+- [minor] **A8 — shadow-map self-shadow acne stitches the conifer cones.** Isolated pixels
+  that are ≥10 L darker than all four neighbours while those neighbours are flat (spread
+  < 6), inside the island bbox: **23 px in `01-wide.png`** (bbox `x483-817, y260-493`),
+  14 px in `03-late.png`, 11 px in `04-context-restored.png`. The clearest run is in
+  `03-late.png` at `(660,335) (659,338) (658,342) (657,345)` — a dotted diagonal down a
+  single cone face, visible as a stipple line at `crop=120:130:580:250` scaled 6×.
+  Deliberately **not** tagged `blocking`: this is one-pixel shading acne on a curved
+  surface, not a UV/texture seam and not z-fighting of coplanar geometry (`DRAWS`/`TRIS`
+  are invariant and no flicker survives the codec noise floor).
+
+- [minor] **A8 — hard-edged rectangular shadow blocks on the deck.**
+  `04-context-restored.png` at `(x490-510, y425-440)` and `(x535-555, y458-472)`:
+  shadow boundaries are axis-aligned staircases with no penumbra, characteristic of the
+  1024 shadow map at this screen scale.
+
+- [minor] **A1 — the canopy merges at 25%.** `02-silhouette.png`, `x120-200, y75-100`
+  (= `01-wide.png` `x480-800, y300-400`): individual conifers are not separable, the
+  forest reads as one green mass with a serrated top edge. The island as a whole reads
+  fine, so this does not trip the line's fail condition, but no single tree is
+  "identifiable as a black shape at 25% zoom" per `ART_BIBLE.md §Direction`.
+
+- [minor] **A7 — the HUD's worst case is untested.** The panel occupies
+  `x14-528, y14-52` in all five shots, entirely inside the dark zenith band (median scene
+  luminance behind it **0.0146**). `ART_BIBLE.md` specifies the UI surface as translucent
+  `rgba(11,36,48,0.82)`; over the horizon band at `y180-300` (`#fc8f44`, luminance ≈ 0.40)
+  the measured 11.44:1 would not hold. Nothing in the artefact set shows the HUD over a
+  bright background.
+
+- [minor] **A9 — the crystals do not glow.** `docs/concept/03-island-scene.png` shows
+  emissive cyan shards with light spill onto the grass at `(x390-430, y535-585)` and
+  `(x525-580, y590-650)`. In `01-wide.png` the crystal cluster at `x432-566, y366-453`
+  (781 px, brightest `[219,235,234]`) is matte, neutral-white and casts no spill. The
+  concept's organic lumpy island edge has also become a perfect lathe-turned bowl.
+
+### What is good
+
+- **The hero island deck is genuinely dressed, and this is the single best thing here.**
+  Edge density over `01-wide.png` `x405-875, y250-540` is **16.03%** against 1.01% for the
+  upper sky. Five distinct prop classes are present and interleaved — conifers, faceted
+  scatter boulders, low blob bushes, grass tufts and a crystal cluster — plus a dirt path
+  curving from the rim at `(x760-820, y420-470)`. `ART_BIBLE.md §Density`'s "never bare
+  between features" is satisfied *on the hero island*. Preserve this scatter.
+
+- **The sky is dead-on the bible.** Sampled down the left edge of `01-wide.png`:
+  `y8 #0a1c4f` → **ΔE 0.0** from `sky zenith`; `y180 #fc8f44` → **ΔE 0.5** from
+  `sky horizon`; `y712 #1b1521` → **ΔE 0.3** from `deep shadow`. Three of the bible's ten
+  swatches reproduced to within a ΔE of half a unit is excellent discipline.
+
+- **A4's absence is handled honestly and A5's evidence is otherwise strong.** `DRAWS 28`
+  and `TRIS 28474` are **pixel-identical** across `00-boot`, `01-wide`, `03-late` and
+  `04-context-restored` (max |Δ| = 0 over the HUD region `x335-525, y20-46`), so nothing
+  streams in, no LOD switches and the scatter is not reseeded. The crystal cluster tracks
+  monotonically through the turntable (centroid cx 454 → 499 across f018 → f072) rather
+  than jumping, and `04-context-restored.png` is compositionally intact after an induced
+  WebGL context loss. No pop was found.
+
+- **`02-silhouette.png` is an honest artefact, not a re-render.** It is a true **box**
+  downscale of `01-wide.png`: mean |Δ| = **0.52**, max Δ = **2**, and **0** pixels differ
+  by more than 24 (lanczos/bicubic/bilinear/nearest all score worse). The A1 artefact
+  cannot be gamed by shooting a cleaner frame.
+
+- **HUD contrast clears the bar with room.** Measured WCAG ratios at the shots' native
+  1280×720: gold `#ffd479` labels **11.44:1**, white numerals **14.82:1** against the
+  panel — both well over 4.5:1 — and the glyphs are crisp with no sub-pixel mush.
+
+- **Zero untextured magenta anywhere.** 0 px with `r>180 & b>180 & g<90` across all five
+  shots. Every surface in the frame has a material.
+
+- **The build already exceeds its concept on lighting.**
+  `docs/concept/03-island-scene.png` is a flat grey-mauve blockout with no cast shadows;
+  `01-wide.png` delivers a golden-hour key with real tree-on-ground shadows, a graded
+  sky and aerial depth. The concept's inventory — green disc island, inverted cone
+  underside, conifers, pale crystal shards, scatter rocks, satellite cone islands above
+  and to the right — is all present. A9 is close to full marks.
+
+### Blocking defects
+
+**None.** No defect here meets a `blocking` condition in `docs/RUBRIC.md`:
+- **A4** (`8 seeds read as one object`) has no subject at M0 and is excluded, so it cannot
+  block.
+- **A5** (`any pop`) — none found. `DRAWS`/`TRIS` are invariant across every shot and the
+  tracked feature moves monotonically. The turntable's ~14 unique frames are a low
+  temporal sampling rate from a ~6 fps renderer, not a content pop.
+- **A8** (`any z-fighting, seam, or untextured magenta`) — 0 magenta px; no coplanar
+  z-fight (no flicker above the VP8 noise floor, and geometry counts never change). The
+  23 isolated dark pixels in `01-wide.png` are one-pixel shadow acne on a curved cone,
+  which I am scoring as a shading artefact rather than a seam. Stated explicitly so the
+  call can be overruled: if the owner reads cone-face acne as a seam, A8 is `blocking` and
+  this score caps at 5.9.
+
+The score is below 8.0 on the strength of A6 (0.80 / 1.4) and A2/A3, not on a block.
+The single highest-leverage fix is A6: dress the six satellite islands and put form into
+the bottom quarter of the frame.
+
+SCORE_MACHINE: 6.9
+
+## perf-critic — M0 Toolchain & deploy spine — rework cycle 2 — run 2026-10-10
+SCORE: 5.9 / 10
+
+**Renormalisation.** Full table = P1 2.5 + P2 1.8 + P3 1.8 + P4 1.5 + P5 1.2 + P6 1.2 = 10.0.
+Excluded as having no subject at M0: **P3** 1.8 (runtime mesh builder is `docs/ROADMAP.md`
+row M3, "a genome becomes a `BufferGeometry` in a worker in < 120 ms") and **P6** 1.2
+(quality tiers are `docs/ROADMAP.md` row M6, and `STATE.md` line 50 lists them as
+deliberately out of scope). Denominator = 10.0 − 1.8 − 1.2 = **7.0**.
+Earned 0.7 + 1.8 + 0.6 + 1.2 = **4.3 / 7.0** → 4.3 ÷ 7.0 × 10 = **6.14 → 6.1**.
+Two `blocking` defects cap this critic at 5.9 (`docs/RUBRIC.md` line 5). **Final: 5.9.**
+
+**Artefact provenance.** Scored bytes: `artifacts/perf.json` md5 `38ecac642f0112624057ed73b6fe717d`,
+kept at `/tmp/claude-0/-home-user-dragonvein/045b340c-9d85-5a8a-bc82-35e4b7e5dc7b/scratchpad/perf.original.json`.
+Those bytes are no longer in the tree: a concurrent `gate:perf` rewrote `artifacts/perf.json`
+at 02:56 UTC (md5 `4260c326666b5656f1f6878dd1d5fb7a`, scene changed to 19 draws / 28,188 tris).
+I restored the original after my own re-runs and did **not** clobber that newer measurement;
+every line below cites the scored bytes and cross-checks against the newer one.
+
+| # | line | max | earned | number, and the key it came from |
+|---|---|---|---|---|
+| P1 | p95 frame ≤ 16.6 ms @1080p Medium | 2.5 | **0.7** | `frameCostMs.p95 = 157.353 ms` vs `frameCostMs.budgetMs = 16.6`, `frameCostMs.withinBudget = false` — 9.5× over. Non-representative by the artefact's own keys: `softwareRenderer = true`, `frameBudgetEnforced = false`, `renderer = "ANGLE (… SwiftShader driver)"`. Surrogate main-thread half `cpuFrameMs.p95 = 1.8 ms` vs `cpuFrameMs.budgetMs = 3.5` passes in the scored bytes but reads 4.5 / 4.5 / 2.2 in my re-runs and 4.4 in the tree's 02:56 run (`cpuFrameMs.p95WithinBudget = false`). `viewport.cssWidth/cssHeight = 1920/1080`, `devicePixelRatio = 1`. Credit is for the instrument only (see What is good). |
+| P2 | Draw calls ≤ 180 | 1.8 | **1.8** | `drawCalls = 28` vs `budget.drawCalls = 180` (15.6 %); `triangles = 28474` vs `budget.triangles = 900000` (3.2 %); `errors = []`. Enforced unconditionally (`tools/gate-perf.mjs` lines 468–474). Reproduced three times at `drawCalls = 19`, `triangles = 28188`. |
+| P3 | Bred-dragon mesh build ≤ 120 ms | — | **excluded** | No subject at M0; `docs/ROADMAP.md` row M3. Not scored, not zeroed. |
+| P4 | No frame-loop allocation; GC pauses < 2 ms | 1.5 | **0.6** | `heap.bytesPerFrame = 35871` vs `heap.budgetBytesPerFrame = 40960` (87.6 %), `heap.withinBudget = true`, `heap.netGrowthKB = -839` (no leak), `heap.sawtoothAmplitudeKB = 1607`, `gc.inferredScavenges = 7`. But the same key reads `41912` and `43237` (over budget) in re-runs, and the GC half is unestablished: `gc.pauseMsMeasured = false` with `gc.worstCpuFrameMs = 7` ms as its only bound, 3.5× the rubric's 2 ms. |
+| P5 | Bundle ≤ 1.4 MB gzip; boot ≤ 2.5 s | 1.2 | **1.2** | `bundle.gzipBytes = 139289` vs `bundle.budgetGzipBytes = 1400000` (9.9 %), `bundle.withinBudget = true`; `bootMs = 256.8` vs `bootBudgetMs = 2500` (10.3 %). Both enforced (`tools/gate-perf.mjs` lines 498–503). Reproduced: 140454 B / boot 249.9–499.9 ms. |
+| P6 | Potato tier holds 30 fps @720p | — | **excluded** | No subject at M0; `docs/ROADMAP.md` row M6, `STATE.md` line 50. Cycle 1's zero here was an error and is withdrawn. |
+
+**Real-GPU verification log (`STATE.md` lines 8–23).** It contains one row and that row is
+`| — | — | **never performed** | — | — | — | — |`, under text stating that "this project has
+never once been measured on a GPU". For P1 that means: there is no in-budget frame number
+anywhere in this repository, on any machine, at any commit. The only `frameCostMs.p95` that
+exists is a CPU-rasteriser figure 9.5× over budget. P1 is therefore unverified **and**
+un-passed — the log is the honest record of that, not a substitute for it.
+
+### Defects
+- [blocking] **P1 — no in-budget frame measurement exists.** `frameCostMs.p95 = 157.353 ms`
+  against `frameCostMs.budgetMs = 16.6`, `frameCostMs.withinBudget = false`; the tree's
+  02:56 artefact says `167.946 ms`, same verdict. The figure is explicitly not
+  representative (`softwareRenderer = true`, `frameBudgetEnforced = false`), and
+  `STATE.md` §Real-GPU verification log row 1 is `never performed`, so no representative
+  figure exists either. Reproduce:
+  `node -e 'const p=require("./artifacts/perf.json");console.log(p.frameCostMs, p.softwareRenderer)'`.
+  Fixes, none of them a budget change: (1) one human pass of `docs/PERF_BUDGET.md`
+  §Real-GPU verification steps 1–4 so the log gets a row with `frameBudgetEnforced: true`;
+  (2) meanwhile drive the cost down rather than wait — 19–28 draw calls of static island
+  should not cost 167.9 ms even on SwiftShader, so batch the repeated island props into one
+  `InstancedMesh` per type, and stop the pooled depth material flipping its `instancing`
+  flag, which the artefact's own `heap.note` / `docs/PERF_BUDGET.md` §Heap churn blames for
+  `WebGLPrograms.getParameters` running twice per frame.
+- [blocking] **P1/P4 — the scored artefact does not reproduce; the gate exits 1.** Three
+  `npm run gate:perf` re-runs on this container: exit 1, exit 1 (`exits.txt`: `run2 exit=1`,
+  `run3 exit=1`). Numbers against the scored `cpuFrameMs.p95 = 1.8` and
+  `heap.bytesPerFrame = 35871`: run 1 `cpu p95 4.5` / `heap 41912`; run 2 `cpu p95 4.5` /
+  `heap 33817`; run 3 `cpu p95 2.2` / `heap 43237`; the tree's own 02:56 run `cpu p95 4.4` /
+  `heap 33992`. The gate's own failure lines were
+  `main-thread frame cost p95 4.5 ms > 3.5 ms` and
+  `heap churn 43237 B/frame > 40960 B/frame`. Reproduce: `npm run gate:perf; echo $?`.
+  A measurement that lands either side of its budget run to run is not evidence that the
+  budget is met; it is evidence the sampling window is too short
+  (`sampleCount.cpuFrameMs = 166` vs `sampleCount.target = 180`, `collectionWindowMs = 25023`
+  pinned to the 25,000 ms `SAMPLE_DEADLINE_MS`).
+- [major] **P1 — the enforced statistic was changed from p95 to p50 mid-cycle.**
+  `tools/gate-perf.mjs` (mtime 2026-10-10T02:51:20Z, after the artefact under score) now
+  fails on `if (cpu !== null && cpu.p50 > BUDGET.cpuFrameMs) {` (line 528) and guards the
+  p95 comparison behind `report.frameBudgetEnforced` (line 537); `tests/spine.test.ts`
+  (mtime 02:51:38Z) was edited to assert that shape at line 163 while its own comment at
+  line 159 still reads "Unconditional: no `frameBudgetEnforced` or `software` guard on this
+  comparison". Effect, straight from the tree's current artefact:
+  `cpuFrameMs.p95WithinBudget = false` (4.4 ms vs 3.5 ms) while `cpuFrameMs.withinBudget =
+  true` (p50 = 0.6 ms) and the gate passes. `docs/PERF_BUDGET.md` offers a two-machine
+  contention argument for the swap and the 3.5 ms number did not move — but P1 is a **p95**
+  line, and after this change no p95 is enforced on any machine this project has ever run
+  on. If the tail is contention-noisy, fix the instrument (longer window, raise
+  `TARGET_SAMPLES` attainment, drop `SAMPLE_DEADLINE_MS` pressure, pin fewer concurrent
+  jobs), not the statistic. Needs owner sign-off under CLAUDE.md §2.7.
+- [major] **P4 — `heap.bytesPerFrame` is not a per-frame figure.** Scored `35871` at
+  `heap.framesInWindow = 165`; re-runs give `33817` @166, `33992` @169, `41912` @100,
+  `43237` @85. The value tracks 1/frames almost exactly, which means allocation that is
+  time-driven (the HUD repaint timer, the 250 ms CDP poll) is being divided by frames
+  rendered. So a slow pass reads over a budget it did not breach — and two passes did read
+  over `40960`. Fix the attribution (count rising edges against the frames they occur in,
+  or subtract a measured idle-page baseline); do not move 40960.
+- [major] **P4 — the GC half of the line is neither measured nor bounded under 2 ms.**
+  `gc.pauseMsMeasured = false`; the offered bound `gc.worstCpuFrameMs = 7` ms (tree's
+  current: `6.8`) is 3.5× the rubric's 2 ms. Refusing to invent a number is right; the line
+  still cannot be scored as passing. A `PerformanceObserver` on `longtask` plus
+  `gc.worstCpuFrameMs` on an idle-camera pass would at least bound it.
+- [minor] **P1 — the "@1080p Medium" qualifier is not exactly met.** `viewport` is correct
+  (1920×1080, `devicePixelRatio = 1`), but `tier.postProcessing = false` and
+  `tier.configured = false`, while `docs/PERF_BUDGET.md` §Quality tiers defines Medium as
+  "1080p, 1024 CSM, bloom". `tier.note` claims the settings "match the Medium row"; they
+  match it minus bloom, so any figure here is a **floor** for Medium. Tiers are M6, so the
+  fix today is the wording in `tier.note`, not adding bloom.
+- [minor] **P2 — `drawCalls` / `triangles` are a single-frame snapshot, not a window
+  worst-case.** `drawCalls = 28`, `triangles = 28474` in the scored bytes versus `19` /
+  `28188` in three later runs (`__dragonveinStats()` reads `renderer.info` once at the end).
+  Nothing is at risk at 15.6 % and 3.2 % of budget, but the budgeted figure should be the
+  worst frame in the window.
+- [minor] **P1 — the sample target is never reached.** `sampleCount.cpuFrameMs = 166`,
+  `sampleCount.gpuFrameMs = 156`, `sampleCount.target = 180`, `collectionWindowMs = 25023`
+  on a 25,000 ms deadline, with `framesRendered = 199`: 22 % of frames carry no GPU timing
+  and the p95 rests on ~8 tail samples.
+
+### What is good
+- **The frame instrument is genuinely fixed, and it is checkable from the artefact.**
+  `frameCostMs.p95 = 157.353 ms` is 9.441 vsync ticks — not an integer — while
+  `presentIntervalMs.p50 = 150` and `.p95 = 300` are exactly 9.000 and 18.000 ticks with
+  `presentIntervalMs.maxDeviationFromVsyncTickMs = 0.167`. The cadence figure is still
+  tick-quantised, it is now named as a cadence, and it is compared to no budget. Last
+  cycle's "every figure an exact multiple of 16.667 ms" no longer applies to anything
+  budgeted; resolution is ~0.1 ms on `cpuFrameMs` (`p50 = 0.7`) and sub-ms on `gpuFrameMs`.
+- **The quantisation claim is proved rather than asserted:**
+  `unpaced.maxDeviationFromVsyncTickMs = 8.167` against the paced `0.167`, from a second
+  pass with vsync disabled, and nothing in `unpaced` is budgeted.
+- **The enforcement split is honestly disclosed, which is the thing a critic needs.**
+  `softwareRenderer: true`, `frameBudgetEnforced: false`, `frameCostMs.withinBudget: false`,
+  `gpuTimer.available: true` with `disjointEventsDiscarded: 0`, `gc.pauseMsMeasured: false`.
+  The artefact nowhere claims a pass it cannot support, and `STATE.md`'s verification log
+  records the measurement that has **not** been taken.
+- **P2 and P5 are cheap with real margin and they reproduce**: 19–28 draws vs 180,
+  28,188–28,474 tris vs 900,000, 139,289–140,454 B gzip vs 1,400,000, boot 249.9–499.9 ms
+  vs 2,500 ms, `errors: []` with page errors enforced unconditionally.
+- **Leak versus churn is separated and evidenced**: `heap.netGrowthKB = -839` beside
+  `heap.sawtoothAmplitudeKB = 1607`, with the raw 99-point series in `heap.samplesKB` and
+  sampling done over CDP from outside the page, so a critic can recompute it.
+- `artifacts/playtest.log` corroborates rather than contradicts: `stats: {"drawCalls":28,
+  "triangles":28474,...}` and an explicit note that `stats.frameMs` is a tick-quantised
+  present interval.
+
+SCORE_MACHINE: 5.9
+
+---
+
+## gameplay-critic — M0 Toolchain & deploy spine — run 2026-10-10 (rework cycle 2)
+SCORE: 8.2 / 10
+
+**Renormalisation.** The gameplay table sums to 10.0 across G1 2.2, G2 1.8, G3 1.4, G4 1.4,
+G5 1.6, G6 1.6. At M0 three lines have no subject, verified rather than assumed:
+`grep -n "genome\|breed" src/main.ts` returns nothing (G2 — breeding is M9),
+`grep -rn "indexedDB\|localStorage" src/main.ts` returns nothing (G4 — persistence is M8),
+`grep -rn "pointerdown\|touchstart\|click" src/main.ts` returns nothing (G6 — input is
+M8/M9). Those three are scored N/A and removed from both numerator and denominator.
+
+    in-scope max  = G1 2.2 + G3 1.4 + G5 1.6     = 5.2
+    earned        = G1 1.80 + G3 1.25 + G5 1.20  = 4.25
+    score         = 4.25 / 5.2 x 10              = 8.173 -> 8.2
+
+| # | line | max | awarded | basis |
+|---|---|---|---|---|
+| G1 | The milestone's loop completes start to finish | 2.2 | **1.80** | Boot -> lit island -> rotation -> live HUD -> survives being left running, on every one of ~15 driven sessions. Cold load 215–345 ms to first frame; a 90 s unattended run rendered 522 frames with 0 page errors. Docked for: the deployed leg is unverifiable from here; `gate:smoke` exited 1 on 4 of 9 invocations; the turntable backing "it rotates" is 59% loading splash. |
+| G2 | A bred dragon is visibly its parents' child | 1.8 | **N/A** | No breeding, genome or dragon mesh at M0 (M9). |
+| G3 | Every action gives feedback within 100 ms | 1.4 | **1.25** | Boot splash fades at t+392 ms, removed at t+402 ms; the HUD repaints on a 250 ms timer and tracks reality (FPS 5–14 against a measured 150 ms present interval — not a flattering 60); context loss repaints the overlay synchronously inside the `webglcontextlost` handler; resize lands in 424 ms, which is 2.8 SwiftShader frames and one-frame-bound, so not counted against the line. |
+| G4 | State survives reload | 1.4 | **N/A** | No state is persisted at M0 (M8). |
+| G5 | No softlock, unreachable state, negative currency | 1.6 | **1.20** | Six adversarial probes found one reachable dead end (no-WebGL, below). Two successive context losses both recovered (`restoredCount` 1 then 2); a loss the page cannot undo degrades correctly and still recovers when the driver returns; 8 s backgrounded + refocus keeps rendering; 480x900 and 320x200 viewports keep running; no currency exists to go negative. |
+| G6 | Mouse and touch both work | 1.6 | **N/A** | No input handlers exist at M0 (M8/M9). |
+
+### Verification of the two items the brief asked for
+
+**1. WebGL context loss — fixed, and a real fix.** On this renderer the restore is so fast
+the warning banner could not be photographed: back inside 190 ms
+(`{"lost":false,"restoreAttempts":1,"restoredCount":1,"msSinceLoss":188.2,
+"framesSkippedWhileLost":2}`). Forcing the hard case by monkey-patching `ext.restoreContext`
+to a no-op gives the correct path: `GPU CONTEXT LOST — RESTORING` at t+500/1500/3000 ms with
+`restoreAttempts` 2/3/4, `GPU CONTEXT LOST — RELOAD TO RECOVER` at t+6000 ms, and recovery
+once the patch is lifted. No stale `FPS 60 DRAWS 20 TRIS 26984` anywhere. Cycle 1's G5 major
+and G3 minor are closed.
+
+**2. Reload cost — the over-budget sample is gone, the ratio is not.** Nine reloads across
+three passes: worst 1164 ms against a 2500 ms budget (47%). Cold 214.7–344.6 ms. The 2532 ms
+sample from cycle 1 did not reproduce once. The structural 4.1x reload-over-cold gap remains,
+so a machine ~2.5x slower would put reload back on the line — an observation, not a defect.
+
+**3. GitHub Pages — could not load it. Plainly: no.**
+`curl -sS -L --max-time 60 https://vtpqui3009.github.io/dragonvein/` →
+`curl: (56) CONNECT tunnel failed, response 403`; Playwright →
+`net::ERR_TUNNEL_CONNECTION_FAILED`; the agent proxy's own status reports
+`connect_rejected … gateway answered 403 to CONNECT`. `*.github.io` is denied by this
+container's egress policy. Unchanged from the previous container, not a property of the
+build, and no green workflow was substituted for a load. AC3 has no evidence from me or from
+any automated check in this repository, and per CLAUDE.md §7 it needs a human with a browser
+before M0 closes.
+
+### Defects
+
+- **[major] G5 — a machine without WebGL2 sits on the loading splash forever, silently.**
+  Repro: launch Chromium with `--disable-webgl --disable-webgl2 --disable-3d-apis` and load
+  the preview. After 6 s `#boot` is still in the DOM at `opacity: 1`,
+  `globalThis.__dragonveinStats` is `undefined`, the HUD reads `FPS — DRAWS — TRIS —`, and the
+  only trace is a console throw the player never sees:
+  `Error: THREE.WebGLRenderer: Error creating WebGL context.` The page already knows how to
+  say "GPU CONTEXT LOST — RELOAD TO RECOVER" when a context it had dies; it says nothing when
+  the context never existed. CLAUDE.md §0 names a weak Intel iGPU as the target, where a
+  driver blocklist or an enterprise 3D-API policy is a routine way to land here.
+  **Not tagged `blocking`**, and the call is stated so it can be overruled: no state inside
+  the supported, reachable game is unreachable, and a browser with no WebGL2 cannot run this
+  game at all — the defect is the missing message, not a lost game state.
+
+- **[major] G1 — `npm run gate:smoke` is flaky: 4 failures in 9 consecutive invocations, and
+  a failure leaves a stale turntable on disk that still looks current.** Exit codes across
+  nine runs: `1,1,1,1` then `0,0,0,0`. Every failure is the same line in
+  `artifacts/playtest.log`: `turntable: Page did not produce any video frames`, which
+  `tools/playtest.mjs` pushes into `errors[]`, giving `page errors: 1` and exit 1. That makes
+  AC1 (`npm run gates` exits 0) non-deterministic, so M0's own done-condition is a coin flip.
+  Worse: when the recording fails the *previous* `m0-island.webm` is left untouched with no
+  marker, so a critic reading the artefact directory scores a video from an older build while
+  the log beside it says the gate failed. The capture page is a third concurrent SwiftShader
+  context opened while the main page is still rendering, which is the likely cause.
+
+- **[minor] G1 — the turntable claims 7000 ms of rotating island and delivers ~3.1 s of it.**
+  `ffprobe … -show_entries format=duration` → `7.640000`, 191 frames at 25 fps, but the island
+  does not appear until frame ~113 (t ≈ 4.5 s): `n=110` is a 65 KB PNG (flat dark splash),
+  `n=115` is 414 KB (the island). So 59% of the motion artefact for rubric A5 is the loading
+  screen, while the log still reads `(7000ms of the island rotating)`. The cycle-1 webm was
+  worse (2.88 s, 72 frames), so the length is not stable between runs either. Secondary
+  reading: that page needed ~4.5 s to first frame against the main page's 215–345 ms, i.e. a
+  second concurrent WebGL context blows the 2500 ms boot budget by 1.8x.
+
+- **[minor] G5/G3 — an unrecovered context loss paints the whole viewport white, and the
+  recovery instruction is text with nothing to click.** The dead canvas covers the `#070d14`
+  body and renders white with the browser's broken-image glyph, on a game whose entire palette
+  is dark. The overlay correctly reads `GPU CONTEXT LOST — RELOAD TO RECOVER` in #ff9044 and
+  is legible, but "reload" is an instruction, not a control.
+
+- **[minor] G3 — for one HUD tick after a restore the overlay reports `DRAWS 0 TRIS 0`.**
+  Sampled at t+120 ms after `loseContext()`, with `context.lost` already `false`, the HUD read
+  `FPS 0 DRAWS 0 TRIS 0`; the next 250 ms repaint returned `FPS 5 DRAWS 19 TRIS 28188`. This
+  is the non-lost branch of `paintHud()` reading `renderer.info.render` after the restore has
+  zeroed it but before the first restored frame lands. Far better than cycle 1's stale
+  confident numbers and it lasts under 250 ms, but `—` would be the honest value.
+
+### What is good
+
+- **The loop is solid under abuse.** ~15 driven sessions: 0 page errors and 0 console errors
+  in every one; a 90 s unattended run advanced 522 frames; three reloads, a portrait resize to
+  480x900, a shrink to 320x200, 8 s backgrounded then refocused, and two separate context
+  losses all left the page rendering.
+- **The HUD tells the truth, which is the thing that was broken.** FPS 5–14 on a rasteriser
+  whose measured present interval is ~150 ms — the unflattering number — instead of 60. Em
+  dashes the instant the context dies, for as long as it is actually dead.
+- **The context-loss handler is well built, not patched.** Five retries with 400 ms linear
+  backoff, the restore deferred one task past the loss event, `renderer.setSize` re-applied,
+  GL extensions re-acquired, two distinct messages for "still trying" and "gave up".
+- **The scene is deterministic, so the screenshots are comparable run to run.** Seeded
+  mulberry32 with seven fixed seeds; `drawCalls/triangles` sampled 40 times over 60 s gave the
+  same pair 40 times, and a fresh load in a new browser context gave the identical pair.
+- **Boot is fast and the splash does its job.** 215–345 ms to first frame at 1080p against
+  2500 ms; the splash fades at 392 ms and is removed at 402 ms.
+- **The island visibly rotates.** 239 of 243 sampled pixel bytes differ between two
+  screenshots 2 s apart, and the extracted turntable frames advance monotonically.
+
+SCORE_MACHINE: 8.2
