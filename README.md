@@ -19,6 +19,15 @@ và màu bão hoà. Tất cả đều sinh ra từ **một** generator.
 
 ![Lai giống](docs/concept/02-breeding.png)
 
+## Bắt đầu từ đâu
+
+| file | nội dung |
+|---|---|
+| [`NEXT.md`](NEXT.md) | **việc cần làm ngay** — một màn hình, mỗi lần chạy viết lại |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | cách dự án tự vận hành, và cách dựng lại từ số không |
+| [`STATE.md`](STATE.md) | nhật ký từng lần chạy — giải thích *tại sao* |
+| [`CLAUDE.md`](CLAUDE.md) | hợp đồng mà mọi lần chạy phải tuân theo |
+
 ## Trạng thái
 
 Mới ở bước dựng khung. Xem [`docs/ROADMAP.md`](docs/ROADMAP.md) để biết đang làm tới đâu,

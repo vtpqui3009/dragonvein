@@ -75,8 +75,11 @@ hide behind "procedural" and ship untextured primitives.
 
 Each scheduled run executes exactly this:
 
-1. **Read state.** `docs/ROADMAP.md` and `STATE.md`. Take the single lowest-numbered
-   milestone that is not `DONE`. Work only on that one. Do not skip ahead.
+1. **Read state.** `NEXT.md` first — one screen, written by the previous run, says what to
+   do now. Then `docs/ROADMAP.md` and `STATE.md` for the milestone list and the why. Take
+   the single lowest-numbered milestone that is not `DONE`. Work only on that one. Do not
+   skip ahead. If `NEXT.md` disagrees with `STATE.md`, `STATE.md` is the record of fact and
+   `NEXT.md` is stale — fix it as you go.
 2. **Plan.** Write that milestone's acceptance criteria into `STATE.md` under a new run
    heading *before* writing code. Each criterion must be checkable by a command or a
    named screenshot.
@@ -94,9 +97,16 @@ Each scheduled run executes exactly this:
    - Any critic < 8.0 → write defects to `FINDINGS.md`, fix, re-gate, re-criticise.
      Up to 3 rework cycles per run. Still failing → commit what is green, leave the
      milestone `IN_PROGRESS`, record the blocker.
-7. **Close out.** Update `STATE.md`: what shipped, the three scores, what is next, open
-   blockers. Commit and push. A run that ships no code still pushes an updated `STATE.md`
-   explaining why.
+7. **Close out.** **Rewrite `NEXT.md` first** — before the journal entry, before anything
+   else. It is the handoff: one screen saying what the next run should do, what is waiting
+   on a human, and what hazards it will meet. Then update `STATE.md` with what shipped, the
+   three scores and open blockers. Commit and push.
+
+   A run that ships no code still pushes an updated `NEXT.md` and `STATE.md` saying why. A
+   run cut short by a usage limit rewrites `NEXT.md` *before* it stops — four consecutive
+   runs have been cut off mid-flight, so this is the normal case, not the exception. A run
+   whose code was perfect but which left `NEXT.md` stale has broken the handoff, and the
+   next run pays for it.
 
 ## 4. Critics must stay honest
 
