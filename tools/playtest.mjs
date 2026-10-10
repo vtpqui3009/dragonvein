@@ -11,6 +11,10 @@
  *    02-silhouette.png  01-wide downscaled to 25% (320×180) for rubric A1
  *    03-late.png        ≥ 8 s in, so rubric A5 has two frames to diff for pops
  *    04-context-restored.png   after an induced WebGL context loss (rubric G5)
+ *
+ *  And one motion artefact, `artifacts/turntables/m0-island.webm`: rubric A5 asks whether
+ *  anything pops in a scene whose whole definition of done is that it *rotates*, and
+ *  three stills are weak evidence for that. The critic should be able to watch it.
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -19,6 +23,9 @@ import { startPreview } from './preview-server.mjs';
 
 const LOG = 'artifacts/playtest.log';
 const SHOTS = 'artifacts/shots';
+const TURNTABLES = 'artifacts/turntables';
+const TURNTABLE = `${TURNTABLES}/m0-island.webm`;
+const TURNTABLE_MS = 7_000;           // long enough to see the rotation carry a full prop past
 const VIEW = { width: 1280, height: 720 };
 const SILHOUETTE_SCALE = 0.25;        // rubric A1 judges the shape at 25% zoom
 const LATE_SHOT_AFTER_MS = 8_500;     // rubric A5 wants ≥ 8 s of running before the diff
@@ -26,6 +33,7 @@ const CONTEXT_RESTORE_WAIT_MS = 4_000;   // the window the gameplay-critic's G5 
 
 // First, before anything that can throw: the directories the critics read.
 await mkdir(SHOTS, { recursive: true });
+await mkdir(TURNTABLES, { recursive: true });
 
 /** @type {string[]} */
 const log = [];
@@ -143,6 +151,36 @@ try {
         `${JSON.stringify(after)} — after a driver reset the canvas is dead until reload`);
     }
   }
+
+  // --- the motion artefact (rubric A5) -------------------------------------------------
+  // In its own recording context, after the context-loss drill, so the drill cannot land
+  // in the video and the video cannot disturb the shots. A fresh page, because Playwright
+  // starts recording when the context opens and this one should show a clean boot.
+  try {
+    const videoContext = await browser.newContext({
+      viewport: VIEW,
+      recordVideo: { dir: TURNTABLES, size: VIEW },
+    });
+    const videoPage = await videoContext.newPage();
+    videoPage.on('pageerror', (e) => errors.push(`turntable: ${String(e)}`));
+    await videoPage.goto(preview.url, { waitUntil: 'load', timeout: 30_000 });
+    await videoPage.waitForTimeout(TURNTABLE_MS);
+    const rotated = await videoPage.evaluate(() => globalThis.__dragonveinStats?.() ?? null);
+    const video = videoPage.video();
+    await videoContext.close();            // the file is only written on context close
+    if (video) {
+      await video.saveAs(TURNTABLE);
+      await video.delete();                // drop Playwright's random-named original
+      say(`turntable: ${TURNTABLE}  (${TURNTABLE_MS}ms of the island rotating, rubric A5)`);
+      say(`turntable: stats at the end of the recording ${JSON.stringify(rotated)}`);
+    } else {
+      errors.push('turntable: Playwright recorded no video, so rubric A5 has no motion ' +
+        'artefact and must be judged from stills again');
+    }
+  } catch (e) {
+    errors.push(`turntable: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  await flush();
 
   say(`page errors: ${errors.length}`);
   await flush();
