@@ -16,7 +16,7 @@
  *  anything pops in a scene whose whole definition of done is that it *rotates*, and
  *  three stills are weak evidence for that. The critic should be able to watch it.
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import pw from 'playwright';
 import { startPreview } from './preview-server.mjs';
@@ -26,6 +26,7 @@ const SHOTS = 'artifacts/shots';
 const TURNTABLES = 'artifacts/turntables';
 const TURNTABLE = `${TURNTABLES}/m0-island.webm`;
 const TURNTABLE_MS = 7_000;           // long enough to see the rotation carry a full prop past
+const TURNTABLE_ATTEMPTS = 2;         // one retry: the capture is a second browser context
 const VIEW = { width: 1280, height: 720 };
 const SILHOUETTE_SCALE = 0.25;        // rubric A1 judges the shape at 25% zoom
 const LATE_SHOT_AFTER_MS = 8_500;     // rubric A5 wants ≥ 8 s of running before the diff
@@ -153,32 +154,56 @@ try {
   }
 
   // --- the motion artefact (rubric A5) -------------------------------------------------
-  // In its own recording context, after the context-loss drill, so the drill cannot land
-  // in the video and the video cannot disturb the shots. A fresh page, because Playwright
-  // starts recording when the context opens and this one should show a clean boot.
-  try {
+  // Recorded **after the main page is closed**, with nothing else holding a WebGL
+  // context. The first version opened the recording page beside the live one and
+  // Playwright came back with "Page did not produce any video frames" on 4 of 9 runs:
+  // three concurrent SwiftShader contexts (main page, capture page, shadow pass) starve
+  // each other, and that made AC1 — `npm run gates` exits 0 — a coin flip. A gate that
+  // fails at random is worse than no gate.
+  await page.close();
+  // Nothing stale survives a failure: a left-over .webm from an earlier build sitting
+  // next to a log that says the gate failed is a critic scoring the wrong artefact.
+  await rm(TURNTABLE, { force: true });
+
+  for (let attempt = 1; attempt <= TURNTABLE_ATTEMPTS; attempt++) {
     const videoContext = await browser.newContext({
       viewport: VIEW,
       recordVideo: { dir: TURNTABLES, size: VIEW },
     });
     const videoPage = await videoContext.newPage();
     videoPage.on('pageerror', (e) => errors.push(`turntable: ${String(e)}`));
-    await videoPage.goto(preview.url, { waitUntil: 'load', timeout: 30_000 });
-    await videoPage.waitForTimeout(TURNTABLE_MS);
-    const rotated = await videoPage.evaluate(() => globalThis.__dragonveinStats?.() ?? null);
-    const video = videoPage.video();
-    await videoContext.close();            // the file is only written on context close
-    if (video) {
-      await video.saveAs(TURNTABLE);
-      await video.delete();                // drop Playwright's random-named original
-      say(`turntable: ${TURNTABLE}  (${TURNTABLE_MS}ms of the island rotating, rubric A5)`);
-      say(`turntable: stats at the end of the recording ${JSON.stringify(rotated)}`);
-    } else {
-      errors.push('turntable: Playwright recorded no video, so rubric A5 has no motion ' +
-        'artefact and must be judged from stills again');
+    let saved = false;
+    try {
+      await videoPage.goto(preview.url, { waitUntil: 'load', timeout: 30_000 });
+      // Start the clock at the first *rendered* frame, not at navigation: the boot splash
+      // is not the island rotating, and an earlier recording was 59% splash.
+      await videoPage.waitForFunction(
+        () => (globalThis.__dragonveinStats?.().drawCalls ?? 0) > 0,
+        undefined, { timeout: 30_000 },
+      );
+      const firstFrameAt = Date.now();
+      await videoPage.waitForTimeout(TURNTABLE_MS);
+      const rotated = await videoPage.evaluate(() => globalThis.__dragonveinStats?.() ?? null);
+      const video = videoPage.video();
+      await videoContext.close();          // the file is only written on context close
+      if (video) {
+        await video.saveAs(TURNTABLE);
+        await video.delete();              // drop Playwright's random-named original
+        const bytes = (await stat(TURNTABLE)).size;
+        say(`turntable: ${TURNTABLE}  (${Date.now() - firstFrameAt}ms recorded after the ` +
+          `first drawn frame, ${bytes} bytes, attempt ${attempt}, rubric A5)`);
+        say(`turntable: stats at the end of the recording ${JSON.stringify(rotated)}`);
+        saved = true;
+      }
+    } catch (e) {
+      await videoContext.close().catch(() => {});
+      say(`turntable: attempt ${attempt} failed — ${e instanceof Error ? e.message : String(e)}`);
     }
-  } catch (e) {
-    errors.push(`turntable: ${e instanceof Error ? e.message : String(e)}`);
+    if (saved) break;
+    if (attempt === TURNTABLE_ATTEMPTS) {
+      errors.push(`turntable: no video after ${TURNTABLE_ATTEMPTS} attempts, so rubric A5 ` +
+        'has no motion artefact and would be judged from stills again');
+    }
   }
   await flush();
 
