@@ -276,15 +276,31 @@ function risingEdges(kb) {
  * @param {number[]} kb @param {number} frames @param {number} windowMs
  * @param {number|null} idleBytesPerSecond
  */
-function summariseHeap(kb, frames, windowMs, idleBytesPerSecond) {
+function summariseHeap(kb, frames, windowMs, baseline, loopTicks) {
   if (kb.length < 2 || frames <= 0) return null;
   const { rising, scavenges } = risingEdges(kb);
   const min = Math.min(...kb);
   const max = Math.max(...kb);
   const risingBytes = rising * 1024;
-  const idleBytes = idleBytesPerSecond === null
+  // Two readings of the same baseline, and the gate subtracts the SMALLER.
+  //
+  // The idle pass runs with rendering paused, so rAF fires at the vsync tick (~60 Hz)
+  // while the measured window runs at the rasteriser's ~6 fps — ten times slower. Charge
+  // that baseline per *second* across the slow window and it over-subtracts everything
+  // in it that is really per *callback* (the loop body), which the perf-critic measured
+  // at roughly 15% of the headline figure. Charge it per callback and it under-subtracts
+  // what is genuinely per second (the HUD's 250 ms repaint). One idle pass cannot
+  // separate the two — it has one cadence — so rather than guess a split the gate takes
+  // whichever reading removes less. A budget that errs toward reporting too much churn
+  // fails loudly and is fixed; one that errs the other way passes quietly and is not.
+  const perSecond = baseline === null ? null : baseline.bytesPerSecond * (windowMs / 1000);
+  const perCallback = baseline === null || baseline.bytesPerCallback === null || loopTicks <= 0
+    ? null
+    : baseline.bytesPerCallback * loopTicks;
+  const candidates = [perSecond, perCallback].filter((v) => v !== null);
+  const idleBytes = candidates.length === 0
     ? 0
-    : Math.min(idleBytesPerSecond * (windowMs / 1000), risingBytes);
+    : Math.min(Math.min(...candidates), risingBytes);
   return {
     minKB: min,
     maxKB: max,
@@ -293,8 +309,13 @@ function summariseHeap(kb, frames, windowMs, idleBytesPerSecond) {
     risingSumKB: rising,
     bytesPerFrame: Math.round((risingBytes - idleBytes) / frames),
     uncorrectedBytesPerFrame: Math.round(risingBytes / frames),
-    idleBytesPerSecond: idleBytesPerSecond === null ? null : Math.round(idleBytesPerSecond),
+    idleBytesPerSecond: baseline === null ? null : Math.round(baseline.bytesPerSecond),
+    idleBytesPerCallback: baseline?.bytesPerCallback == null
+      ? null : Math.round(baseline.bytesPerCallback),
+    idleBytesIfChargedPerSecond: perSecond === null ? null : Math.round(perSecond),
+    idleBytesIfChargedPerCallback: perCallback === null ? null : Math.round(perCallback),
     idleBytesSubtracted: Math.round(idleBytes),
+    loopTicksInWindow: loopTicks,
     framesInWindow: frames,
     windowMs,
     sampleCount: kb.length,
@@ -330,12 +351,7 @@ async function measure({ url, extraArgs, errors, targetSamples, windowMs, sample
       return d && gl ? String(gl.getParameter(d.UNMASKED_RENDERER_WEBGL)) : 'unknown';
     });
 
-    // Drop the warm-up window, then collect a fresh one. The page keeps its samples in
-    // pre-allocated ring buffers, so asking for them costs nothing in the frame loop.
-    const hasProbe = await page.evaluate(() => {
-      globalThis.__dragonveinPerf?.reset();
-      return globalThis.__dragonveinPerf !== undefined;
-    });
+    const hasProbe = await page.evaluate(() => globalThis.__dragonveinPerf !== undefined);
     if (!hasProbe) {
       throw new Error(
         'the page exposes no __dragonveinPerf; src/main.ts must publish the frame-cost ' +
@@ -347,11 +363,11 @@ async function measure({ url, extraArgs, errors, targetSamples, windowMs, sample
     // part of what it measures.
     const cdp = sampleHeap ? await page.context().newCDPSession(page) : null;
 
-    // The time-driven baseline, measured first and with rendering paused: what this page
-    // allocates per second regardless of how many frames it draws. Subtracted below so
+    // The baseline, measured first and with rendering paused: what this page allocates
+    // when it is not drawing, per second and per rAF callback both. Subtracted below so
     // the budgeted figure is the frame's own churn. See `summariseHeap`.
-    /** @type {number|null} */
-    let idleBytesPerSecond = null;
+    /** @type {{bytesPerSecond: number, bytesPerCallback: number|null}|null} */
+    let baseline = null;
     // A page that predates the pause hook still measures; it just does not get the
     // correction, and `heap.idleBytesPerSecond` reads null so the artefact says so.
     const canPause = await page.evaluate(
@@ -361,27 +377,45 @@ async function measure({ url, extraArgs, errors, targetSamples, windowMs, sample
       await page.waitForTimeout(500);                 // let the last frame drain
       /** @type {number[]} */
       const idleKB = [];
+      const ticksAtIdleStart = await page.evaluate(
+        () => globalThis.__dragonveinPerf?.counts().loopTicks ?? 0);
       const idleStart = Date.now();
+      let ticksAtIdleEnd = ticksAtIdleStart;
       while (Date.now() - idleStart < IDLE_BASELINE_MS) {
         const usage = await cdp.send('Runtime.getHeapUsage');
         idleKB.push(Math.round(usage.usedSize / 1024));
+        ticksAtIdleEnd = await page.evaluate(
+          () => globalThis.__dragonveinPerf?.counts().loopTicks ?? 0);
         await page.waitForTimeout(250);
       }
       const idleMs = Date.now() - idleStart;
+      const idleTicks = ticksAtIdleEnd - ticksAtIdleStart;
       if (idleKB.length >= 2 && idleMs > 0) {
-        idleBytesPerSecond = (risingEdges(idleKB).rising * 1024) / (idleMs / 1000);
+        const idleBytes = risingEdges(idleKB).rising * 1024;
+        baseline = {
+          bytesPerSecond: idleBytes / (idleMs / 1000),
+          bytesPerCallback: idleTicks > 0 ? idleBytes / idleTicks : null,
+        };
       }
       await page.evaluate(() => { globalThis.__dragonveinPerf?.setRendering(true); });
       await page.waitForTimeout(500);
     }
 
+    // Reset AFTER the idle pass, not before it. rAF keeps firing while rendering is
+    // paused, so those tick-length intervals landed in `presentIntervalMs` and dragged
+    // its mean below its own p50 — a cadence that belonged to no part of the scene.
+    await page.evaluate(() => { globalThis.__dragonveinPerf?.reset(); });
+
     /** @type {number[]} */
     const heapKB = [];
     const framesAtStart = (await page.evaluate(
       () => globalThis.__dragonveinPerf?.counts().framesRendered ?? 0));
+    const ticksAtStart = (await page.evaluate(
+      () => globalThis.__dragonveinPerf?.counts().loopTicks ?? 0));
 
     const startedAt = Date.now();
     let framesAtEnd = framesAtStart;
+    let ticksAtEnd = ticksAtStart;
     for (;;) {
       if (cdp) {
         const usage = await cdp.send('Runtime.getHeapUsage');
@@ -392,8 +426,17 @@ async function measure({ url, extraArgs, errors, targetSamples, windowMs, sample
       // kilobytes of its own into the heap series below.
       const counts = await page.evaluate(() => globalThis.__dragonveinPerf?.counts() ?? null);
       framesAtEnd = counts?.framesRendered ?? framesAtEnd;
+      ticksAtEnd = counts?.loopTicks ?? ticksAtEnd;
       if (elapsed >= windowMs) break;
-      if (targetSamples > 0 && (counts?.cpuFrameMs ?? 0) >= targetSamples) break;
+      // Both series, not just the CPU one. Breaking on `cpuFrameMs` alone left the GPU
+      // series — the one that actually carries `frameCostMs.p95` — about 4% short of the
+      // target every run, because a timer query lands a frame or two after the frame it
+      // timed. A `gpuFrameMs` of 0 means the context exposes no timer at all, not that it
+      // is lagging, so that case must not block the break.
+      const cpuDone = (counts?.cpuFrameMs ?? 0) >= targetSamples;
+      const gpuCount = counts?.gpuFrameMs ?? 0;
+      const gpuDone = gpuCount === 0 || gpuCount >= targetSamples;
+      if (targetSamples > 0 && cpuDone && gpuDone) break;
       await page.waitForTimeout(250);
     }
 
@@ -406,7 +449,8 @@ async function measure({ url, extraArgs, errors, targetSamples, windowMs, sample
       software: /swiftshader|llvmpipe|software|mesa offscreen/i.test(renderer),
       collectionWindowMs: Date.now() - startedAt,
       heap: summariseHeap(
-        heapKB, framesAtEnd - framesAtStart, Date.now() - startedAt, idleBytesPerSecond,
+        heapKB, framesAtEnd - framesAtStart, Date.now() - startedAt, baseline,
+        ticksAtEnd - ticksAtStart,
       ),
     };
   } finally {

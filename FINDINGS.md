@@ -941,3 +941,177 @@ before M0 closes.
   screenshots 2 s apart, and the extracted turntable frames advance monotonically.
 
 SCORE_MACHINE: 8.2
+
+## perf-critic — M0 Toolchain & deploy spine — run 2026-10-10 (rework cycle 3)
+SCORE: 5.7 / 10
+
+**Renormalisation.** P3 (bred-dragon mesh, M3) and P6 (quality tiers, M6; both named
+under "Out of scope, deliberately" in `STATE.md` run 1) have no subject at M0, so their
+1.8 and 1.2 leave the denominator rather than scoring 0.
+
+    denominator = 10.0 - 1.8 (P3) - 1.2 (P6) = 7.0
+    awarded     = P1 0.0 + P2 1.8 + P4 1.0 + P5 1.2 = 4.0
+    score       = 4.0 / 7.0 x 10 = 5.714 -> 5.7
+
+One `blocking` defect is present (P1), which caps this critic at 5.9 under CLAUDE.md §4.
+The cap does not bind: the renormalised raw score, 5.7, is already below it.
+
+| # | line | max | awarded | number, and the key it came from |
+|---|---|---|---|---|
+| P1 | p95 frame <= 16.6 ms @1080p Medium | 2.5 | **0.0** | `frameCostMs.p95 = 172.145 ms` vs `frameCostMs.budgetMs = 16.6`, `frameCostMs.withinBudget = false`. `gpuFrameMs.p95 = 172.145 ms`, `gpuFrameMs.p50 = 147.575 ms`, `gpuFrameMs.max = 188.73 ms`. Measured on `renderer = "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"` with `softwareRenderer = true`, `frameBudgetEnforced = false`. `STATE.md` Real-GPU verification log: one row, `never performed`. No admissible measurement of this line exists. Not creditable as a pass; not scored as a measured failure either. 0 for absence of evidence. |
+| P2 | Draw calls <= 180 | 1.8 | **1.8** | `drawCalls = 21` vs `budget.drawCalls = 180` (11.7%); `triangles = 32568` vs `budget.triangles = 900000` (3.6%). Reproduced to the digit in 3 re-runs (21/21/21, 32568 each) and twice in `artifacts/playtest.log` lines 9 and 15 (`"drawCalls":21,"triangles":32568`). `errors: []`. |
+| P3 | Bred-dragon mesh <= 120 ms | — | **excluded** | no subject at M0; no mesh-build key in `artifacts/perf.json`. |
+| P4 | No frame-loop allocation; GC pauses < 2 ms | 1.5 | **1.0** | Allocation half passes: `heap.bytesPerFrame = 22084` vs `heap.budgetBytesPerFrame = 40960` (54%), and the conservative `heap.uncorrectedBytesPerFrame = 28938` also passes (71%). No leak: `heap.netGrowthKB = -2250` with `heap.sawtoothAmplitudeKB = 3285` (`minKB 3384` / `maxKB 6669`), and re-runs gave -1485 / -1108 / -377 kB. Deductions: the correction over-subtracts (defect 4), and the pause half is unmeasured — `gc.pauseMsMeasured = false`, `gc.worstCpuFrameMs = 7.2 ms` is the only bound offered and it is 3.6x the 2 ms threshold (defect 3). `gc.inferredScavenges = 14`, `gc.meanScavengeIntervalMs = 4056.286`. |
+| P5 | Bundle <= 1.4 MB gzip; boot <= 2.5 s | 1.2 | **1.2** | `bundle.gzipBytes = 141093` vs `bundle.budgetGzipBytes = 1400000` (10.1%; `bundle.rawBytes = 550146`, of which `assets/three-Dykg1cr5.js` is 131429 gzip = 93%). `bootMs = 231.4` vs `bootBudgetMs = 2500` (9.3%); re-runs 469.1 / 247.8 / 272.0 ms. |
+| P6 | Potato tier holds 30 fps @720p | — | **excluded** | `tier.configured = false`, `tier.note`: tiers land at M6; out of scope per `STATE.md`. |
+
+### The four changes, verified against the artefacts
+
+1. **Reproducibility — fixed.** `sampleCount.target = 360` and `sampleCount.cpuFrameMs = 360`
+   in the artefact; three re-runs gave 361 / 360 / 360. `sampleCount.collectionWindowMs =
+   56788` ms, re-runs 56484 / 55712 / 55114 ms, all short of the 70 000 ms deadline in
+   `tools/gate-perf.mjs` (`SAMPLE_DEADLINE_MS`), so the window now closes on the sample
+   target and not on the clock. Three consecutive `npm run gate:perf` runs exited **0, 0,
+   0**. The cycle-2 blocker (166 samples of 180, window pinned to the deadline, verdict
+   flipping run to run) is gone. Residue: see defects 5 and 6.
+2. **Heap attribution — arithmetic correct, but the correction over-subtracts, so the
+   headline figure under-reports.** The published numbers reconcile exactly:
+   `heap.risingSumKB = 9580` x 1024 = 9 809 920 B; minus `heap.idleBytesSubtracted =
+   2323359`; divided by `heap.framesInWindow = 339` = 22 084 = `heap.bytesPerFrame`. And
+   `heap.idleBytesPerSecond = 40913` x (`heap.windowMs = 56788` / 1000) = 2 323 357, which
+   is the subtracted figure. So the subtraction is auditable and 23.7% of rising bytes. It
+   is nonetheless measured at the wrong rate — defect 4. Verdict survives because the
+   uncorrected number is inside budget too.
+3. **Draw calls — confirmed at 21.** `drawCalls = 21`, stable across four gate runs and
+   both `playtest.log` stat lines. Churn moved with it: `heap.uncorrectedBytesPerFrame =
+   28938` B/frame against the 37 171–38 098 B/frame series recorded in
+   `docs/PERF_BUDGET.md` §Heap churn for the 20-draw-call scene, i.e. ~8 kB/frame less at
+   1920x1080 than that 1280x720 series, directionally consistent with the ~2 kB-per-draw
+   model in §Where the current 37 kB/frame comes from.
+4. **p50 vs p95 — still wrong, and the re-runs sharpen the objection.** `cpuFrameMs.p50 =
+   0.7` ms reproduces to the digit (0.7 / 0.7 / 0.7 / 0.7 across four runs) and carries the
+   enforcement. `cpuFrameMs.p95 = 3.7` ms with `cpuFrameMs.p95WithinBudget = false`; re-runs
+   3.6 / 2.8 / 2.6 ms, so **2 of 4 runs are over the 3.5 ms number and none of them fails
+   the gate**, because `cpuFrameMs.enforcedStatistic = "p50 everywhere; p95 additionally
+   where frameBudgetEnforced"` and `frameBudgetEnforced` has never once been true in this
+   repository (`STATE.md` Real-GPU log: `never performed`). The practical state is that no
+   p95 of anything is enforced on any machine this project has run on. I still think that
+   is wrong and I still do not think a critic can clear it: it is a §2.7 question for the
+   owner, correctly recorded in `STATE.md` as unresolved. What I would do instead of
+   dropping to the median: cap SwiftShader's rasteriser threads so the main thread's tail
+   stops measuring core contention, then hold `cpuFrameMs.p95` to the same unchanged 3.5 ms
+   everywhere. That removes the noise rather than the budget.
+
+### Real-GPU verification log, and what it means for P1
+
+`STATE.md` §Real-GPU verification log holds exactly one row: `| — | — | **never performed**
+| — | — | — | — |`, and the text under it states that "until a row appears here, rubric
+line `P1` has no passing evidence anywhere in this repository". That is the correct and
+honest statement, and I score it as written: P1 gets 0 of 2.5.
+
+**This rubric line is not reachable in this environment.** `ls /dev/dri` returns "No such
+file or directory"; there is no `vulkaninfo`, `glxinfo` or `nvidia-smi` on the box; every
+gate run reports the SwiftShader renderer string and `softwareRenderer = true`. No
+measurement I can take here, with any flags, can close P1, and no amount of further rework
+inside this container will change the score on that line. Lifting it requires a human to
+run the four steps in `docs/PERF_BUDGET.md` §Real-GPU verification on real hardware and
+paste the row. Until then every perf-critic cycle on M0 will return a blocking P1, and
+whether M0 ships regardless is an owner decision under CLAUDE.md §3.6, not a critic's.
+
+### Defects
+
+- [blocking] P1 — `artifacts/perf.json`: `frameCostMs.p95 = 172.145 ms` against
+  `frameCostMs.budgetMs = 16.6`, `withinBudget: false`, 10.4x over. The figure is a
+  SwiftShader rasteriser benchmark (`softwareRenderer: true`, `frameBudgetEnforced:
+  false`), so it is not evidence that the frame is slow — but nothing else is evidence that
+  it is fast, and `STATE.md` Real-GPU verification log reads `never performed`. The 16.6 ms
+  line is unverified. Repro: `npm run gate:perf` -> `frame cost p95=171.81ms vs budget
+  16.6ms  (software rasteriser — frame budget advisory, not enforced)`. Not fixable in this
+  container (`ls /dev/dri` -> absent).
+- [major] P1 evidence quality — `tier.postProcessing = false` and `tier.configured = false`
+  in `artifacts/perf.json`, while `docs/PERF_BUDGET.md` §Quality tiers defines Medium as
+  "1080p, 1024 CSM, **bloom**". `tier.name = "medium-equivalent"` is therefore Medium minus
+  the post stage that the §Per-frame budget table allots 3.0 ms of the 16.6 ms. A real-GPU
+  row taken at these settings would under-measure Medium by up to that 3.0 ms, so the row
+  must either enable bloom or be labelled as medium-minus-post.
+- [major] P4 pause half unmeasured — `gc.pauseMsMeasured = false`; the only bound given is
+  `gc.worstCpuFrameMs = 7.2 ms` (re-runs: `cpuFrameMs.max` 6.7 / 7.8 / 9.3 ms), which is
+  3.6x the rubric's 2 ms. The platform limitation is real and honestly stated, but the
+  bound offered does not exclude a 2 ms-plus pause, so "GC pauses < 2 ms" is not evidenced.
+  `gc.inferredScavenges = 14` at `gc.meanScavengeIntervalMs = 4056.286` says they are at
+  least infrequent.
+- [major] P4 correction measured at the wrong rate, so `heap.bytesPerFrame` under-reports.
+  `heap.idleBytesPerSecond = 40913` B/s is measured with `setRendering(false)`, when rAF
+  still fires at the vsync tick (~60 Hz; `presentIntervalMs.maxDeviationFromVsyncTickMs =
+  0.167` shows the paced loop is tick-quantised). It is then subtracted across a window
+  running `heap.framesInWindow = 339` / `heap.windowMs = 56788` = **5.97 fps**, ten times
+  slower. Part of that baseline is per-callback, not per-second:
+  `docs/PERF_BUDGET.md` §Where the current 37 kB/frame comes from measures the rAF loop with
+  render removed at 380 B/frame = ~22 800 B/s at 60 Hz but only ~2 270 B/s at 5.97 fps.
+  Over-subtraction ~= (22 800 - 2 270) x 56.788 s ~= 1.17 MB, i.e. ~3 400 B/frame of the
+  339 frames; a rate-correct figure is ~25 500 B/frame, not 22 084. **Direction: the gate
+  now under-reports by roughly 15%.** It does not change the verdict — the uncorrected
+  `heap.uncorrectedBytesPerFrame = 28938` is also inside `budgetBytesPerFrame = 40960`, in
+  all four runs (28938 / 29684 / 28708 / 29022) — which is the only reason P4 is scoreable.
+  Fix: hold the rAF cadence of the baseline equal to the measured window's, or scale the
+  baseline by callbacks rather than by seconds.
+- [major] The main-thread budget is enforced on a statistic that passes while the budget is
+  breached. `cpuFrameMs.p95` = 3.7 (artefact) / 3.6 / 2.8 / 2.6 ms vs `cpuFrameMs.budgetMs
+  = 3.5`; `cpuFrameMs.p95WithinBudget = false` in 2 of 4 runs and the gate exits 0 every
+  time. See change 4 above; unresolved and escalated in `STATE.md`.
+- [minor] `sampleCount.gpuFrameMs = 346` against `sampleCount.target = 360` (re-runs 346 /
+  346 / 343). The collection loop in `tools/gate-perf.mjs` breaks on `counts().cpuFrameMs >=
+  TARGET_SAMPLES`, so the GPU series — the one that actually carries `frameCostMs.p95` — is
+  systematically ~4% short of the target the cycle-2 fix raised. Harmless at 10x over
+  budget; it will matter the first time the figure is near 16.6 ms.
+- [minor] `sampleCount.presentIntervalMs = 512` in all four runs, i.e. the ring buffer is
+  saturated, while `framesRendered = 393` and `heap.framesInWindow = 339`. The extra samples
+  are from the rendering-paused idle baseline, where rAF keeps firing at 16.7 ms:
+  `presentIntervalMs.mean = 116.727` ms sits *below* `presentIntervalMs.p50 = 149.9` ms, a
+  left skew only ~110-130 tick-length samples explain ((112 x 16.7 + 400 x 150) / 512 = 121
+  ms, vs 116.2 measured in re-run 1). Nothing here is budgeted, so this is cosmetic, but
+  `presentIntervalMs.mean` is not a cadence of this scene and should not be quoted as one.
+
+### What is good
+
+- **The cycle-2 reproducibility blocker is genuinely closed.** Three consecutive
+  `npm run gate:perf` runs exited 0; `sampleCount.cpuFrameMs` hit `target = 360` every time
+  (361 / 360 / 360) and `collectionWindowMs` (56484 / 55712 / 55114 ms) stayed clear of the
+  70 000 ms deadline, so no figure rests on a truncated window any more.
+- **P2 is the cleanest line in the report.** `drawCalls = 21`, `triangles = 32568`,
+  bit-identical across four gate runs and both `playtest.log` stat lines, at 11.7% and 3.6%
+  of budget. `errors: []` in all four runs, matching `playtest.log` line 16 `page errors: 0`.
+- **The heap figure is auditable rather than asserted.** Publishing
+  `uncorrectedBytesPerFrame`, `idleBytesPerSecond` and `idleBytesSubtracted` let me check
+  the subtraction to the byte and then find what is wrong with it. That is what an artefact
+  is for. Keeping the uncorrected number is also what keeps P4 scoreable.
+- **No leak, four windows deep.** `heap.netGrowthKB = -2250` (re-runs -1485 / -1108 / -377)
+  with `sawtoothAmplitudeKB = 3285` over ~56 s each: churn inside three.js's render path,
+  not retention.
+- **The quantisation claim is now proved with a number rather than argued.**
+  `presentIntervalMs.maxDeviationFromVsyncTickMs = 0.167` ms paced against
+  `unpaced.maxDeviationFromVsyncTickMs = 7.8` ms, same scene.
+- **P5 needs no critic-side probe any more.** `bundle.gzipBytes = 141093` and
+  `bootMs = 231.4` are keys in the artefact, both an order of magnitude inside budget.
+- **The Real-GPU log is the right kind of honest.** `STATE.md` says in its own words that
+  P1 has no passing evidence. The 0 on that line is not a dispute with the build; it is the
+  build's own statement, scored.
+
+### Recommendations — all cheaper work, no budget moved
+
+1. P1: a human runs `docs/PERF_BUDGET.md` §Real-GPU verification steps 1-4 on real
+   hardware and pastes the row, with bloom on so the row really is Medium. Nothing in this
+   container substitutes for it.
+2. P4 baseline: keep the rAF cadence of the idle pass identical to the measured window, or
+   charge the baseline per callback instead of per second. Until then, enforce the
+   uncorrected figure — it is the conservative one and it already passes.
+3. p95: cap the SwiftShader rasteriser's worker threads so the main-thread tail stops
+   measuring core contention, then hold `cpuFrameMs.p95` to the unchanged 3.5 ms
+   everywhere. Correcting the instrument, not the budget.
+4. If a real-GPU row comes back red, the levers in order are the 1024 shadow map, the
+   pooled depth material whose `instancing` flag flips and costs two
+   `WebGLPrograms.getParameters` calls per frame (`docs/PERF_BUDGET.md` §Where the current
+   37 kB/frame comes from), and moving the island rotation onto a transform the renderer
+   does not rebuild. Draw calls at 21 are not the problem.
+
+SCORE_MACHINE: 5.7

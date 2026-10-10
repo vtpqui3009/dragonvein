@@ -1007,6 +1007,12 @@ const CONTEXT_RESTORE_BACKOFF_MS = 400;
 let contextLost = false;
 /** Frames drawn since the last context restore; see the HUD's `—` branch below. */
 let framesSinceRestore = 1;
+/**
+ * rAF callbacks, drawn or not. `framesRendered` counts only frames that reached
+ * `renderer.render`, so it cannot tell gate:perf how many times the loop body ran during
+ * a rendering-paused baseline — and the loop body allocates whether or not it draws.
+ */
+let loopTicks = 0;
 let contextLostAt = 0;
 let contextRestoreAttempts = 0;
 let contextRestoredCount = 0;
@@ -1106,6 +1112,7 @@ function frame(now: number): void {
     return;
   }
 
+  loopTicks++;
   framesSinceSample++;
   msSinceSample += frameMs;
   presentIntervalMs.push(frameMs);
@@ -1243,7 +1250,8 @@ declare global {
      *  measurable allocation if the gate called it in a loop — which it must not, because
      *  the gate samples the heap through that same loop. */
     counts: () => {
-      cpuFrameMs: number; gpuFrameMs: number; presentIntervalMs: number; framesRendered: number;
+      cpuFrameMs: number; gpuFrameMs: number; presentIntervalMs: number;
+      framesRendered: number; loopTicks: number;
     };
     read: () => FrameCostReport;
   } | undefined;
@@ -1263,6 +1271,7 @@ globalThis.__dragonveinPerf = {
     gpuFrameMs: gpuFrameMs.count,
     presentIntervalMs: presentIntervalMs.count,
     framesRendered,
+    loopTicks,
   }),
   setRendering: (on: boolean) => { renderingEnabled = on; },
   reset: () => {
@@ -1301,10 +1310,14 @@ globalThis.__dragonveinPerf = {
       shadows: renderer.shadowMap.enabled,
       shadowMapSize: sun.shadow.mapSize.x,
       postProcessing: false,
-      note: 'Quality tiers are detected and switchable from M6 (docs/ROADMAP.md). M0 ' +
-        'renders at fixed settings that match the Medium row of docs/PERF_BUDGET.md ' +
-        '§Quality tiers — 1080p, one 1024 shadow map, no post — so the "@1080p Medium" ' +
-        'qualifier is checkable here, but nothing is detected or selectable yet.',
+      note: 'Medium MINUS POST, not Medium. Quality tiers are detected and switchable ' +
+        'from M6 (docs/ROADMAP.md); M0 renders at fixed settings — 1080p, one 1024 ' +
+        'shadow map — that match the Medium row of docs/PERF_BUDGET.md §Quality tiers ' +
+        'except for bloom, which does not exist yet. §Per-frame budget allots ' +
+        'post-processing 3.0 ms of the 16.6 ms, so any frame figure taken here is a ' +
+        'FLOOR for Medium and a real-GPU verification row recorded at these settings ' +
+        'must say so. The "@1080p" half of the qualifier is checkable from `viewport`; ' +
+        'the "Medium" half is not yet true.',
     },
   }),
 };
