@@ -8,7 +8,7 @@ game and the world has to feel alive before any system matters.
 
 | # | milestone | done when | status |
 |---|---|---|---|
-| M0 | Toolchain & deploy spine | `npm run gates` passes; CI green; Pages serves a lit, rotating placeholder | TODO |
+| M0 | Toolchain & deploy spine | `npm run gates` passes; CI green; Pages serves a lit, rotating placeholder | IN_PROGRESS |
 | M1 | Asset pipeline live | `assets:build` runs in CI; one generator emits LOD0–2 `.glb` + an 8-seed variant sheet + a turntable | TODO |
 | M2 | Genome in TypeScript | `src/core/genome.ts` matches `assetgen/genome.py`; `gate:parity` green on 32 fixed genomes | TODO |
 | M3 | Runtime dragon mesh | a genome becomes a `BufferGeometry` in a worker in < 120 ms; renders in the browser | TODO |

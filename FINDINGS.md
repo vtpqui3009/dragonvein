@@ -1115,3 +1115,348 @@ whether M0 ships regardless is an owner decision under CLAUDE.md §3.6, not a cr
    does not rebuild. Draw calls at 21 are not the problem.
 
 SCORE_MACHINE: 5.7
+
+---
+
+## art-critic — M0 Toolchain & deploy spine — run 2026-10-10 (rework cycle 3)
+SCORE: 7.4 / 10
+
+**Renormalisation.** A4 (variant sheets, max 1.6) has no subject at M0 — there are no
+creature generators and no `artifacts/variants/` directory (`ls artifacts/variants` →
+No such file or directory). It is excluded from the denominator, not scored 0.
+Denominator = 10.0 − 1.6 = **8.4**.
+Earned = 1.0 + 0.75 + 0.75 + 0.70 + 0.85 + 0.95 + 0.80 + 0.40 = **6.20**.
+6.20 / 8.4 × 10 = 7.3809… → **7.4**.
+
+| # | line | max | scored | note |
+|---|---|---|---|---|
+| A1 | Silhouette reads at 25% zoom | 1.2 | **1.00** | reads; canopy has no silhouette hierarchy |
+| A2 | Palette inside ART_BIBLE within ΔE 12 | 1.0 | **0.75** | turquoise/tan gone; 3 decks at ΔE2000 12.1–13.5 |
+| A3 | Lighting: key, fill, contact shadow | 1.2 | **0.75** | key + cool fill correct; no rim, satellites shadowless, shadows crush |
+| A4 | Variant sheets show real variation | 1.6 | *excluded* | no subject at M0 |
+| A5 | Nothing pops, teleports, interpenetrates | 1.2 | **0.70** | scene is clean; clip opens on 1 white frame + 12 splash frames |
+| A6 | Density: reads as a lived-in place | 1.4 | **0.85** | hero island dressed; 9 satellites are bare decks of one archetype |
+| A7 | HUD readable, 4.5:1 at 1280×720 | 1.0 | **0.95** | 10.55:1 amber, 14.53:1 white, on-bible panel |
+| A8 | No z-fighting, seams, untextured magenta | 0.8 | **0.80** | 0 magenta px, 0 flickering px, clean deck/hull junction |
+| A9 | Matches intent of the concept image | 0.6 | **0.40** | crystals now read as lit; form language diverges from concept |
+
+All ΔE figures below are **CIEDE2000**, calibrated against cycle 2: the two colours cycle 2
+cited measure #5a967e → ΔE2000 16.0 and #ae965a → ΔE2000 18.4, which reproduces cycle 2's
+"14.5–20.8 ΔE out". So the numbers are comparable cycle to cycle.
+
+### Cycle-2 findings — verification
+
+1. **A6 satellites undressed — FIXED.** All nine satellites carry scatter, verified one by
+   one on `artifacts/shots/01-wide.png`: top-centre (x560-700,y10-110) trees + 1 boulder;
+   upper-left (x140-290,y120-220) trees + bushes; left (x50-210,y255-360) 6 trees +
+   5 boulders + 3 bushes; upper-right small (x860-990,y85-150); right (x970-1090,y160-250)
+   7 trees + 6 boulders; far-right (x1080-1230,y250-365); bottom-left (x160-310,y555-625)
+   5 trees + 7 boulders + 3 bushes; bottom-mid (x375-495,y610-675); bottom-right
+   (x995-1155,y580-665). They are also not clones of one another — the closest pair,
+   left vs far-right, differs by mean-abs 14.1 on 64×44 thumbs (12.1 mirrored) and has a
+   visibly different tree count and placement.
+2. **A6 bottom quarter featureless — PARTIALLY FIXED.** Sobel re-run
+   (`python3 -I sobel.py artifacts/shots/01-wide.png`): x0-540 y540-720 is now **5078 px**
+   at threshold 24 (was 0), x740-1280 y540-720 is 3185 px. But the second region you asked
+   me to re-scan, **x0-400 y420-540, is still exactly 0 px at thresholds 24, 48 and 96**.
+   The left flank at eye level is still pure gradient.
+3. **A2 satellite decks off-bible — MOSTLY FIXED.** No turquoise and no tan anywhere; every
+   deck is now a green. Worst deck has dropped from ΔE2000 20.8 to **13.5**. Three decks
+   still sit at or just over the ΔE 12 line (detail in Defects).
+4. **A3 shadows crush to black — PARTIALLY FIXED.** RGB-sum < 30 inside the island bbox
+   (x405-875, y240-660) is now **1338 px**, down from 2698 — halved, not cured. The
+   shadowed canopy you cited at rgb(0,18,4) now reads rgb(0,25,7): lifted by 10 of 765, red
+   channel still fully clipped to 0. 1654 px of canopy remain below RGB-sum 40.
+5. **A3 no warm rim on the sun-side silhouette — NOT FIXED.** Re-ran the edge scan on both
+   silhouettes; numbers in Defects. There is no measurable rim band on either side.
+6. **A9 crystals do not glow — PARTIALLY FIXED.** Hue moved onto the bible's water ramp and
+   they are now the brightest object in the scene, but they spill no light (detail in
+   Defects).
+
+### Defects
+
+- [major] A3 — no warm rim on either silhouette of the main island in
+  `artifacts/shots/01-wide.png`. Scanning the canopy band y250-440 and sampling the
+  silhouette pixel against the same surface 2 px and 5 px inside:
+  left edge is **124.4 lum at the rim vs 139.2 at +5 px** (the rim is 15 units *darker*)
+  and R−B +18.8 vs +54.4 (36 units *less* warm); right edge is **152.2 at the rim vs 155.1
+  at +2 px** (no lift). The only place a rim appears at all is the left hull edge at
+  y500-660, where it is +3.8 lum and +4.4 R−B over 8 px inside — below the threshold at
+  which anyone will see it. The bible's third light ("one warm rim") is still absent.
+- [major] A3 — no contact shadow on any of the nine satellite decks.
+  `artifacts/shots/01-wide.png` bottom-left satellite (x160-310, y555-625): five trees and
+  seven boulders sit on the deck and not one casts a shadow; **3216 of the 5973 deck
+  pixels are the single quantised value #7ba042**, so the deck is a flat unmodulated
+  field. Same on bottom-mid (x375-495,y610-675) and bottom-right (x995-1155,y580-665).
+  `ART_BIBLE.md` §Lighting: "Contact shadows are mandatory. An object without one floats."
+  The hero island does have them (every trunk in x620-870 y400-500 has a dark cast region
+  to its left), so this is the satellites falling outside the shadow camera, not a missing
+  feature.
+- [major] A6 — nine of the ten islands are bare between features, against
+  `ART_BIBLE.md` §Density ("A dressed island is never bare between features. Ground cover,
+  scatter rocks, fallen leaves and small flora fill the gaps"). Single-colour deck
+  fractions in `artifacts/shots/01-wide.png`: bottom-left 54% (3216/5973 green px at one
+  quantised value), bottom-mid 55% (2640/4773), bottom-right 37% (3030/8226). The hero
+  island's grass tufts, bush blobs and path exist nowhere else in the frame.
+- [major] A5 — `artifacts/turntables/m0-island.webm` does not start at the first drawn
+  frame. Reproduce: `ffmpeg -i artifacts/turntables/m0-island.webm -vsync 0 f%03d.png` →
+  **f001 is pure white (mean RGB 255,255,255 over the whole frame)**, f002–f013 are the
+  loading splash (mean RGB 6.4, 15.8, 21.3 — "DRAGONVEIN / đang khởi tạo thế giới…"), and
+  the scene first appears at **f014** as a hard cut (mean RGB 115.4, 84.7, 64.5). That is
+  13 of 180 frames, 0.52 s of a 7.20 s clip. `artifacts/playtest.log` states
+  "7052ms recorded after the first drawn frame"; the artefact contradicts the log.
+  The splash title is still burned over the scene until **f041** (t≈1.64 s, 23% of the
+  clip) — white pixel count in x430-860 y335-375 falls 4945 → 25 across f014→f041.
+  Not tagged blocking: nothing in the *scene* pops, teleports or interpenetrates, and A5's
+  listed fail condition is about scene content, not the recording's lead-in. See
+  "Blocking defects" for the reasoning in full.
+- [minor] A2 — three satellite decks sit at or past the ΔE 12 line in
+  `artifacts/shots/01-wide.png`. Bottom-mid (x375-495,y610-675) deck **#86a244, ΔE2000
+  13.1 from foliage light #8fd24a and 13.7 from foliage mid #3f8a33** over 2640 px, with
+  two neighbouring shades at 12.9 (850 px) and 13.5 (201 px). Bottom-left deck #7ba042 at
+  11.6 (3216 px) and #7ea043 at 12.1 (801 px). Far-right deck #809540 at 12.1 (256 px).
+  They land between the two bible greens rather than on either, so nearest-swatch distance
+  is ~13. Everything else is on the nose: main island deck #448634 ΔE 1.6, sky zenith
+  #0a1c4f ΔE 0.0, sky horizon #fe9044 ΔE 0.1, deep shadow #1a1420 ΔE 0.1.
+- [minor] A3 — shadows still crush below the bible's darkest swatch in
+  `artifacts/shots/01-wide.png`. Shadow-side tree trunks read **rgb(2,3,7) at (497,415)**
+  and **rgb(3,4,9) at (566,425)**; the bible's deep shadow #1a1420 is rgb(26,20,32), four
+  times brighter. Darkest shaded canopy is rgb(0,25,7) with the red channel fully clipped;
+  1654 px of canopy are below RGB-sum 40 and 1338 px of the island bbox below RGB-sum 30.
+  `00-boot.png` is worse at 2054 px below 30.
+- [minor] A9 — the crystals read as bright but do not light anything.
+  `artifacts/shots/01-wide.png` cluster at x430-600 y390-465: body colours #bbdee5
+  (ΔE2000 9.3 from the bible's water-light #a6f1f2), #a4d1dd (9.9), #c1e1e6 (9.5), mean
+  luminance 211 against 122 for the island's greens — so they are now unambiguously the
+  brightest object and the hue is on the bible's water ramp. But the deck immediately
+  under the cluster (x520-560, y460-470) measures luminance **101, below the island's own
+  mean of 122** — there is no pooled glow and no halo, where `docs/concept/03-island-scene.png`
+  shows the crystals spilling cyan-green light onto the grass around them. The brightest
+  facet #edf6fc is ΔE2000 17.2 out, desaturated to near-white. With
+  `perf.json: postProcessing:false` there is no bloom to carry it, so the glow has to come
+  from albedo and light spill, and only the albedo half is done.
+- [minor] A9 — the form language diverges from `docs/concept/03-island-scene.png`. The
+  concept island is organic: a lumpy wavy-edged disc on a soft mushroom underside, rounded
+  blob trees, low-contrast pastel dusk. The build is a perfectly extruded cylinder with a
+  machined rim on a sharp geometric cone, stacked-cone trees, high contrast.
+  `ART_BIBLE.md` §Direction asks for "stylised realism … not flat-shaded low-poly"; every
+  surface in the frame is flat-shaded untextured low-poly. Recognisably the same world,
+  visibly a different hand.
+- [minor] A6 — one island archetype repeated ten times (ellipse deck + inverted cone +
+  cone trees). Across `artifacts/shots/01-wide.png` there is no second biome, no
+  structure, no water, no fauna and no airborne particle; the only two non-repeating
+  features in the frame, the stone path and the crystal cluster, are both on the hero
+  island.
+- [minor] A6 — eleven of forty-eight 160×120 tiles in `artifacts/shots/01-wide.png` have
+  0.0% Sobel>24 edge density, including the entire eye-level band y360-480 at x0-320 and
+  x960-1280. The composition has a dressed centre ringed by dead gradient at exactly the
+  height the eye rests.
+- [minor] A8 — two unexplained near-black shards float in the upper-left sky of
+  `artifacts/shots/01-wide.png` at **(244,100)** and **(138,134)**, roughly 4×8 px,
+  rgb(24,27,44). They are unlit, there are only two of them, and both are on the same side
+  of the frame; at 1:1 they read as dirt on the lens rather than sky debris.
+- [minor] A5 — the turntable judders. **26 of the 167 scene frames are byte-identical to
+  their predecessor** (interframe mean-abs diff 0.000), because the software rasteriser
+  delivers ~7–13 fps (HUD reads FPS 7/9/11/13 across the four shots) into a 25 fps
+  container. Frame f129 additionally shifts the whole frame by mean 4.24 while f128 and
+  f130 are identical to each other — that is a VP8 quantiser step, not a scene event, but
+  it is visible on playback.
+- [minor] A1 — the canopy has no silhouette hierarchy. In
+  `artifacts/shots/02-silhouette.png` (320×180) the ~45 conifers are all within a narrow
+  height band and read as one undifferentiated spiky mass; nothing — no hero tree, no rock
+  outcrop, no spire — breaks the line. The island as a whole reads fine, so this does not
+  trip A1's fail condition, but it costs the asset-level read.
+
+### What is good
+
+- **The hero island is genuinely dressed, and that is the biggest thing this cycle fixed.**
+  `artifacts/shots/01-wide.png` x620-870 y400-500 at 5× shows conifers, bush blobs, grass
+  tufts, scatter boulders, a laid stone path and a crystal cluster, with nothing bare
+  between them. That region alone is the difference between a prop on a plane and a place.
+- **The palette is now disciplined.** The sky gradient hits `#0a1c4f` at ΔE2000 0.0 and
+  `#ff9044` at 0.1; the deepest shadow in the frame lands on `#1a1420` at ΔE 0.1 across
+  large areas; the main deck is ΔE 1.6 from `#3f8a33`. The cycle-2 turquoise and tan decks
+  are completely gone. Keep whatever drives these — they are exact.
+- **Key and fill are correct and measurable.** Reading across the hull at y=520 in
+  `01-wide.png`: the left edge is rgb(59,54,66) — blue-dominant, B−R +7 — and the right
+  edge is rgb(75,56,47) — R−B +28. That is precisely `ART_BIBLE.md` §Lighting's "one sun
+  … one cool fill from the opposite side". The cone faces agree (right faces 149.7 and
+  176.7 lum vs left faces 143.9 and 167.0).
+- **Contact shadows on the hero island are real and directional.** Every trunk in the
+  forest has a dark cast region to its left, consistent with the key from camera-right.
+- **The HUD is excellent.** Panel #0b2335 is `rgba(11,36,48,0.82)` from the bible, amber
+  labels #f4cc76 are `#ffd479`, contrast measured over x14-530 y16-52 of `01-wide.png` is
+  **10.55:1** for the amber and **14.53:1** for the white values, both far past 4.5:1, and
+  the panel is opaque so the ratio does not depend on what is behind it.
+- **The frame is clean.** 0 magenta pixels across all five shots; 0 pixels flickering
+  (>30 delta in more than 40 of 79 consecutive turntable steps) — no z-fighting anywhere;
+  the deck/hull junction at x405-500 y440-520 is a single hard line with no gap and no
+  double edge.
+- **The scene motion is honest.** Across the 167 scene frames the green-pixel count varies
+  95529–99576 with a maximum step of 1570 (1.6%) and the green centroid moves 627.6 → 623.0
+  px with a maximum per-frame step of 1.2 px. Nothing pops, nothing teleports, no LOD
+  swap, no geometry appears or vanishes. `03-late.png` (t+15.3 s) and
+  `04-context-restored.png` both render complete at 21 draws / 32568 tris.
+- **`02-silhouette.png` is an honest artefact.** It reproduces as a true BOX downscale of
+  `01-wide.png` to 320×180 — mean absolute difference 0.52, maximum 2, i.e. rounding only.
+  A critic can trust it.
+- **The satellites genuinely differ from one another.** Tree counts, placements and deck
+  sizes all vary (green-pixel areas 688 to 8274); the nearest pair still differs by
+  mean-abs 14.1 on matched thumbnails. Nothing in the frame is a copy-paste.
+
+### Blocking defects
+
+**None.**
+
+Considered and rejected: the white opening frame of
+`artifacts/turntables/m0-island.webm`. A5's fail condition is "any pop", and f001 →
+f014 is literally a hard cut. I am not tagging it blocking because A5 scores whether the
+*world* holds together — whether objects pop in, teleport or intersect — and on that test
+the clip is clean for all 167 of its scene frames by every measure I could run. A boot
+splash preceding the recording is a capture-window defect in the artefact, not a defect in
+the rendered world, and capping the whole line at 5.9 for it would hide the three real
+problems (no rim light, shadowless satellites, bare satellite decks) that are actually
+holding this score down. It is logged above as `major` and the builder should fix the
+capture trigger.
+
+A4 was not tagged blocking either: with no creature generator at M0 there is no variant
+sheet to read as one object, so the line has no subject and is excluded from the
+denominator rather than failed.
+
+SCORE_MACHINE: 7.4
+
+---
+
+## gameplay-critic — M0 Toolchain & deploy spine — run 2026-10-10 (rework cycle 3)
+SCORE: 8.6 / 10
+
+### Renormalisation
+
+G2 (breeding, M9), G4 (persistence, M8) and G6 (input, M8/M9) have no subject in the
+running build. Verified, not assumed: `src/` contains exactly one file; a grep for
+`indexeddb|localstorage|sessionstorage|genome|breed|roster|pointerdown|touch` returns one
+unrelated shader-chunk comment and nothing else; `addEventListener` returns exactly two
+hits, both `webglcontextlost` / `webglcontextrestored`. The only genome code in the repo is
+Python, which is M1–M2 authoring, not a runtime bred mesh, and is explicitly not credited
+as runtime evidence.
+
+    in-scope denominator = G1 2.2 + G3 1.4 + G5 1.6 = 5.2
+    earned               = 1.90 + 1.20 + 1.35       = 4.45
+    score                = 4.45 / 5.2 x 10          = 8.5577 -> 8.6
+
+No `blocking` defect found, so the 5.9 cap does not apply.
+
+| # | line | max | earned | evidence |
+|---|---|---|---|---|
+| G1 | milestone loop completes start to finish | 2.2 | **1.90** | `npm run gate:smoke` x10 -> exit 0 x10, turntable saved on attempt 1 every time, zero retries consumed. `npm run gates` -> exit 0. Boot cold 344 ms, reloads 1638 / 1499 / 1633 ms, all under 2500 ms. The island demonstrably rotates (webm f014 -> f090 -> f179). Docked 0.3: the published Pages URL could not be loaded, so the served half has no first-hand evidence. |
+| G2 | a bred dragon is visibly its parents' child | 1.8 | **n/a** | renormalised out |
+| G3 | every action gives feedback within 100 ms | 1.4 | **1.20** | Splash painted at t=39 ms; first drawn frame t=283 ms; WebGL2 failure message at t=58 ms; HUD switches to em dashes + `GPU CONTEXT LOST — RESTORING` 1.5 ms after the loss event; restore repaints inside one 8 ms sample. Docked 0.2 for the splash title sitting over a drawn island for ~1.4 s. |
+| G4 | state survives reload | 1.4 | **n/a** | renormalised out |
+| G5 | no softlock, unreachable state, negative currency | 1.6 | **1.35** | Induced loss recovers in 102 ms; canvas hidden while dead; hard case escalates honestly; resize to 320x240 / 1920x1080 / 200x2000 and back -> 0 page errors. Docked 0.25 for the three minors below. |
+| G6 | mouse and touch both work | 1.6 | **n/a** | renormalised out |
+
+### Verification of the four cycle-2 fixes
+
+**1. `gate:smoke` flakiness — FIXED.** Ten consecutive runs, each preceded by a fresh
+build: exit 0 ten times out of ten, every run logging `attempt 1`, so the retry was never
+consumed and the race is actually gone rather than papered over. Webm sizes
+898 930–970 174 bytes, recorded length 7050–7077 ms. Cycle 2's 4-in-9 failure rate would
+have produced ~4 failures across these 10 runs at p < 0.001. `tools/playtest.mjs` closes
+the main page and `rm`s the stale webm before the first attempt, so a failure can no longer
+leave an older build's video beside a failing log — the sharpest edge of the original
+defect, closed.
+
+**2. Turntable splash share — LARGELY FIXED.** 1280x720, 25 fps, 180 frames, 7.20 s.
+f000 is white (Playwright's `about:blank`), f001–f012 are the dark boot splash, f013
+(0.52 s) is the first island frame, and the title fades out across f031–f047. So **7.2% is
+pre-island splash** (was 59%), 92.8% shows the island and 73.3% shows it unobstructed.
+
+**3. No WebGL2 -> silent forever — FIXED, and fast.** With `--disable-webgl
+--disable-webgl2 --disable-3d-apis`, at t=57.8 ms the splash subtitle is replaced by
+"This browser could not create a WebGL2 context, so DRAGONVEIN cannot render. Check that
+hardware acceleration is on." plus an orange `NO WEBGL2 — CANNOT RENDER` badge and em
+dashes in every numeric slot. Stable at 1 s, 3 s and 8 s; never reverts.
+
+**4a/4b. Canvas hidden, and em dashes for the tick after restore — FIXED.** An 8 ms trace:
+visibility flips to `hidden` in the same sample as the loss (msSinceLoss 6 ms); at
+t+2332.9 ms `lost:false, restoredCount:1` with the status pill already hidden yet
+FPS/DRAWS/TRIS all still `—` for ~46 ms until the first restored frame. No `DRAWS 0 TRIS 0`
+anywhere in the trace.
+
+**4c. Hard case, `restoreContext` neutered — FIXED and honest.** Five attempts over 4.0 s
+of backoff, then `GPU CONTEXT LOST — RELOAD TO RECOVER`, canvas still hidden, 0 page errors
+through 12 s and 738 skipped frames.
+
+### Pages deploy
+
+Could **not** load `https://vtpqui3009.github.io/dragonvein/`. `curl -sSL` ->
+`curl: (56) CONNECT tunnel failed, response 403`; Playwright -> `net::ERR_TUNNEL_CONNECTION_FAILED`;
+the agent proxy's own status reports `connect_rejected` for `vtpqui3009.github.io:443`.
+This environment's egress policy, not a site failure. The deployment record
+(`{"state":"success","environment_url":"https://vtpqui3009.github.io/dragonvein/"}`) is a
+green workflow, not a loaded page, and is explicitly not counted.
+
+### Defects
+
+- **[major] G1 / AC3 — nobody, human or critic, has seen the published site.** Repro as
+  above. AC3's second clause ("the published URL returns 200 and references the built
+  `three` chunk") has no artefact anywhere under `artifacts/`. CLAUDE.md §7 forbids marking
+  a milestone `DONE` that no human has seen running, and M0's ROADMAP done-condition is
+  "Pages serves a lit, rotating placeholder". Fix: a human opens the URL once and records
+  it, or the deploy job curls its own `environment_url` after publish and writes the status
+  line plus a `grep -o 'three-[A-Za-z0-9]*\.js'` hit into an uploaded artefact.
+- **[minor] G3 — the splash title still covers the island for ~1.4 s of the turntable.**
+  `f013` (t=0.52 s) is the first island frame; `f020` (t=0.80 s) still shows the title at
+  full opacity over the trees; the title band's >200-luma fraction only falls to 0.015 at
+  `f044`. 19% of the 7.2 s clip is island-behind-splash. The DOM trace shows the splash text
+  still present at t=672 ms with `drawCalls=21`, i.e. ~490 ms of overlap before the fade
+  starts.
+- **[minor] G5 — `__dragonveinStats()` reports a healthy frame over a permanently dead
+  context.** With `restoreContext` neutered and 12 s elapsed, `read().context` is correctly
+  `{"lost":true,"restoreAttempts":5,"restoredCount":0,"framesSkippedWhileLost":738}` and the
+  HUD correctly reads `FPS — DRAWS — TRIS — GPU CONTEXT LOST — RELOAD TO RECOVER`, but
+  `__dragonveinStats()` still returns `{"drawCalls":21,"triangles":32568,"frameMs":16.6,
+  "cpuFrameMs":0.8}`. The honesty fix reached the HUD and `read().context` but not the
+  accessor the gates sample. A future gate polling `__dragonveinStats()` alone would pass on
+  a dead canvas.
+- **[minor] G5 — an unrecoverable loss leaves no in-page way out.** A bare `#070d14` field
+  with a text instruction and nothing clickable. The message is honest, but "RELOAD TO
+  RECOVER" with no button and no key hint is still a dead end for a non-technical player.
+- **[minor] G3/G5 — the HUD overflows narrow viewports, taking the loss message with it.**
+  At 320x240 the HUD pill runs past the right edge and `DRAWS` / `TRIS` are off-screen; the
+  status slot sits further right still, so at phone widths `GPU CONTEXT LOST — RELOAD TO
+  RECOVER` would never be seen. At 200x2000 the pill is clipped after `BUILD`. No crash and
+  no error in either case.
+- **[minor] G1 — the turntable opens on a white frame.** `f000` has mean luma 255.0 while
+  `f001` has 13.4. `index.html` sets a `#070d14` body background inline, so this is the
+  recorder context's `about:blank`, not the build — but the clip a critic watches still
+  begins with 40 ms of white. Dropping the first frame on save, or navigating before
+  `recordVideo` starts capturing, would close it.
+- **[informational, not scored] G5 — the browser took ~2.2 s to dispatch
+  `webglcontextlost` after `loseContext()` under SwiftShader.** During that window the HUD
+  keeps printing live numbers over a frozen canvas. The page cannot know before the event
+  fires, so this is not a defect in the build; noted so nobody later misreads the gap as a
+  regression in the honesty work.
+
+### What is good
+
+- **The flakiness fix is real and could not be broken.** 10/10 exit 0, every turntable saved
+  on attempt 1, so the retry is headroom rather than a crutch. M0's own done-condition is no
+  longer a coin flip.
+- **The context-loss work is unusually honest for this stage.** Three separate truths at the
+  right moments: the canvas disappears instead of rendering white over a dark page, the
+  numeric slots print `—` rather than a confident `0` for the one tick before the first
+  restored frame, and when restoration genuinely cannot happen the message escalates after a
+  bounded five attempts instead of spinning forever. The hard case behaves exactly as the
+  easy case claims it would, which is the test most recovery code fails.
+- **The no-WebGL2 path answers in 58 ms with a cause and a remedy**, in the player's own
+  language, with a matching HUD badge.
+- **Boot is comfortably inside budget on a CPU rasteriser**: 344 ms cold, 1.50–1.64 s across
+  three reloads against 2500 ms, 141 kB gzipped shipped.
+- **Nothing produced an error.** Ten smoke runs, a full `npm run gates`, two loss drills and
+  four viewport changes including 200x2000 — `page errors: 0` every time, `perf.json`
+  `errors: []`.
+- The island genuinely rotates and the rotation is visible in the artefact rather than only
+  in a stat.
+
+SCORE_MACHINE: 8.6
