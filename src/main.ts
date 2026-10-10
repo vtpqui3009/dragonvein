@@ -62,8 +62,27 @@ try {
     `(${e instanceof Error ? e.message : String(e)})`,
   );
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
+/**
+ * The one quality tier M0 can honestly offer, and why it exists this early.
+ *
+ * `docs/RUBRIC.md` P6 ("Potato tier holds 30 fps @720p") is live from M0 per
+ * `docs/ROADMAP.md` §When each rubric line goes live, because the *measurement* needs
+ * only a lower resolution and the shadow pass off — not M6's detection, switching and
+ * persistence machinery, which is still M6's job.
+ *
+ * So: `?tier=potato` selects the Potato row of `docs/PERF_BUDGET.md` §Quality tiers —
+ * 720p (pixel ratio pinned to 1 so the drawing buffer is the CSS size), no shadows, no
+ * post. Post-processing does not exist yet, so that third clause is free here and will
+ * stop being free at M6.
+ *
+ * Deliberately NOT what M6 builds: nothing is auto-detected from
+ * `WEBGL_debug_renderer_info`, nothing is persisted, and there is no in-game switch. A
+ * query parameter is enough for a gate to take a reproducible reading, and claiming more
+ * would be claiming M6 is done.
+ */
+const POTATO = new URLSearchParams(location.search).get('tier') === 'potato';
+renderer.setPixelRatio(POTATO ? 1 : Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = !POTATO;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 // The art-critic measured the island 10-15 L* under the bible's values with its hues
@@ -196,7 +215,9 @@ const sun = new THREE.DirectionalLight(0xfff1e2, 2.95);
 // backlit island reads as a dark blob against a bright sky) while the shadows still
 // rake across open ground to the left, where they are in frame.
 sun.position.set(14, 9.5, 5.5);
-sun.castShadow = true;
+// Potato renders no shadow map at all, so the light must not ask for one either —
+// `renderer.shadowMap.enabled = false` alone still leaves the pass set up.
+sun.castShadow = !POTATO;
 sun.shadow.mapSize.set(1024, 1024);   // the Medium tier in docs/PERF_BUDGET.md
 sun.shadow.camera.near = 1;
 sun.shadow.camera.far = 60;
@@ -1321,19 +1342,33 @@ globalThis.__dragonveinPerf = {
       restoreSupported: loseContext !== null,
     },
     tier: {
-      name: 'medium-equivalent',
-      configured: false,
+      name: POTATO ? 'potato' : 'medium-equivalent',
+      /** True only for Potato, which is explicitly selected rather than assumed. */
+      configured: POTATO,
+      selectedBy: POTATO ? 'query parameter ?tier=potato' : 'none — M0 default settings',
       shadows: renderer.shadowMap.enabled,
-      shadowMapSize: sun.shadow.mapSize.x,
+      shadowMapSize: renderer.shadowMap.enabled ? sun.shadow.mapSize.x : 0,
       postProcessing: false,
-      note: 'Medium MINUS POST, not Medium. Quality tiers are detected and switchable ' +
-        'from M6 (docs/ROADMAP.md); M0 renders at fixed settings — 1080p, one 1024 ' +
-        'shadow map — that match the Medium row of docs/PERF_BUDGET.md §Quality tiers ' +
-        'except for bloom, which does not exist yet. §Per-frame budget allots ' +
-        'post-processing 3.0 ms of the 16.6 ms, so any frame figure taken here is a ' +
-        'FLOOR for Medium and a real-GPU verification row recorded at these settings ' +
-        'must say so. The "@1080p" half of the qualifier is checkable from `viewport`; ' +
-        'the "Medium" half is not yet true.',
+      targetFps: POTATO ? 30 : 60,
+      note: POTATO
+        ? 'Potato, and it matches the Potato row of docs/PERF_BUDGET.md §Quality tiers ' +
+          'in full: 720p (pixel ratio pinned to 1, so check `viewport` — the drawing ' +
+          'buffer must equal the CSS size), no shadows (the sun does not cast and the ' +
+          'shadow pass is off, not merely hidden), no post. Post-processing does not ' +
+          'exist at M0, so that clause costs nothing here and will cost something at ' +
+          'M6. The target is 30 fps, i.e. a 33.3 ms frame, not 16.6. What this is NOT: ' +
+          'M6\'s tier system. Nothing was detected from WEBGL_debug_renderer_info, ' +
+          'nothing is persisted, and there is no in-game switch — this tier exists so ' +
+          'RUBRIC.md P6 has a reproducible measurement at M0, which ROADMAP.md says it ' +
+          'must.'
+        : 'Medium MINUS POST, not Medium. Quality tiers are detected and switchable ' +
+          'from M6 (docs/ROADMAP.md); M0 renders at fixed settings — 1080p, one 1024 ' +
+          'shadow map — that match the Medium row of docs/PERF_BUDGET.md §Quality tiers ' +
+          'except for bloom, which does not exist yet. §Per-frame budget allots ' +
+          'post-processing 3.0 ms of the 16.6 ms, so any frame figure taken here is a ' +
+          'FLOOR for Medium and a real-GPU verification row recorded at these settings ' +
+          'must say so. The "@1080p" half of the qualifier is checkable from `viewport`; ' +
+          'the "Medium" half is not yet true.',
     },
   }),
 };

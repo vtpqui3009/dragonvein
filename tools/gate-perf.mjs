@@ -133,9 +133,30 @@ const BUDGET = {
   bundleGzipBytes: 1_400_000,
   /** docs/PERF_BUDGET.md §Other budgets. */
   bootMs: 2500,
+  /**
+   * The Potato tier's frame, in ms. docs/PERF_BUDGET.md §Quality tiers targets 30 fps at
+   * 720p with no shadows and no post, and 1000/30 is 33.3 ms. RUBRIC.md P6 is live from
+   * M0 per ROADMAP.md §When each rubric line goes live.
+   *
+   * Same split as `frameMs`, and for the same reason: 33.3 ms is wall clock, so it is
+   * enforced only where a real GPU draws the pixels. On a software rasteriser it is
+   * recorded as advisory. The hardware-independent half of Potato — draw calls,
+   * triangles, and the main thread — is enforced everywhere.
+   */
+  potatoFrameMs: 1000 / 30,
 };
 const PERF_JSON = 'artifacts/perf.json';
 const VIEWPORT = { width: 1920, height: 1080 };   // the "@1080p" half of the budget line
+/** The "@720p" half of P6's line. Pixel ratio is pinned to 1 by `?tier=potato`. */
+const POTATO_VIEWPORT = { width: 1280, height: 720 };
+/**
+ * The Potato pass is a secondary reading, so it gets a smaller target than the 360 the
+ * budgeted 1080p pass needs: it exists so P6 has a reproducible number, not to carry the
+ * main budget. 180 still puts nine samples in the p95's tail, and the pass is cheaper per
+ * frame anyway (fewer pixels, no shadow map).
+ */
+const POTATO_TARGET_SAMPLES = 180;
+const POTATO_DEADLINE_MS = 180_000;
 const WARMUP_MS = 3000;                           // shaders, shadow map, first GC
 /**
  * 360, up from 180, and the deadline with it. At 180 the window was deadline-limited on
@@ -362,11 +383,14 @@ function summariseHeap(kb, frames, windowMs, baseline, loopTicks) {
  * @param {number} opts.targetSamples   0 means "collect for `windowMs` and stop"
  * @param {number} opts.windowMs
  * @param {boolean} [opts.sampleHeap]
+ * @param {{width: number, height: number}} [opts.viewport]
  */
-async function measure({ url, extraArgs, errors, targetSamples, windowMs, sampleHeap = false }) {
+async function measure({
+  url, extraArgs, errors, targetSamples, windowMs, sampleHeap = false, viewport = VIEWPORT,
+}) {
   const browser = await pw.chromium.launch({ args: [...SWIFTSHADER, ...extraArgs] });
   try {
-    const page = await browser.newPage({ viewport: VIEWPORT });
+    const page = await browser.newPage({ viewport });
     page.on('pageerror', (e) => errors.push(String(e)));
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
@@ -523,6 +547,13 @@ try {
     url: preview.url, extraArgs: UNPACED, errors,
     targetSamples: 0, windowMs: UNPACED_WINDOW_MS,
   });
+  // Pass 3: the Potato tier, so RUBRIC.md P6 has a number instead of an absence.
+  // Its own URL (`?tier=potato`) and its own viewport; everything else is the paced pass.
+  const potatoUrl = `${preview.url}${preview.url.includes('?') ? '&' : '?'}tier=potato`;
+  const potato = await measure({
+    url: potatoUrl, extraArgs: [], errors, viewport: POTATO_VIEWPORT,
+    targetSamples: POTATO_TARGET_SAMPLES, windowMs: POTATO_DEADLINE_MS,
+  });
 
   const bundle = await measureBundle();
   const cpu = summarise(paced.probe.cpuFrameMs);
@@ -547,6 +578,65 @@ try {
    */
   const tailMachineOk = !paced.software || paced.cap.verified;
   const enforceTail = tailMachineOk && paced.windowClosedOnTarget;
+
+  // --- P6, the Potato tier ------------------------------------------------------------
+  // Same discipline as P1, because P6's "30 fps" is wall clock and has exactly P1's
+  // problem: unreachable on a CPU rasteriser no matter how cheap the scene. So the
+  // hardware-independent half is enforced and the wall-clock half is advisory here and
+  // verified on real hardware. Reported with the settings it was taken at, because
+  // "720p, no shadows" is a claim a critic must be able to check rather than trust.
+  const potatoCpu = summarise(potato.probe.cpuFrameMs);
+  const potatoGpu = potato.probe.gpuFrameMs === null ? null : summarise(potato.probe.gpuFrameMs);
+  const potatoCostP95 = Math.max(potatoCpu?.p95 ?? 0, potatoGpu?.p95 ?? 0);
+  const potatoTailEnforced = (!potato.software || potato.cap.verified)
+    && potato.windowClosedOnTarget;
+  const potatoReport = {
+    budgetMs: round(BUDGET.potatoFrameMs),
+    targetFps: 30,
+    frameBudgetEnforced: !potato.software,
+    settingsVerified:
+      potato.probe.tier?.name === 'potato'
+      && potato.probe.tier?.shadows === false
+      && potato.probe.viewport.drawingBufferWidth === POTATO_VIEWPORT.width
+      && potato.probe.viewport.drawingBufferHeight === POTATO_VIEWPORT.height,
+    tier: potato.probe.tier,
+    viewport: potato.probe.viewport,
+    renderer: potato.renderer,
+    softwareRenderer: potato.software,
+    rasteriserCap: potato.cap,
+    sampleCount: {
+      cpuFrameMs: potato.probe.cpuFrameMs.length,
+      gpuFrameMs: potato.probe.gpuFrameMs?.length ?? 0,
+      target: POTATO_TARGET_SAMPLES,
+      collectionWindowMs: potato.collectionWindowMs,
+      closedOnTarget: potato.windowClosedOnTarget,
+    },
+    cpuFrameMs: potatoCpu === null ? null : {
+      ...potatoCpu,
+      budgetMs: BUDGET.cpuFrameMs,
+      withinBudget: potatoCpu.p50 <= BUDGET.cpuFrameMs,
+      p95WithinBudget: potatoCpu.p95 <= BUDGET.cpuFrameMs,
+      enforced: true,
+      note: 'Held to the same 3.5 ms as the 1080p pass, not a looser number. Lowering ' +
+        'quality does not give the main thread more work to do, so its budget does not ' +
+        'grow — if anything Potato should come in under the 1080p figure.',
+    },
+    gpuFrameMs: potatoGpu,
+    frameCostMs: {
+      p95: round(potatoCostP95),
+      basis: 'max(cpuFrameMs.p95, gpuFrameMs.p95) from the Potato pass',
+      withinBudget: potatoCostP95 <= BUDGET.potatoFrameMs,
+    },
+    drawCalls: potato.stats?.drawCalls ?? null,
+    triangles: potato.stats?.triangles ?? null,
+    note: 'docs/RUBRIC.md P6 at docs/PERF_BUDGET.md §Quality tiers\' Potato row: 720p, ' +
+      'no shadows, no post, target 30 fps. Enforced here regardless of hardware: draw ' +
+      'calls, triangles and the main thread. Advisory here and verified on real ' +
+      'hardware: the 33.3 ms wall-clock frame, for the same reason the 16.6 ms line is ' +
+      'advisory on a software rasteriser — see §What is enforced where. `settingsVerified` ' +
+      'is the check that this pass really did render at 720p with the shadow pass off, ' +
+      'rather than being labelled so.',
+  };
 
   const report = {
     status: 'complete',
@@ -670,6 +760,12 @@ try {
     framesRendered: paced.probe.framesRendered,
     drawCalls: paced.stats?.drawCalls ?? null,
     triangles: paced.stats?.triangles ?? null,
+    /**
+     * RUBRIC.md P6, which ROADMAP.md makes live from M0. A separate pass at 720p with the
+     * shadow pass off, reported separately so a critic can cite it without untangling it
+     * from the 1080p figures that carry the main budget.
+     */
+    potato: potatoReport,
     budget: BUDGET,
     errors,
   };
@@ -733,6 +829,49 @@ try {
       'is the app and not the box',
     );
   }
+  // --- P6, the Potato tier -------------------------------------------------------------
+  // A mislabelled pass is worse than no pass: it would hand the perf-critic a number for
+  // a tier that never rendered. So the settings are checked before anything is budgeted.
+  if (!report.potato.settingsVerified) {
+    fail.push(
+      'the Potato pass did not render at the Potato tier: ' +
+      `tier.name=${report.potato.tier?.name}, shadows=${report.potato.tier?.shadows}, ` +
+      `drawing buffer ${report.potato.viewport.drawingBufferWidth}x` +
+      `${report.potato.viewport.drawingBufferHeight} ` +
+      `(wanted potato / false / ${POTATO_VIEWPORT.width}x${POTATO_VIEWPORT.height}) ` +
+      '— docs/RUBRIC.md P6 would be scored against the wrong settings',
+    );
+  }
+  // Hardware-independent, so enforced on the software rasteriser too.
+  if (report.potato.drawCalls !== null && report.potato.drawCalls > BUDGET.drawCalls) {
+    fail.push(`Potato draw calls ${report.potato.drawCalls} > ${BUDGET.drawCalls}`);
+  }
+  if (report.potato.triangles !== null && report.potato.triangles > BUDGET.triangles) {
+    fail.push(`Potato triangles ${report.potato.triangles} > ${BUDGET.triangles}`);
+  }
+  if (report.potato.cpuFrameMs !== null
+      && report.potato.cpuFrameMs.p50 > BUDGET.cpuFrameMs) {
+    fail.push(
+      `Potato main-thread frame cost p50 ${report.potato.cpuFrameMs.p50} ms > ` +
+      `${BUDGET.cpuFrameMs} ms — a lower tier does not get a bigger main-thread budget`,
+    );
+  }
+  if (report.potato.cpuFrameMs !== null && potatoTailEnforced
+      && report.potato.cpuFrameMs.p95 > BUDGET.cpuFrameMs) {
+    fail.push(
+      `Potato main-thread frame cost p95 ${report.potato.cpuFrameMs.p95} ms > ` +
+      `${BUDGET.cpuFrameMs} ms with the rasteriser off this thread's cores`,
+    );
+  }
+  // Wall clock, so only where a real GPU draws it. Same split as the 16.6 ms line.
+  if (report.potato.frameBudgetEnforced
+      && report.potato.frameCostMs.p95 > BUDGET.potatoFrameMs) {
+    fail.push(
+      `Potato frame cost p95 ${report.potato.frameCostMs.p95} ms > ` +
+      `${round(BUDGET.potatoFrameMs)} ms, so the Potato tier does not hold 30 fps at 720p`,
+    );
+  }
+
   // Cost, not cadence. A vsync-locked frame now reports what it cost and is not failed by
   // a rounding artefact.
   if (report.frameBudgetEnforced && frameCostP95 > BUDGET.frameMs) {
@@ -769,6 +908,15 @@ try {
     `${(BUDGET.bundleGzipBytes / 1000).toFixed(0)} kB  (source maps excluded, not shipped)`);
   console.log(`boot to first frame: ${report.bootMs}ms vs budget ${BUDGET.bootMs}ms`);
   console.log(`draw calls: ${report.drawCalls}   triangles: ${report.triangles}`);
+  console.log(`potato tier (P6): ${report.potato.viewport.drawingBufferWidth}x` +
+    `${report.potato.viewport.drawingBufferHeight}, shadows ${report.potato.tier?.shadows}, ` +
+    `settings ${report.potato.settingsVerified ? 'verified' : 'WRONG'}  ` +
+    `cpu p50=${report.potato.cpuFrameMs?.p50 ?? 'n/a'}ms p95=` +
+    `${report.potato.cpuFrameMs?.p95 ?? 'n/a'}ms (enforced vs ${BUDGET.cpuFrameMs}ms)  ` +
+    `frame cost p95=${report.potato.frameCostMs.p95}ms vs ${round(BUDGET.potatoFrameMs)}ms` +
+    (report.potato.softwareRenderer ? ' (advisory)' : '') +
+    `  draws ${report.potato.drawCalls}  tris ${report.potato.triangles}  ` +
+    `${report.potato.sampleCount.cpuFrameMs}/${POTATO_TARGET_SAMPLES} samples`);
 
   if (fail.length) { console.error('\nOVER BUDGET\n  ' + fail.join('\n  ')); process.exitCode = 1; }
   else console.log('gate:perf OK');

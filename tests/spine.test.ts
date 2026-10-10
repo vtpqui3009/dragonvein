@@ -207,6 +207,29 @@ describe('budgets are not quietly relaxed', () => {
     expect(cap).toContain('--num-raster-threads=1');
   });
 
+  it('measures the Potato tier, and proves it rendered at those settings', () => {
+    // docs/RUBRIC.md P6 is live from M0 per docs/ROADMAP.md §When each rubric line goes
+    // live. 30 fps at 720p is wall clock, so it has P1's problem on a CPU rasteriser and
+    // gets P1's remedy: the hardware-independent half enforced, the wall-clock half
+    // advisory here and verified on real hardware.
+    const gate = read('tools/gate-perf.mjs');
+    expect(gate).toMatch(/potatoFrameMs:\s*1000\s*\/\s*30\b/);
+    expect(gate).toMatch(/POTATO_VIEWPORT = \{ width: 1280, height: 720 \}/);
+    // A mislabelled pass would hand the critic a number for a tier that never rendered,
+    // so the gate fails when the settings it claims are not the settings it got.
+    expect(gate).toContain('settingsVerified');
+    expect(gate).toMatch(/if \(!report\.potato\.settingsVerified\) \{/);
+    // Potato gets the SAME main-thread budget, not a looser one.
+    expect(gate).toMatch(/report\.potato\.cpuFrameMs\.p50 > BUDGET\.cpuFrameMs/);
+
+    // And the page has to be able to render that tier at all.
+    const main = read('src/main.ts');
+    expect(main).toMatch(/tier=potato/);
+    expect(main).toMatch(/renderer\.shadowMap\.enabled = !POTATO;/);
+    // The light must stop casting too — disabling the map alone leaves the pass set up.
+    expect(main).toMatch(/sun\.castShadow = !POTATO;/);
+  });
+
   it('never lets the gates chain pass without a build to measure', () => {
     // `npm run gates` used to exit 0 with gate:perf and gate:smoke both printing SKIP
     // because dist/ was absent — the one command CLAUDE.md §2.5 requires before a commit,

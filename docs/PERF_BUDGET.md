@@ -338,6 +338,21 @@ numbers in front of it.
 Detected once at boot from `WEBGL_debug_renderer_info` plus a 30-frame warm-up
 measurement, then overridable by the player and persisted.
 
+Detection, switching and persistence are M6. **Potato is measured from M0** anyway, because
+`docs/RUBRIC.md` P6 needs a number and the measurement needs only a smaller viewport and
+the shadow pass off — not the tier system. `?tier=potato` selects it (pixel ratio pinned to
+1, `shadowMap.enabled = false`, the sun stops casting), `gate:perf` takes a third pass at
+1280×720, and `artifacts/perf.json.potato` reports it with a `settingsVerified` flag that
+fails the gate if the pass did not actually render at those settings — a pass labelled
+Potato that rendered at Medium would be worse than no pass at all.
+
+Its 30 fps is wall clock, so it splits exactly as the 16.6 ms line does: draw calls,
+triangles and `cpuFrameMs` are enforced everywhere, the 33.3 ms frame is advisory on a
+software rasteriser and verified on real hardware. Potato is held to the **same** 3.5 ms
+main-thread budget rather than a looser one — a lower tier does not give the main thread
+more work to do. Measured at M0: 14 draw calls (down from 21, the shadow pass gone), 24 960
+triangles, cpu p50 0.5 ms / p95 0.8 ms.
+
 | tier | hardware | settings | target |
 |---|---|---|---|
 | Potato | old iGPU, weak phone | 720p, no shadows, no post | 30 fps |
