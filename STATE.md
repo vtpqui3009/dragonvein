@@ -130,13 +130,85 @@ scene's GPU timer reports ~135 ms per frame for 20 draw calls.
 `docs/PERF_BUDGET.md` §Real-GPU verification says that verification is a human step and
 that its record lives here. This is that record.
 
-| UTC date | commit | machine / GPU | viewport | tier | `frameCostMs.p95` | verdict |
-|---|---|---|---|---|---|---|
-| — | — | **never performed** | — | — | — | — |
+| UTC date | commit | grade | machine / GPU | viewport | tier | `frameCostMs.p95` | verdict |
+|---|---|---|---|---|---|---|---|
+| 2026-10-10 | `c429d4a` | sighting | owner's machine, Chrome on Windows; GPU model not recorded | ~1365×610 browser window | auto-detected, not recorded | ~60 FPS sustained | PASS (ceiling only) |
 
-The procedure is four steps in `docs/PERF_BUDGET.md` §Real-GPU verification. Until a row
-appears here, rubric line `P1` has no passing evidence anywhere in this repository, and no
-run should claim otherwise.
+**What that row does and does not establish.** The owner opened
+`https://vtpqui3009.github.io/dragonvein/` and read the overlay: build `v0.0.1+c429d4a`,
+**FPS 60, DRAWS 21, TRIS 32568**. Draw calls and triangles are hardware-independent and sit
+far inside the 180 / 900 000 budgets. Sustained 60 FPS on a vsync-locked display means no
+frame in that window exceeded ~16.6 ms, so the budget is met as a ceiling — but FPS is not a
+percentile, and nothing here measures the tail. It is a `sighting`, not a `verification`,
+per `docs/PERF_BUDGET.md` §Two grades of evidence.
+
+It is also the first time any human has seen this build run, which is what `CLAUDE.md` §7
+requires before a milestone may be marked `DONE`.
+
+The procedure for a full verification is four steps in `docs/PERF_BUDGET.md`
+§Real-GPU verification. `docs/ROADMAP.md` M16 accepts verifications only.
+
+---
+
+## 2026-10-10 — decisions — the three M0 blockers, resolved
+
+The owner opened the deployed build (recorded above) and delegated the two judgement calls:
+"về câu hỏi 2 với 3, hãy làm theo cách bạn nghĩ nó tốt nhất."
+
+### 1. Human has seen it run — CLOSED
+
+See the sighting row above. `CLAUDE.md` §7 is satisfied for M0.
+
+### 2. Main-thread budget: p50 or p95 — RULED, in that order of preference
+
+The perf-critic's objection is upheld in principle: after the change to p50, no p95 was
+enforced on any machine this project has run on, and a tail you never look at is a tail you
+never fix. The measurement behind the change is not in dispute and the budget number never
+moved.
+
+But the builder's evidence is real too. Across two machines on identical bytes, the
+main-thread p50 moved +29% (0.7 → 0.9 ms) while its p95 moved +106% (1.8 → 3.7 ms), and the
+GPU timer doubled (117 → 237 ms). A p95 that tracks how busy the *rasteriser* threads are is
+measuring contention, not main-thread work, and SwiftShader does not rasterise on the main
+thread.
+
+So: take the perf-critic's fix if it can be built, and fall back if it cannot.
+
+1. **Preferred.** Cap SwiftShader's rasteriser threads so the main thread stops competing
+   with them, then hold the p95 to the same unchanged 3.5 ms on every machine. Verify the
+   cap actually took effect — do not assume a flag worked because Chromium accepted it.
+   Evidence that it worked: the main-thread p95/p50 ratio should fall towards the real-GPU
+   case, and the gap between the two machines above should narrow.
+2. **Fallback, only if no such cap is reachable.** Keep p50 on software renderers, hold p95
+   on real GPUs, and write into `docs/PERF_BUDGET.md` exactly which flags were tried, what
+   each one did, and why the cap could not be made to stick. A fallback with no record of
+   the attempt reads as a shortcut later, even when it was not one.
+
+Either way `tests/spine.test.ts` keeps failing if 16.6 / 180 / 900 000 move.
+
+### 3. P1 was unreachable by construction — FIXED in the rubric
+
+`docs/RUBRIC.md` P1 was written as "p95 frame ≤ 16.6 ms, blocking" while every machine this
+project can reach rasterises through SwiftShader, where no scene meets that number. The
+perf-critic was therefore capped at 5.9 in perpetuity and M0 could never close. That was a
+defect in the rubric, authored in this repository's first commit, not a defect in the
+renderer or in any build session's work.
+
+P1 now has two halves: a continuous, blocking measurement on whatever renderer is present
+(must exist, must reproduce, must sit inside that renderer class's recorded budget, with
+draw calls and triangles always held to 180 / 900 000), and a periodic real-hardware entry
+in the verification log above. `docs/PERF_BUDGET.md` defines the two grades of evidence.
+M16 still accepts verifications only.
+
+`CLAUDE.md` §7 forbids rewriting `RUBRIC.md` to match what was built, so this was put to the
+owner rather than done quietly. The change is to make a budget *measurable*, not to lower
+it. The three numbers are untouched.
+
+### What this leaves
+
+M0 is one re-criticise away from `DONE`: implement decision 2, re-run the three critics on a
+frozen tree, and score P1 against its corrected definition. Rework cycles 2 and 3 are spent,
+so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 

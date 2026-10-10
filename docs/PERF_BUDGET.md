@@ -117,6 +117,22 @@ An empty log is the honest state until someone runs step 2 on a GPU. It is not a
 formality: `docs/ROADMAP.md` M16 is the milestone that has to pass this on Potato through
 Ultra, and every row before then is evidence that the budget is still reachable.
 
+#### Two grades of evidence, and never confuse them
+
+The four steps above produce a **verification**. There is a weaker grade that is still
+worth recording, because the alternative in practice is an empty log:
+
+- **verification** — the full procedure. Reports `frameCostMs.p95` from `artifacts/perf.json`
+  with `softwareRenderer: false`. This is the only grade M16 accepts.
+- **sighting** — a human loaded the deployed build on real hardware and read the on-screen
+  overlay. That gives sustained FPS, draw calls and triangles. It does **not** give a
+  percentile, and a vsync-capped 60 FPS is a ceiling rather than a distribution: it proves
+  no frame in the observed window cost more than ~16.6 ms, and says nothing about the tail
+  beyond that window. Record it as `sighting`, put the FPS in the p95 column prefixed with
+  `~`, and never let a sighting stand in for a verification after M15.
+
+A row whose grade is not stated is treated as a sighting.
+
 The budget is never raised to make a change pass. Correcting the *instrument* is not
 raising the budget: 16.6 ms, 180 draw calls and 900 000 triangles have never moved, and
 `tests/spine.test.ts` fails if they do.
