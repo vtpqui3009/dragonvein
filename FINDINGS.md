@@ -1460,3 +1460,176 @@ green workflow, not a loaded page, and is explicitly not counted.
   in a stat.
 
 SCORE_MACHINE: 8.6
+
+---
+
+## perf-critic — M0 Toolchain & deploy spine — run 2026-10-10 (rework cycle 4 — rasteriser cap)
+SCORE: 6.1 / 10
+
+Scored from `artifacts/perf.json` (written 2026-10-10 12:00:27Z, head `2d1ff42`),
+`artifacts/playtest.log`, `STATE.md` §Real-GPU verification log, and one independent
+reproduction of `npm run gate:perf` on this container (exit 0). Every figure below is
+cited by its key. No scoreable line is over budget; **there is no blocking defect**, so no
+5.9 cap applies.
+
+**Reproduction.** `npm run gate:perf` run fresh here, artefact-to-artefact against the
+committed one:
+
+| key | committed artefact | my re-run | delta |
+|---|---|---|---|
+| `cpuFrameMs.p50` | 0.7 ms | 0.7 ms | 0 |
+| `cpuFrameMs.p95` | 1.1 ms | 1.1 ms | 0 |
+| `gpuFrameMs.p95` | 445.084 ms | 440.694 ms | −1.0 % |
+| `heap.bytesPerFrame` | 34 080 B | 33 991 B | −0.26 % |
+| `bootMs` | 295.5 ms | 301.9 ms | +2.2 % |
+| `drawCalls` / `triangles` | 21 / 32 568 | 21 / 32 568 | 0 |
+| `bundle.gzipBytes` | 141 264 | 141 264 | 0 |
+| `sampleCount.cpuFrameMs` | 367 / 360 target | 366 / 360 target | both closed on target |
+| `rasteriserCap.verified` | true (55 threads, 0 wrong) | true (54 threads, 0 wrong) | — |
+
+The budgeted statistic reproduces exactly. `cpuFrameMs.max` is the one figure that does
+not (4.0 ms committed vs 1.9 ms re-run); it is not a budgeted key.
+
+**The rasteriser-cap claim checks out, and not only on its own word.**
+`rasteriserCap.cpus.page = [0,1]`, `rasteriserCap.cpus.rasteriser = [2,3]` — intersection
+empty. `rasteriserCap.processes` lists the page's `renderer` pinned to `[0,1]` and
+`browser` / 2×`zygote` / `gpu-process` / `utility` pinned to `[2,3]`, with
+`failed: 0` and `observedThreads == threads` on all six; `threadsVerified = 55`,
+`threadsWrong = 0`; `marlWorkers = 4`. `verifyRasteriserCap` earns `verified` only by
+re-reading `Cpus_allowed_list` from `/proc/<pid>/task/<tid>/status` after the warm-up and
+comparing per thread — a kernel fact, not a restated intention or a `taskset` exit code.
+I confirmed it through a different code path (my own `grep Cpus_allowed_list
+/proc/<pid>/task/*/status` against a live capped browser): 13/13 gpu-process threads
+including all 4 `Thread<NN>` marl workers on `2-3`, every renderer thread on `0-1`.
+`mainThreadTailEnforced = true` is therefore substantiated, and
+`sampleCount.collectionWindowMs = 153 709 ms` against a 420 000 ms deadline with 367 ≥ 360
+samples confirms the window closed on its target, not its clock.
+
+### Line by line
+
+- **P1 — 2.1 / 2.5.** *Continuous half (blocking): passes.* `cpuFrameMs.p95 = 1.1 ms` and
+  `cpuFrameMs.p50 = 0.7 ms` against `budget.cpuFrameMs = 3.5 ms`
+  (`cpuFrameMs.p95WithinBudget = true`), enforced with `mainThreadTailEnforced = true` and
+  reproducing at 1.1 ms across two runs; p95/p50 = 1.57, inside the 1.6–1.7 the capped
+  measurement predicts. `frameCostMs.p95 = 445.084 ms` is correctly recorded as advisory
+  (`softwareRenderer: true`, `frameBudgetEnforced: false`), which is what
+  `docs/PERF_BUDGET.md` §What is enforced where prescribes for this renderer class. The
+  hardware-independent half is green: `drawCalls = 21`, `triangles = 32 568`,
+  `errors: []`. No budget key was moved: `budget` reads 16.6 / 180 / 900 000 / 40 960 /
+  3.5 / 1 400 000 / 2 500. *Real-hardware half: satisfied at the weakest admissible
+  grade.* `STATE.md` §Real-GPU verification log holds one dated row — 2026-10-10, commit
+  `c429d4a` (inside M0), grade `sighting`, `~60 FPS sustained`, DRAWS 21, TRIS 32568. A
+  sighting is admissible up to M15, so this half is met; −0.4 for what it does not cover
+  (see defects).
+- **P2 — 1.8 / 1.8.** `drawCalls = 21` ≤ `budget.drawCalls = 180` (12 % of budget);
+  `triangles = 32 568` ≤ 900 000 (3.6 %). Identical in the re-run.
+- **P3 — 0 / 1.8.** No mesh-build number exists in `artifacts/perf.json` — no key for it
+  at all. `npm run gate:meshgen` prints `SKIP` because `src/assets/dragon/builder.ts` does
+  not exist. A line with no citable number scores zero; see defects for why this is scope
+  rather than regression.
+- **P4 — 1.0 / 1.5.** `heap.bytesPerFrame = 34 080` ≤ `heap.budgetBytesPerFrame = 40 960`
+  (83 % of budget), reproducing at 33 991 B (0.26 % apart), with
+  `heap.uncorrectedBytesPerFrame = 35 075` kept visible beside it. Deductions:
+  `gc.pauseMsMeasured = false` and the only bound offered, `gc.worstCpuFrameMs = 4` ms, is
+  **above** the rubric's 2 ms, so "GC pauses < 2 ms" is not established by this artefact
+  (−0.3); `heap.netGrowthKB = 1062` against `sawtoothAmplitudeKB = 1752` is 61 % of the
+  sawtooth, not "near zero", over a 153 709 ms window (−0.2).
+- **P5 — 1.2 / 1.2.** `bundle.gzipBytes = 141 264` ≤ 1 400 000 (10.1 % of budget);
+  `bootMs = 295.5` ≤ `bootBudgetMs = 2500` (11.8 %), re-run 301.9 ms.
+- **P6 — 0 / 1.2.** No Potato measurement exists: `tier.name = "medium-equivalent"`,
+  `tier.configured = false`, `tier.shadows = true`, `viewport.cssWidth/Height = 1920/1080`.
+  Nothing in `perf.json` is a 720p no-shadow no-post pass, so there is no number to cite.
+
+Sum of awarded points: 2.1 + 1.8 + 0 + 1.0 + 1.2 + 0 = **6.1 / 10**. Of the 3.9 missing,
+3.0 are lines with no subject or no pass at M0 and 0.9 are the genuine gaps above. A
+previous cycle took P3 and P6 out of the denominator instead, which on these same numbers
+would read 6.1 / 7.0 = 8.7. `docs/RUBRIC.md` authorises neither renormalisation nor an
+"n/a" grade, and inventing one is the critic's thumb on the scale, so the headline score is
+the rubric as written. Whether an M0-stage perf-critic is scored out of 10 or out of 7 is a
+rubric decision for the owner — the same class of defect as the one P1's own section
+already records and fixes — and belongs in its own commit, not in a critic's arithmetic.
+
+### Defects
+
+- **[major] P6 — no Potato-tier measurement exists, and one could be taken today.**
+  `perf.json` has exactly one pass: `viewport 1920×1080`, `tier.shadows = true`,
+  `tier.configured = false`. Unlike P3 this line has a subject already — the gate's own
+  `VIEWPORT` constant and the existing shadow toggle are all a 1280×720 / no-shadow /
+  no-post pass needs. Reproduce: `node -e "const d=require('./artifacts/perf.json');
+  console.log(d.viewport, d.tier)"` — nothing at 720p, nothing with shadows off. A 30 fps
+  budget nobody measures is not a budget.
+- **[minor] P1 — the one real-hardware row does not cover the condition the budget names.**
+  `STATE.md` §Real-GPU verification log, row 1: viewport `~1365×610` (≈ 0.83 Mpx, 40 % of
+  the 2.07 Mpx at 1080p that `viewport.drawingBufferWidth/Height = 1920/1080` measures
+  here), `tier` "auto-detected, not recorded", GPU model not recorded, and `~60 FPS` is a
+  vsync ceiling rather than a percentile. It is correctly graded `sighting` and correctly
+  caveated, so it satisfies P1's second half up to M15 — but it is evidence about a
+  smaller frame at unknown settings, and no row yet reports `frameCostMs.p95` with
+  `softwareRenderer: false`.
+- **[minor] P1/tier — every frame figure here is a floor, not a Medium measurement.**
+  `tier.postProcessing = false` with `tier.note` conceding "Medium MINUS POST, not Medium".
+  `docs/PERF_BUDGET.md` §Per-frame budget allots post-processing 3.0 ms of the 16.6 ms, so
+  18 % of the frame budget has no subject in any number in this artefact.
+- **[minor] P4 — the "< 2 ms GC pause" line is unresolved in the scored artefact.**
+  `gc.pauseMsMeasured = false`, `gc.inferredScavenges = 14`,
+  `gc.meanScavengeIntervalMs = 10 979`, and the stated bound `gc.worstCpuFrameMs = 4` ms
+  exceeds 2 ms. My re-run gave 1.9 ms, i.e. the bound straddles the rubric line and is
+  noise-sensitive. The honesty of refusing to invent a pause number is right; the
+  consequence is that the line is not demonstrated either way.
+- **[minor] P4 — `heap.netGrowthKB = 1062` (re-run 1120) is not shown to be flat.**
+  `heap.minKB = 3368`, `maxKB = 5120`, `risingSumKB = 12 571` over
+  `heap.windowMs = 153 709` — about 7 kB/s net. A 2.5-minute window cannot separate
+  one-time settling from a slow leak; a second, longer window, or the same window split in
+  halves with `netGrowthKB` reported per half, would.
+- **[minor] P2/P4 forward risk — heap churn, not draw calls, is what binds scene growth.**
+  `heap.budgetBytesPerFrame = 40 960` with `drawCalls = 21` already consuming
+  `heap.bytesPerFrame = 34 080`. `docs/PERF_BUDGET.md` §Where the current 37 kB/frame comes
+  from measures ~4 kB fixed plus ~1.8 kB per draw inside `WebGLRenderer.render`, so the 180
+  draw calls P2 permits would cost roughly 4 + 180 × 1.8 ≈ 328 kB/frame — 8× the heap
+  budget. The practical ceiling is therefore ~20 draw calls, not 180. The fix when the
+  scene grows is instancing and merging (one `InstancedMesh` per prop type, batched static
+  geometry), not a larger heap number; recording that now so a later milestone does not
+  discover it as a surprise.
+- **[minor] P1 — cap verification covers only the processes that existed when the cap was
+  applied.** `rasteriserCap.processes` is a fixed list of six, and the re-read iterates
+  that list; a browser process created after pinning would be neither pinned nor counted.
+  In practice new processes fork from an already-pinned zygote (`[2,3]`) so the page keeps
+  its half, and both runs re-read 55 and 54 threads with 0 wrong — but the artefact cannot
+  show that nothing appeared mid-window. Reproduce: compare
+  `rasteriserCap.threadsVerified` (55) with a live
+  `ls /proc/<pid>/task | wc -l` sum across the tree during a run.
+
+### What is good
+
+- **The rasteriser cap is the rare case of a measurement claim that survives being
+  attacked.** `verified` comes from re-reading `Cpus_allowed_list` per thread after warm-up,
+  not from `taskset`'s exit status, and the artefact publishes everything needed to check
+  it: the partition, all six processes with intended sets, `threadsVerified = 55`,
+  `threadsWrong = 0`, `marlWorkers = 4`. I reproduced it through an independent `/proc`
+  read and found the two cpu sets genuinely disjoint, with all four marl workers on the
+  rasteriser half. The two failed thread-count attempts are kept in
+  `rasteriserCap.threadCountCapTried` so the working mechanism does not read as the first
+  thing that was tried.
+- **The tail is now enforced without the budget moving.** `budget.cpuFrameMs = 3.5` is
+  still the 2.0 + 1.5 ms main-thread share from §Per-frame budget, and
+  `cpuFrameMs.enforcedStatistic = "p50 and p95, both against the same 3.5 ms"` — the
+  instrument changed, the number did not. `cpuFrameMs.p95` landed at 1.1 ms twice, 31 % of
+  budget, with p95/p50 = 1.57, which is the "tail is the app, not the box" property the
+  cap was built for.
+- **The window closes on its sample target, not its deadline.** 367 and 366 samples
+  against `sampleCount.target = 360` in 153.7 s and 150.3 s against a 420 s deadline —
+  precisely the failure mode the cap's doubled GPU cost threatened, pre-empted, and the
+  reason the p95 above is worth enforcing.
+- **The artefact is self-describing where it is weak.** `frameBudgetEnforced: false`,
+  `gc.pauseMsMeasured: false`, `tier.note` admitting "Medium MINUS POST", `presentIntervalMs`
+  named for what it is with `maxDeviationFromVsyncTickMs = 0.133` beside the unpaced
+  `8.133` to prove the quantisation is the compositor. A critic reading only `perf.json`
+  can tell which numbers bind and why.
+- **Everything with large headroom has it honestly**: `bundle.gzipBytes = 141 264` at 10 %
+  of budget with source maps excluded and per-file sizes listed, `bootMs = 295.5` at 12 %,
+  `drawCalls = 21` at 12 %, `triangles = 32 568` at 3.6 %, `errors: []` on both runs,
+  `context.lost = false` with a restore proven in `playtest.log`.
+- `gate:perf` exits 0 on a clean re-run, and `heap.bytesPerFrame` reproducing to 0.26 %
+  means the one frame budget this container can police honestly actually is policed.
+
+SCORE_MACHINE: 6.1
