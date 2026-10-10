@@ -38,10 +38,15 @@ say(`gate:smoke start ${new Date().toISOString()}`);
 say(`viewport ${VIEW.width}x${VIEW.height}`);
 await flush();
 
+// A missing build is a failure, not a SKIP. This gate is the only thing that produces
+// the screenshots the art-critic scores; skipping quietly meant `npm run gates` could
+// exit 0 having rendered nothing and photographed nothing. The gates chain builds first
+// (package.json), so reaching here without a build means the build did not run.
 if (!existsSync('dist/index.html')) {
-  say('gate:smoke SKIP — no build yet. Run `npm run build` first.');
+  say('gate:smoke FAIL — no build to play. Run `npm run build` first.');
+  errors.push('no dist/index.html: nothing was rendered and no screenshot was taken');
   await flush();
-  process.exit(0);
+  process.exit(1);
 }
 
 /** @type {import('playwright').Browser | null} */

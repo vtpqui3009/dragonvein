@@ -5,6 +5,25 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 
 ---
 
+## Real-GPU verification log
+
+`gate:perf` enforces every budget it can measure honestly, but the 16.6 ms frame line is
+wall-clock GPU time and this project has never once been measured on a GPU: the build
+container and the CI runner both fall back to SwiftShader, a CPU rasteriser, where this
+scene's GPU timer reports ~135 ms per frame for 20 draw calls.
+`docs/PERF_BUDGET.md` §Real-GPU verification says that verification is a human step and
+that its record lives here. This is that record.
+
+| UTC date | commit | machine / GPU | viewport | tier | `frameCostMs.p95` | verdict |
+|---|---|---|---|---|---|---|
+| — | — | **never performed** | — | — | — | — |
+
+The procedure is four steps in `docs/PERF_BUDGET.md` §Real-GPU verification. Until a row
+appears here, rubric line `P1` has no passing evidence anywhere in this repository, and no
+run should claim otherwise.
+
+---
+
 ## 2026-10-09 — run 1 — M0 toolchain & deploy spine (IN_PROGRESS)
 
 **Milestone**: M0 — lowest-numbered milestone not `DONE`. Nothing else is touched this run.
@@ -97,5 +116,3 @@ removes the dependency on proxy-injected credentials.
 the placeholder island.
 
 **Scores**: not applicable — no milestone claimed.
-- run started 2026-10-09T14:13:39Z
-- run started 2026-10-10T02:12:55Z

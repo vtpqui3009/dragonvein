@@ -83,6 +83,25 @@ const BUDGET = {
    * scene grew is not allowed; the way to pay for a bigger scene is fewer draw calls.
    */
   heapBytesPerFrame: 40_960,
+  /**
+   * Main-thread wall time per frame, in ms. The hardware-independent half of the 16.6 ms
+   * line, and the half this container can police honestly.
+   *
+   * Derived, not invented: docs/PERF_BUDGET.md §Per-frame budget assigns 2.0 ms to
+   * sim + logic and 1.5 ms to scene update + culling. Those two stages are the main
+   * thread's share of a frame; GPU opaque + shadows, post and headroom are the other
+   * 13.1 ms and are not main-thread work. So 3.5 ms, and it moves only if that table
+   * moves.
+   *
+   * Why this is enforced where `frameCostMs` is not: `cpuFrameMs` is wall time around
+   * the render call on the main thread, and SwiftShader's rasterisation does not land
+   * there — measured on this scene, cpu p95 = 1.6 ms while the GPU timer reports 135 ms.
+   * A main-thread regression (a per-frame allocation storm, a matrix rebuild, a sync
+   * readback) therefore shows up in this number on a software rasteriser exactly as it
+   * would on an iGPU. Before this budget existed, nothing in a GPU-less container
+   * policed frame cost at all.
+   */
+  cpuFrameMs: 3.5,
   /** CLAUDE.md §2.6, assets excluded. Source maps are not shipped and do not count. */
   bundleGzipBytes: 1_400_000,
   /** docs/PERF_BUDGET.md §Other budgets. */
@@ -112,10 +131,19 @@ await writeReport({
   errors: [],
 });
 
+// A missing build is a failure, not a SKIP. `npm run gates` used to exit 0 with this gate
+// and gate:smoke both skipping, which meant the one command CLAUDE.md §2.5 says must pass
+// before a commit could pass having measured no frame and taken no screenshot. The gates
+// chain now builds first (package.json), so reaching here without a build means the build
+// did not happen, and that is exactly what the gate should go red for.
 if (!existsSync('dist/index.html')) {
-  await writeReport({ status: 'skipped', note: 'no dist/index.html — run `npm run build` first.', errors: [] });
-  console.log('gate:perf SKIP — no build yet. Run `npm run build` first.');
-  process.exit(0);
+  await writeReport({
+    status: 'failed',
+    note: 'no dist/index.html — nothing was measured. Run `npm run build` first.',
+    errors: ['no dist/index.html: the gate had nothing to measure'],
+  });
+  console.error('gate:perf FAIL — no build to measure. Run `npm run build` first.');
+  process.exit(1);
 }
 
 /**
@@ -356,7 +384,18 @@ try {
       budgetMs: BUDGET.frameMs,
       withinBudget: frameCostP95 <= BUDGET.frameMs,
     },
-    cpuFrameMs: cpu,
+    cpuFrameMs: cpu === null ? null : {
+      ...cpu,
+      budgetMs: BUDGET.cpuFrameMs,
+      withinBudget: cpu.p95 <= BUDGET.cpuFrameMs,
+      enforced: true,
+      note: 'Main-thread wall time around the render call. The hardware-independent ' +
+        'half of the 16.6 ms line, so this one IS enforced on the software rasteriser: ' +
+        'SwiftShader rasterises off this thread (cpu p95 here vs the GPU timer figure ' +
+        'below), so a main-thread regression shows up in this number whatever renders ' +
+        'the pixels. Budget derived from docs/PERF_BUDGET.md §Per-frame budget: ' +
+        'sim + logic 2.0 ms + scene update/culling 1.5 ms.',
+    },
     gpuFrameMs: gpu,
     gpuTimer: {
       available: paced.probe.gpuFrameMs !== null,
@@ -462,6 +501,17 @@ try {
   if (report.bootMs > BUDGET.bootMs) {
     fail.push(`boot to first frame ${report.bootMs} ms > ${BUDGET.bootMs} ms`);
   }
+  // The main-thread half of the frame budget, enforced everywhere. SwiftShader does not
+  // rasterise on this thread, so this figure is comparable between a software rasteriser
+  // and an iGPU in a way `frameCostMs` is not. Without it, a GPU-less container policed
+  // no part of frame cost at all.
+  if (cpu !== null && cpu.p95 > BUDGET.cpuFrameMs) {
+    fail.push(
+      `main-thread frame cost p95 ${cpu.p95} ms > ${BUDGET.cpuFrameMs} ms ` +
+      `(docs/PERF_BUDGET.md §Per-frame budget gives the main thread 2.0 + 1.5 ms) ` +
+      '— the regression is on the CPU side, not in the rasteriser',
+    );
+  }
   // Cost, not cadence. A vsync-locked frame now reports what it cost and is not failed by
   // a rounding artefact.
   if (report.frameBudgetEnforced && frameCostP95 > BUDGET.frameMs) {
@@ -476,7 +526,7 @@ try {
     `(drawing buffer ${report.viewport.drawingBufferWidth}x${report.viewport.drawingBufferHeight}), ` +
     `tier: ${report.tier.name}`);
   console.log(`cpu frame cost p50=${cpu?.p50 ?? 'n/a'}ms p95=${cpu?.p95 ?? 'n/a'}ms ` +
-    `over ${report.sampleCount.cpuFrameMs} samples`);
+    `vs budget ${BUDGET.cpuFrameMs}ms (enforced) over ${report.sampleCount.cpuFrameMs} samples`);
   console.log(gpu
     ? `gpu frame cost p50=${gpu.p50}ms p95=${gpu.p95}ms over ${report.sampleCount.gpuFrameMs} samples`
     : `gpu frame cost: not measured — ${report.gpuTimer.unavailableReason}`);

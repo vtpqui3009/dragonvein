@@ -52,14 +52,52 @@ is one everybody learns to ignore.
 So `gate:perf` splits its budgets:
 
 - **Enforced everywhere** (hardware-independent): draw calls ≤ 180, triangles ≤ 900 000,
-  heap churn (see §Heap churn), zero page errors. These are what regress when somebody
-  forgets to instance a prop, ships an unculled LOD0, or allocates in the frame loop.
+  heap churn (see §Heap churn), `cpuFrameMs.p95` ≤ 3.5 ms (see below), zero page errors.
+  These are what regress when somebody forgets to instance a prop, ships an unculled
+  LOD0, or allocates in the frame loop.
 - **Enforced only on real GPUs**: `frameCostMs.p95` ≤ 16.6 ms. On a software rasteriser it
   is recorded in `artifacts/perf.json` as advisory, with `softwareRenderer: true` and
   `frameBudgetEnforced: false`, so the perf-critic can see it was measured but not binding.
 
-The frame budget still has to be verified on real hardware before a release. That is a
-human step, and `STATE.md` records when it was last done.
+### The main-thread half, 3.5 ms, enforced everywhere
+
+`frameCostMs` is `max(cpu p95, gpu p95)`, and on a software rasteriser the GPU term
+dominates by two orders of magnitude, so gating it on real hardware left a GPU-less
+container policing **no part of frame cost at all**. The CPU term does not have that
+problem: SwiftShader rasterises off the main thread, measured on the M0 scene as
+`cpuFrameMs.p95 = 1.6 ms` beside `gpuFrameMs.p95 = 135 ms`. A main-thread regression — a
+per-frame allocation storm, a matrix rebuild, a sync `readPixels` — therefore shows up in
+`cpuFrameMs` on SwiftShader exactly as it would on an iGPU.
+
+So `cpuFrameMs.p95` ≤ **3.5 ms** is enforced unconditionally. The number is read off the
+§Per-frame budget table above, not chosen: sim + logic 2.0 ms plus scene update + culling
+1.5 ms is the main thread's share of a frame; GPU opaque + shadows, post-processing and
+headroom are the other 13.1 ms and are not main-thread work. It moves only if that table
+moves. `tests/spine.test.ts` fails if the comparison is made conditional again.
+
+This does **not** stand in for the 16.6 ms line, and nothing here should be read as having
+verified it. Being inside 3.5 ms of CPU says a frame is not CPU-bound; it says nothing
+about whether the GPU can draw it in time.
+
+### Real-GPU verification — a human step, and its record
+
+Nothing a GPU-less container measures can close `P1`. The frame budget is verified on real
+hardware by a human, and the record of that lives in `STATE.md` under
+**Real-GPU verification log**, one row per verification: UTC date, commit, machine and
+GPU, viewport, tier, and the `frameCostMs.p95` observed.
+
+The procedure, so the row means the same thing every time:
+
+1. Check out the commit under test on a machine with a real GPU.
+2. `npm ci && npm run build && npm run gate:perf`
+3. Confirm `artifacts/perf.json` reports `softwareRenderer: false` and
+   `frameBudgetEnforced: true` — otherwise the run measured SwiftShader again and the row
+   is worthless.
+4. Copy `renderer`, `viewport`, `tier.name` and `frameCostMs.p95` into the row.
+
+An empty log is the honest state until someone runs step 2 on a GPU. It is not a
+formality: `docs/ROADMAP.md` M16 is the milestone that has to pass this on Potato through
+Ultra, and every row before then is evidence that the budget is still reachable.
 
 The budget is never raised to make a change pass. Correcting the *instrument* is not
 raising the budget: 16.6 ms, 180 draw calls and 900 000 triangles have never moved, and

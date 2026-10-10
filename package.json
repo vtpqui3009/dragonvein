@@ -10,7 +10,7 @@
     "build:pages": "npm run build && node tools/strip-sourcemaps.mjs",
     "preview": "vite preview --port 4173",
 
-    "gates": "npm run typecheck && npm run lint && npm run test && npm run check:layers && npm run check:determinism && npm run check:assets && npm run gate:parity && npm run gate:meshgen && npm run gate:perf && npm run gate:smoke",
+    "gates": "npm run build && npm run lint && npm run test && npm run check:layers && npm run check:determinism && npm run check:assets && npm run gate:parity && npm run gate:meshgen && npm run gate:perf && npm run gate:smoke",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tools tests --max-warnings 0",
     "test": "vitest run",

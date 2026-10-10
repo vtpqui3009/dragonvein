@@ -149,6 +149,35 @@ describe('budgets are not quietly relaxed', () => {
     expect(gate).toMatch(/triangles:\s*900_?000\b/);
   });
 
+  it('polices the main-thread half of the frame budget with no hardware escape', () => {
+    // `frameCostMs` is only enforced where a real GPU exists, so in a SwiftShader
+    // container nothing policed frame cost at all. `cpuFrameMs` is main-thread wall
+    // time, which SwiftShader does not inflate, so it is enforced unconditionally.
+    // 3.5 ms is docs/PERF_BUDGET.md §Per-frame budget's main-thread share (2.0 + 1.5).
+    const gate = read('tools/gate-perf.mjs');
+    expect(gate).toMatch(/cpuFrameMs:\s*3\.5\b/);
+    // Unconditional: no `frameBudgetEnforced` or `software` guard on this comparison.
+    const check = /if \(cpu !== null && cpu\.p95 > BUDGET\.cpuFrameMs\) \{/;
+    expect(gate).toMatch(check);
+  });
+
+  it('never lets the gates chain pass without a build to measure', () => {
+    // `npm run gates` used to exit 0 with gate:perf and gate:smoke both printing SKIP
+    // because dist/ was absent — the one command CLAUDE.md §2.5 requires before a commit,
+    // passing having measured no frame and taken no screenshot.
+    const pkg: { scripts: Record<string, string> } = JSON.parse(read('package.json'));
+    const gates = pkg.scripts['gates'] ?? '';
+    expect(gates).toMatch(/^npm run build\b/);
+    expect(gates.indexOf('gate:perf')).toBeGreaterThan(gates.indexOf('npm run build'));
+    expect(gates.indexOf('gate:smoke')).toBeGreaterThan(gates.indexOf('npm run build'));
+    // `npm run build` runs `tsc --noEmit` itself, so CLAUDE.md §2.5's typecheck is still
+    // in the chain rather than dropped along with the standalone script.
+    expect(pkg.scripts['build']).toContain('tsc --noEmit');
+    // And both gates must go red, not green, when there is nothing to measure.
+    expect(read('tools/gate-perf.mjs')).not.toMatch(/gate:perf SKIP — no build/);
+    expect(read('tools/playtest.mjs')).not.toMatch(/gate:smoke SKIP — no build/);
+  });
+
   it('gate:perf budgets frame cost, never presented-frame cadence', () => {
     // The old instrument compared `report.frames.p95` — a cadence quantised to the vsync
     // tick — against 16.6 ms, so a frame presented on every vsync reported 16.667 ms and
