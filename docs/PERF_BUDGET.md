@@ -266,13 +266,58 @@ So **the way to pay for a bigger scene is fewer draw calls, not a bigger heap bu
 Raising this number because the scene grew is the thing CLAUDE.md §2.7 forbids. The
 draw-call budget and the heap budget now push in the same direction, which is the point.
 
+### The real draw-call ceiling is ~20, not the 180 P2 permits
+
+Read the table above as a cost model and it says something the draw-call budget alone does
+not: **heap churn, not the draw-call budget, is what actually binds scene growth.**
+
+Fitting ~4 kB fixed plus ~1.8 kB per draw to those measurements, against the 40 960 B/frame
+budget:
+
+| draw calls | predicted B/frame | vs 40 960 budget |
+|---|---|---|
+| 20 (M0 today, measured 33 674–34 080) | ~40 000 | at the line |
+| 40 | ~76 000 | 1.9× over |
+| 180 (what `gate:perf` permits via P2) | ~328 000 | **8× over** |
+
+M0 already spends 34 080 of 40 960 B/frame on 21 draws. So a future milestone that adds
+props "within the 180 draw-call budget" will trip the heap gate long before it trips P2 —
+at roughly the 20th draw call, not the 180th. The two budgets are not independent, and the
+looser-looking one is not the binding one.
+
+What this means for every milestone after M0, in order of preference:
+
+1. **Instance and batch so the draw count barely moves.** `InstancedMesh` per prop type is
+   already the rule in §Techniques that are not optional; this is the number that makes it
+   non-negotiable rather than stylistic. M0 got from 28 draws to 21 by merging the island
+   body, folding stones into the scatter mesh and the flock into the distant-tree mesh —
+   that is the move, repeated.
+2. **Attack the fixed cost inside `three`.** A measurable slice of the per-draw figure is
+   `WebGLPrograms.getParameters`, called twice per frame because one pooled depth material
+   is shared between instanced and non-instanced shadow casters and the `instancing` flag
+   flips between them. Splitting that pool is a real saving that costs no visual quality.
+3. **Never raise the 40 960.** If churn goes red because the scene grew, that is the budget
+   doing its job. CLAUDE.md §2.7.
+
+If a milestone genuinely cannot fit, the thing to change is the renderer's per-draw
+allocation or the scene's draw count — and the finding belongs in `docs/DECISIONS.md`, not
+in this number.
+
 ### GC pauses
 
-The rubric asks for GC pauses under 2 ms. The web platform exposes no GC pause timing —
-no `PerformanceEntry` for a scavenge, no duration from CDP — so `perf.json` says so
-(`gc.pauseMsMeasured: false`) instead of inventing a number, and records what can be
-known: scavenges inferred from falls in the heap series, their mean interval, and
-`gc.worstCpuFrameMs`, which bounds any pause, since a pause has to land inside a frame.
+`docs/RUBRIC.md` P4 used to ask for GC pauses under 2 ms, and the web platform exposes no
+GC pause timing at all — no `PerformanceEntry` for a scavenge, no duration from CDP. A
+rubric line with no instrument behind it is unscoreable, so the perf-critic deducted for it
+every cycle and no build could ever recover the points. The owner re-worded P4 to
+"no frame-loop allocation; heap churn within the per-frame byte budget" — the figure
+§Heap churn above already measures — on 2026-10-10.
+
+So the budget is churn, and this section records what is still worth knowing about GC
+without pretending to time it. `perf.json` reports `gc.pauseMsMeasured: false` rather than
+inventing a number, plus what can be known: scavenges inferred from falls in the heap
+series, their mean interval, and `gc.worstCpuFrameMs`, which bounds any pause from above,
+since a pause has to land inside some frame. That bound is the honest statement available:
+on M0 it reads 1.9–4.0 ms, which brackets rather than confirms a 2 ms pause.
 
 ## Other budgets
 
