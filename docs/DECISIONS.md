@@ -64,3 +64,30 @@ one alone silently ships the maps again.
 
 No runtime dependency was added, so there is no bundle cost to record under CLAUDE.md §2.6:
 gzip of `dist` excluding maps is unchanged at 136.82 kB, 9.8 % of the 1.4 MB budget.
+
+## 2026-10-10 — Critics on Sonnet, builders on Opus, one run a day
+
+Three consecutive runs hit the usage limit mid-flight and none closed a milestone. Measured
+cost: $20, $41 and $23, roughly 191k, 413k and 222k output tokens, all on Opus. The account
+then moved from a five-hour limit to a seven-day one, which turns an overspend from an
+afternoon's delay into several days'.
+
+Two changes, neither of which lowers a standard:
+
+- **The three critics are pinned to Sonnet** in their agent frontmatter. A critic reads
+  artefacts and scores them against a rubric that is already written down; the answer has a
+  fixed shape and the evidence is supplied. That is not the work Opus is for. Builders stay
+  on Opus because design and implementation are open-ended. If critic quality visibly drops
+  — defects without pointers, scores that do not track the artefacts — raise it here with
+  the evidence rather than quietly reverting.
+- **The routine drops from twice a day to once.** Two runs a day shared one five-hour
+  window, so both died partway and neither closed anything. One run with the whole window
+  is strictly better than two halves.
+
+Rejected: running a second Claude account so work continues when the first is exhausted.
+That is circumventing the usage limit rather than fitting inside it, whoever pays for the
+second subscription.
+
+Not evaluated here: Max or API billing. Both are legitimate and both would remove the
+ceiling, but they are the owner's spending decision, not a technical one, and this project
+should be cheap to run before it is given a larger budget.

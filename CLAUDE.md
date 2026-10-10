@@ -105,6 +105,27 @@ Each scheduled run executes exactly this:
 - A critic never edits code.
 - Any single `blocking` defect caps that critic's score at 5.9, whatever else scored well.
 
+## 4b. Run cost is a budget too
+
+The owner is on a Claude Pro plan. Three consecutive runs died mid-flight on the usage
+limit, having spent roughly $84 between them without closing a single milestone, so a run
+that burns the allowance without landing work costs the project days, not minutes.
+
+1. **Critics run on Sonnet. Builders run on Opus.** A critic reads artefacts and scores
+   them against a written rubric — a well-specified task with a fixed answer shape. Design
+   and implementation are not. The model is pinned in each agent's frontmatter; do not
+   raise a critic to Opus to get a more agreeable score.
+2. **Push after each coherent change, never batch to the end of a run.** A limit that
+   lands mid-run must cost the last fix, not the whole run.
+3. **Stopping early with a clean handover beats a half-landed pass.** If the remaining
+   budget cannot finish the current piece, push what is green, write the exact next step
+   into `STATE.md`, and stop. The next run starts from a known place instead of guessing.
+4. **A milestone too big for one run is a roadmap defect.** Say so in `STATE.md` and
+   propose the split rather than burning two runs discovering it again.
+
+Spending less is not the same as doing less. None of this licenses a shallower gate, a
+skipped critic, or a score nobody earned.
+
 ## 5. Usage limits
 
 If a run hits a usage or rate limit:
