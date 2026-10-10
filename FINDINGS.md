@@ -1805,3 +1805,160 @@ touch device has to show — the overlay — does not fit either phone viewport 
   the birds are pixel-identical, so there is no swim or pop to find at this milestone.
 
 SCORE_MACHINE: 8.2
+
+## art-critic — M0 Toolchain & deploy spine — run 2026-10-10 (rework cycle 4 — frozen-tree scoring)
+
+SCORE: 6.1 / 10
+
+Scored from the frozen artefacts only: `artifacts/shots/*.png`,
+`artifacts/turntables/m0-island.webm`, `docs/concept/03-island-scene.png`,
+`docs/ART_BIBLE.md`. No build, gate or render was run. Derived crops, masks and
+difference maps live outside the repo under
+`/tmp/claude-0/-home-user-dragonvein/9b28d13f-8544-59ef-b806-2437c683a7b1/scratchpad/art/`.
+
+### Per-line breakdown
+
+| # | line | awarded | measurement |
+|---|---|---|---|
+| A1 | Silhouette at 25% | **0.95** / 1.2 | `02-silhouette.png` is 320×180 (exactly 25%). The disc + conical keel + serrated conifer crown reads unmistakably as a floating island, and all nine islands separate cleanly from the sky. Deductions: the hero canopy interior merges into one undifferentiated green mass and every piece of dressing (rocks, bushes, tufts, path) is gone at 25% — only the white crystals survive as flecks; and there is no edge antialiasing, so every tree apex stair-steps (`01-wide.png` x 719–724, y 311–330, magnified in `speckle.png`). |
+| A2 | Palette within ΔE 12 | **0.70** / 1.0 | On-bible: sky zenith `01-wide.png` (20,0) = `#0a1c4f`, **ΔE 0.0**; horizon peak (x 20–40, y 183) = `#ff9044`, **ΔE 0.0**; dominant canopy `#408535` vs `foliage mid #3f8a33` **ΔE 4.2**; dark canopy `#143818` vs `foliage dark #1e4a21` **ΔE 9.6**; island underside `#2f2b34` vs `deep shadow #1a1420` **ΔE 11.4**; HUD panel `#0a2235` matches `UI surface rgba(11,36,48,0.82)`. Off-bible, measured: the lower-atmosphere haze band (rows ≈470–620, full width) runs `#a47860`→`#ad826a`, nearest bible entry **ΔE 25.9–28.6**, and is ≈20% of the frame; sunlit canopy tips `#a9cd6a` vs `foliage light #8fd24a` **ΔE 20.1** (yellowed and desaturated); crystals `#b9dce4` vs `water #a6f1f2` **ΔE 13.8**. |
+| A3 | Key, fill, **contact shadow** | **0.40** / 1.2 | Key and fill are real and roughly at bible strength: island grass top L=0.201 vs underside L=0.030 → fill ≈ 15% of key (bible asks ~20%), and the fill is cool — hero keel left meridian `01-wide.png` (565,545) `#212433` (B>R) against the right meridian (640,545) `#493937` (R>B). **But the scene is shadowless, which is A3's stated fail condition and the bible's one mandatory item.** See defects. Warm rim absent too: the canopy top edge sampled across x 420–870 averages `#729a47` against `#72a44e` 6 px inside — the edge is darker and no warmer. |
+| A4 | **Variant sheets show real variation** | **0.50** / 1.6 | `ls artifacts/variants` → *No such file or directory*. There is no sheet and no seeds at M0. I did **not** raise a blocking defect for the absence (reasoning below), and instead scored the line's actual intent against the repeat set that *is* in the frame — nine islands and ~60 trees. Both are a single prefab varied only by scale and rotation. Measured: nine cleanly isolated back-row tree apexes in `01-wide.png` give a cone half-angle of 14.6–22.8° at 25 px below the apex, and three are identical to the pixel (half-width 6.5 px → 14.6°). Credit awarded for the scale/rotation jitter and the two foliage tones, which stop the canopy reading as a stamped grid. |
+| A5 | Nothing pops/teleports/interpenetrates | **0.90** / 1.2 | 182 frames extracted from `m0-island.webm` and differenced pairwise. With the hero island (x 400–880, y 240–520) and the HUD masked, only 2 of 170 transitions change >50 px: f128→f129 (3789 px) and f129→f130 (2584 px). All other change is confined to the island bbox (f127→f131 change region is exactly x 421–856, y 246–498). Nothing appears, disappears or culls. `03-late.png` (≥8 s) and `04-context-restored.png` have the identical satellite layout to `01-wide.png`. Deduction for the single-frame hitch and the scatter interpenetration below. **No blocking defect.** |
+| A6 | Density — a lived-in place | **0.60** / 1.4 | Hero island passes the bible's "never bare between features" — conifers, two bush sizes, boulders, pebbles, grass tufts, crystal clusters and a laid stone path. Everything else fails it: all eight satellite islands are bare discs, the lower ~40% of the frame is empty haze, and the only two sky elements never move in 7.28 s. See defects. |
+| A7 | HUD ≥ 4.5:1 at 1280×720 | **0.85** / 1.0 | `01-wide.png` panel x 16–530 / y 14–52 on a native 1280×720 frame. Panel `#0a2235`; gold labels `#f8dda0` → **12.21:1**; white values `#edf6fc` → **14.73:1**. Even composited over the horizon band `#ff9044` at the panel's 0.82 alpha the gold would hold ≈8.7:1. Deduction only for the boot splash, below. |
+| A8 | No z-fighting, seams, magenta | **0.80** / 0.8 | Magenta: `(r>180 & b>180 & g<100)` returns **0 px** in all five shots. Z-fighting: during the long static stretches consecutive turntable frames are bit-identical (mean luma delta **0.000** at f062–f065, f170–f172, f174–f176), so no depth flicker; the stipple at `01-wide.png` x 719–724, y 311–330 is 1-px edge aliasing, not interleaved coplanar fragments — a 3×3-median test over the island returns 3378–3467 anomalous pixels per shot and they all lie on geometry edges (`stipple.png`). Seams: the cap/rim/keel junctions read clean at 8× (`c_island_rim.png`). **No blocking defect.** |
+| A9 | Matches concept intent | **0.45** / 0.6 | `docs/concept/03-island-scene.png` is the matching reference. Intent is hit: grass-capped floating island, conical keel, conifer scatter, boulders, white crystal shards, companion islands at different depths — and the hero island is markedly denser than the concept, which is a gain. Misses: the concept's rim is irregular and organic and its keel is smoothly rounded, where the build's is a perfect circle on a hard faceted cone; the concept shows cast shadows (dragon on grass, trees on grass) and crystals that emit onto the ground, and the build has neither; the concept also carries rounded broadleaf trees alongside the cones. The absent dragon is correct at M0 and is not counted against this line. |
+
+**Total: 0.95 + 0.70 + 0.40 + 0.50 + 0.90 + 0.60 + 0.85 + 0.80 + 0.45 = 6.15 → SCORE 6.1 / 10** (not rounded up).
+
+### How A4 was treated, and what the rubric forces
+
+A4's blocking condition is *"8 seeds read as one object"*. At M0 there are no seeds, no
+generator and no sheet — `artifacts/variants/` does not exist. Three readings are possible
+and they give three different numbers, so I am showing all three rather than picking one
+quietly:
+
+1. **Literal.** A4 cannot be passed because its artefact cannot exist, so it blocks →
+   **capped at 5.9**.
+2. **Line removed as unscoreable.** The remaining eight lines total 8.4; I awarded 5.65 →
+   **6.73 / 10** normalised.
+3. **Scored on the repeat set actually present in the frame** (what I did) → **6.1 / 10**.
+
+I chose (3). Reading (1) is the same instrument defect the rubric already diagnosed and
+fixed for P1: a blocking line that nothing at this milestone can satisfy stops the score
+carrying information. Reading (2) throws away the heaviest line in the table on a frame
+that *does* contain a 200×-repeated asset, which is precisely what the line's own note
+("a beautiful single asset repeated 200 times is still a dead world") exists to catch.
+**Recommendation for the rubric owner, not a change I am making:** word A4 the way P1 is
+worded — blocking only when a variant sheet exists and fails, and otherwise scored on the
+largest repeated set in the frame. That keeps the line honest at M0 without inventing a
+pass.
+
+### Defects
+
+- [major] **A3 — the scene has no contact shadows anywhere.** `docs/ART_BIBLE.md`: *"Contact
+  shadows are mandatory. An object without one floats, and floating reads as broken."*
+  `01-wide.png` bottom-left satellite island, x 185–295 / y 575–615: 3369 grass pixels, 69%
+  of them within ±1 of `#7ba042`, with zero darkening at the base of any of the six cones
+  or eight pebbles. `03-late.png` x 560–760 / y 400–500 (`clearing.png`): flat `#468635`
+  green under every boulder, crystal and tuft, including the large boulder at ≈(700,470).
+  Main-island grass sampled over x 420–860 / y 430–510 is unimodal at `#43–48,86,34–35`.
+  This also falsifies `STATE.md` AC8's "one sun with a visible contact shadow". The
+  reference image `docs/concept/03-island-scene.png` shows the shadows the build is
+  missing.
+- [major] **A3 — no warm rim.** Canopy top-edge pixels across x 420–870 of `01-wide.png`
+  average `#729a47`; 6 px inside the silhouette they average `#72a44e`. The edge is darker
+  and marginally cooler, so the bible's third light is simply not in the rig.
+- [major] **A4/A6 — every one of the nine islands is the same prefab.** Crops of all nine
+  side by side: `sats.png`, boxes `(575,20,680,95) (155,125,280,220) (880,90,980,150)
+  (980,165,1090,250) (60,260,205,355) (1090,260,1225,360) (165,550,310,630)
+  (375,610,495,685) (995,575,1155,660)` of `01-wide.png`. Perfect circular disc of constant
+  thickness, identical inverted-cone keel half-angle, 4–7 single cones, a handful of
+  pebbles. No cliff, overhang, arch, water, structure, or colour difference between any
+  two. Scale and rotation are the only axes of variation in the whole sky.
+- [major] **A4 — one tree archetype in the whole frame.** `01-wide.png` x 430–870 /
+  y 245–400 (`trees_back_L.png`, `trees_back_R.png`): every tree is the same two-tier cone —
+  pale upper cone over a darker flared lower cone, same 5–6-gon cross-section. Nine
+  isolated apexes measure a half-angle of 14.6–22.8° at 25 px below the apex and three are
+  bit-identical at 14.6°. The satellite islands drop even the second tier and use a bare
+  single cone. No broadleaf, no snag, no dead tree, no shrub-tree.
+- [major] **A6 — the eight satellite islands are bare between features.**
+  `01-wide.png` x 165–310 / y 550–630 (`satBL_top.png`) is the clearest: six cones and eight
+  pebbles scattered on a single-valued green disc, with no ground cover, no tufts, no
+  rocks, no path, no colour break. Same for the other seven. The bible's §Density rule is
+  met on the hero island and nowhere else.
+- [major] **A6 — the world has no ambient motion.** Tracking the green-mask centroid of the
+  bottom-right satellite island across all 182 frames of `m0-island.webm` gives
+  (cx 1072.71, cy 622.51) ±0.03 px for the entire 7.28 s. The two dark slivers in the sky at
+  `01-wide.png` (139,131) and (246,100) — presumably birds — are pixel-frozen for the whole
+  clip. Nothing in the frame moves except the hero island's own spin: no drift, no bob, no
+  parallax, no cloud, no particle. A still place is not a lived-in one.
+- [minor] **A6 — the lower 40% of the frame is empty.** Rows ≈440–720 of `01-wide.png`
+  contain nothing but the haze gradient and two satellite islands; rows 0–240 contain three
+  satellites and the two frozen slivers. There is one sign of inhabitance in the entire
+  image — the stone path at `00-boot.png` x 740–880 / y 400–500 — and it leads nowhere: no
+  structure, no fence, no clearing, no light source, no creature.
+- [minor] **A2 — the lower-atmosphere haze is off-bible.** Rows 470–620 of `01-wide.png`
+  measure `#a47860`–`#ad826a`, minimum ΔE **25.9–28.6** to any entry in the palette table,
+  over roughly a fifth of the frame. It reads as a grey-pink wash that dulls the golden
+  hour. The bottom of the gradient recovers (`#1f1722` at y 700 → ΔE 2.1 from
+  `deep shadow`), so it is the mid-band that is wrong.
+- [minor] **A3 — the fill does not reach the forest floor.** 1.08% of the hero island in
+  `01-wide.png` (1341 px, mask in `voids.png`) crushes below `#0a0a0a`; sampled key:fill in
+  the forest interior is ~70:1 against the bible's ~5:1. The wedges between trunks read as
+  holes in the mesh rather than shade.
+- [minor] **A5 — one-frame whole-scene hitch at t ≈ 5.16 s.** `m0-island.webm` frame 129:
+  the bottom-right satellite centroid jumps from (1072.71, 622.51) to (1073.70, 623.54) and
+  its area drops 8068 → 7824 px, recovering exactly at frame 130. All eight satellites move
+  together, so this is the camera, not an object. ~1.4 px, sub-perceptual — recorded for
+  completeness, not a pop. Reproduce: `ffmpeg -i artifacts/turntables/m0-island.webm
+  -vsync 0 /tmp/f%04d.png` then diff f128/f129/f130.
+- [minor] **A5 — scatter interpenetration.** `03-late.png` x 560–760 / y 400–500: the
+  crystal at ≈(600,430) and the grass tufts at ≈(640,470) pass through one another, and
+  several tufts pass through boulders. `01-wide.png` x 440–560 / y 395–460: a crystal shard
+  passes through a tree trunk. Typical of ungated scatter placement; cheap to fix with a
+  radius test.
+- [minor] **A7 — the boot splash title is unreadable over the canopy.** `m0-island.webm`
+  frames ≈13–60 (t 0.5–2.4 s): near-white "DRAGONVEIN" is drawn directly over the sunlit
+  trees; glyph pixels sample `#bfdbd7` against pale canopy facets at roughly **1.4–1.8:1**,
+  and the Vietnamese subtitle beneath it is illegible. The persistent HUD is fine; this is
+  the splash. Reproduce: `ffmpeg -i artifacts/turntables/m0-island.webm -vf
+  "select=eq(n\,29)" -vframes 1 /tmp/f30.png`, then crop x 380–900, y 300–400.
+- [minor] **A1 — no edge antialiasing.** Every tree apex stair-steps at native resolution;
+  `01-wide.png` x 700–760 / y 290–340 magnified 16× (`speckle.png`) shows single-pixel
+  terracing on an otherwise flat facet. Not z-fighting (verified: consecutive static
+  turntable frames are bit-identical), but it costs the silhouette read the bible asks for.
+- [minor] **A5/A6 — the turntable renders at ~6 fps and judders.** The hero island updates
+  in discrete steps roughly every 4 frames of the 25 fps capture (step frames 61, 68, 72,
+  76, 79, 83, 87, 91, 96, 99, 103, 107, 110, 113, 117, 121, 125, 130, 133, 137, 141, 145,
+  149, 153, 157, 161, 165, 169, 173, 177, 181), matching the HUD's `FPS 6`–`FPS 9`. That is
+  the perf-critic's number, not mine, but it makes `m0-island.webm` a weak instrument for
+  A5: the clip cannot demonstrate smooth motion, only a sequence of still poses. I did not
+  block on it.
+
+### What is good
+
+- **The sky is exactly right and should not be touched.** Zenith measures `#0a1c4f` and the
+  horizon peak measures `#ff9044` — ΔE 0.0 against the bible on both. Very little in this
+  project will ever be that precise; whatever produced it is the reference implementation
+  for every other palette decision.
+- **The hero island is genuinely dressed, not propped.** `00-boot.png` x 740–880 / y 400–500
+  shows conifers, two sizes of bush, boulders, pebbles, grass tufts, crystal clusters and a
+  laid stone path all sharing one small patch of ground. That is the bible's §Density rule
+  satisfied. The fix for A6 is to apply this same dressing pass to the satellites, not to
+  invent anything new.
+- **The HUD is a model of the line.** 12.21:1 and 14.73:1 at 1280×720, on a panel whose
+  colour matches `UI surface` and whose accent matches `UI accent`, with the numbers that
+  matter (fps, draws, tris) legible at a glance and no scene colour bleeding through.
+- **Key and fill are real and correctly balanced.** 15% fill against key, cool on the
+  shadow side (`#212433`) and warm on the lit side (`#493937`). Only the shadow pass and the
+  rim are missing — the rig underneath them is sound.
+- **Nothing is broken at the render level.** Zero magenta in five shots, zero depth flicker
+  across 182 frames, clean cap/rim/keel junctions at 8×, and a scene that survives an
+  eight-second wait and a context loss with the same geometry in the same place.
+- **The concept's intent survived the translation.** Floating island, conical keel, conifer
+  scatter, boulders and white crystal shards are all recognisably the same world as
+  `docs/concept/03-island-scene.png`, and the hero island beats the concept on density.
+
+SCORE_MACHINE: 6.1
