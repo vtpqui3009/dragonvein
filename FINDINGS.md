@@ -1633,3 +1633,175 @@ already records and fixes — and belongs in its own commit, not in a critic's a
   means the one frame budget this container can police honestly actually is policed.
 
 SCORE_MACHINE: 6.1
+
+## gameplay-critic — M0 Toolchain & deploy spine — run 2026-10-10 (rework cycle 4 — frozen-tree scoring)
+SCORE: 8.2 / 10
+
+Scored against the *frozen* artefacts (`artifacts/playtest.log` of 2026-10-10T12:00:28Z,
+`artifacts/shots/*.png`) plus my own driving of the already-built `dist/` through
+`tools/preview-server.mjs` on ports 4199/4201/4203/4205/4207/4209/4211. I ran no gate and
+no build; nothing under `artifacts/` was written by me. All my screenshots are in
+`/tmp/claude-0/-home-user-dragonvein/9b28d13f-8544-59ef-b806-2437c683a7b1/scratchpad/gameplay/`.
+
+**Two of the six rubric lines have no subject at M0 and I have neither awarded nor
+silently zeroed them.** G2 (a bred dragon resembling its parents) and G4 (state survives
+reload) are reported `n/a` with the evidence for why below. The headline 8.2 is the score
+over the 6.8 rubric points that *have* a subject (5.6 awarded / 6.8 available = 82.4 %).
+Read literally — G2 and G4 counted as 0 — the same build scores **5.6 / 10**. I state both
+because the difference is the rubric's, not the build's, and the decision about which to
+act on is not a critic's to make quietly.
+
+### Per-line breakdown
+
+**G1 — the milestone's loop completes start to finish — 2.2 / 2.2 (blocking line, not tripped)**
+M0's loop is: boot → first frame → a lit island that keeps rendering and rotating → an
+honest overlay → survive a WebGL context loss. All five verified first-hand:
+- Boot to first frame **303.3 ms** (`__dragonveinPerf.read().bootMs`), 352 ms wall from
+  `page.goto`; first-contentful-paint (the splash) at **104 ms**; splash removed by +1.2 s.
+- Frames keep coming: `framesRendered` 31 → 43 → 54 → 63 → 77 → 88 → 97 → 110 over eight
+  samples 1.5 s apart, with `drawCalls` 21 / `triangles` 32 568 on every one (SwiftShader,
+  so ~7 fps — slowness of the rasteriser, not of the scene).
+- It really rotates: two screenshots 6 s apart (`rotA.png`, `rotB.png`) differ on
+  **8.28 %** of pixels (76 282 / 921 600 above an 18/765 channel-sum threshold), and the
+  frozen `shots/00-boot.png`, `01-wide.png`, `03-late.png`, `04-context-restored.png` show
+  four distinct island orientations with the static backdrop unmoved.
+- Overlay tracks reality: HUD read `FPS 7 DRAWS 21 TRIS 32568` while I measured 12 frames
+  in 1.5 s (8 fps) and `__dragonveinStats()` returned the same 21 / 32 568.
+- Context loss recovered: `playtest.log:11` and my own run agree — `restoredCount: 1`,
+  `restoreAttempts: 1`, back to 21 draws within ~3.6 s, zero page errors.
+
+**G2 — a bred dragon is visibly its parents' child — n/a (1.8 points have no subject)**
+There is no dragon anywhere in the running build and no way to breed one. `src/` contains
+exactly one file (`src/main.ts`); `dist/` renders an island and nine companion islands;
+there is no `src/assets/dragon/`, no runtime genome, no breeding entry point, and
+`artifacts/variants/` and `artifacts/turntables/*dragon*` do not exist
+(`ls artifacts/turntables/` → `m0-island.webm` only). The reference builder
+`assetgen/dragon/builder.py` exists but cannot be rendered in this container
+(`python3 -I -c "import bpy"` → `ModuleNotFoundError`). So the comparison the line asks
+for — child mesh against both parent meshes — has no inputs, and I will not invent a
+score for it in either direction. **I did not treat this as a failure**: G2 carries no
+`blocking` tag, and its fail conditions ("looks unrelated" / "identical to a parent")
+cannot be met by a creature that does not exist, so it forces no cap.
+For the record, the data layer it will one day drive does behave: from a scratch copy of
+`assetgen/genome.py`, `breed(wild(1), wild(2), seed)` for seeds 10/11/12 gives children
+that sit between the parents on most genes and vary between themselves —
+`bodyMass` parents 0.981 / 1.200 → children 1.074, 1.167, 1.132; `crestType` 2 / 1 →
+2, 2, 1; elements `[umbra,umbra]` × `[stone,stone]` → three hybrids. That is numbers in a
+file, not a rendered mesh, and it is **not** what G2 asks for.
+
+**G3 — every action gives feedback within 100 ms — 1.0 / 1.4**
+The only events at M0 are page load and context loss.
+- Load: splash painted at 104 ms, well inside 100 ms of the HTML arriving (navigation
+  `domContentLoaded` 148 ms, `transferSize` 1 754 B); first rendered frame at 303 ms.
+- Context loss: the HUD goes to `FPS — DRAWS — TRIS —` plus a status line **inside the
+  `webglcontextlost` dispatch itself** — a listener I registered after the app's reads
+  `{"drawCalls":null,...,"contextLost":true}` and HUD text already
+  `… FPS | — | DRAWS | — | TRIS | — | GPU CONTEXT LOST — RESTORING`. Sub-5 ms, no 250 ms
+  sampler lag. That is the behaviour the brief asked me to verify, and it holds.
+- Deduction: at phone widths that feedback is *invisible* — see defect 2. Feedback the
+  player cannot see is a silent event, which is exactly what this line penalises.
+
+**G4 — state survives reload — n/a (1.4 points have no subject) (blocking line, not tripped)**
+Nothing is persisted at M0: no IndexedDB, no `localStorage`, no save, no roster, no bred
+dragon. The line's fail condition is "loses a bred dragon"; there is no bred dragon, so
+the condition cannot be met and **no blocking defect is forced**. I did not award the
+points either — "there is nothing to lose" is not evidence that saving works. What I could
+test, I did: three consecutive reloads each come back to an identical live state
+(`drawCalls 21`, `triangles 32568`, splash gone, HUD repopulated), and a reload also
+recovers a canvas killed by an unrecoverable context loss. That is reload *sanity*, not
+state persistence.
+
+**G5 — no softlock, unreachable state, or negative currency — 1.2 / 1.6 (blocking line, not tripped)**
+No currency exists, so the negative-currency clause is moot. Two dead-end candidates:
+- *No WebGL2*: handled well, and at both widths. With `getContext('webgl*')` stubbed to
+  `null`, the splash stays up and reads "This browser could not create a WebGL2 context,
+  so DRAGONVEIN cannot render. Check that hardware acceleration is on." — it wraps and
+  fits a 360 px viewport (`t6-nowebgl2-360.png`, boot `<p>` rect 0→360 px). No infinite
+  splash. This is the one the brief asked about and it passes.
+- *Unrecoverable context loss*: with `restoreContext()` neutered, the page sits on a hidden
+  canvas and a black viewport indefinitely, escalating to `GPU CONTEXT LOST — RELOAD TO
+  RECOVER` after 5 attempts over ~7 s. It is not a true softlock — `webglcontextrestored`
+  is still listened for, and a manual reload fully recovers (verified) — but the page
+  offers no reload affordance of its own, and at phone width the instruction is off-screen
+  (defect 2). 0.4 off for a state whose only exit is one the player may never be told about.
+
+**G6 — mouse and touch both work — 1.2 / 1.6**
+M0 ships no input handlers at all (fixed camera; `#hud` is `pointer-events:none`), so there
+is no interaction to break. What *is* testable I tested in a touch-enabled mobile context
+(`hasTouch: true, isMobile: true, deviceScaleFactor: 2`) at 360×640, 320×480 and 1280×720:
+`touchscreen.tap`, a synthetic pointerdown/move/up with `pointerType:'touch'`, a mouse
+drag and a wheel scroll all left the page healthy — `framesRendered` 75 → 95 (360×640),
+85 → 110 (320×480), 65 → 77 (1280×720), `scrollX/Y` still `[0,0]`, zero page errors, the
+canvas correctly sized to the viewport in every case. 0.4 off because the one surface a
+touch device has to show — the overlay — does not fit either phone viewport (defect 1).
+
+### Defects
+
+- [major] G6 / G3 — **the HUD pushes its own readouts off-screen on any viewport narrower
+  than ~530 CSS px.** `#hud` is a non-wrapping flex row 512 px wide pinned at `left:14px`;
+  measured `getBoundingClientRect().right = 527.6` against `innerWidth 360` (167.6 px
+  clipped) and against `innerWidth 320` (207.6 px clipped). `DRAWS` and `TRIS` are
+  unreadable; see `scratchpad/gameplay/vp-360x640.png` (text ends at "FPS 5 DRA") and
+  `vp-320x480-lost.png`. Reproduce:
+  `node scratchpad/gameplay/drive3.mjs` (contexts 360×640 and 320×480), or in any browser
+  open the preview and set the window to 360 px wide.
+  Note M0's AC8 only claims readability at 1280×720, where it is clean — this is a defect
+  against rubric G6, not against the milestone's own promise.
+- [major] G3 / G5 — **the context-loss message is entirely off-screen at phone width, so a
+  dead canvas is an unexplained black screen.** At 360×640 with a sustained loss,
+  `#hud-status` ("GPU CONTEXT LOST — RESTORING" → later "RELOAD TO RECOVER") measures
+  `left 505.6, right 599.1` against `innerWidth 360`: 145 px past the edge, never visible.
+  Screenshot `scratchpad/gameplay/vp360-lost-persistent.png` — the whole frame is
+  `#070d14` with a clipped HUD reading "… FPS — DRA". Compare the boot-failure path, which
+  wraps and fits (`t6-nowebgl2-360.png`): the recovery text lives in the splash there and
+  in a flex child here, and only one of the two survives a narrow viewport. Reproduce:
+  360×640 context, init-script patch replacing `WEBGL_lose_context.restoreContext` with a
+  no-op, then `canvas.getContext('webgl2').getExtension('WEBGL_lose_context').loseContext()`
+  — script at `scratchpad/gameplay/drive2.mjs` (T4) parameterised to 360 px.
+- [minor] G1 — **`__dragonveinStats()` reports a stale, healthy-looking frame in the window
+  between a context restore and the first frame drawn through the new context.** Measured
+  25 ms after `loseContext()` on SwiftShader (where restore completes in <25 ms):
+  `{"drawCalls":21,"triangles":32568,"frameMs":66.7,"cpuFrameMs":37,"contextLost":false}`
+  while the HUD honestly printed `FPS — DRAWS — TRIS —`. Caught again inside the
+  `webglcontextrestored` handler itself: `{"drawCalls":0,"triangles":0,"contextLost":false}`.
+  The HUD has a `framesSinceRestore === 0` guard; the accessor the gates poll does not, so
+  the two disagree about the same moment. During the *lost* state the accessor is correct
+  (`null`s + `contextLost: true`, confirmed at +0 ms, +5 ms, +200 ms, +1 s, +3 s, +7 s), so
+  this is a one-frame-wide hole, not the old "FPS 60 over a dead canvas". Reproduce: the
+  one-liner in my transcript, or add a `webglcontextrestored` listener that logs
+  `__dragonveinStats()`.
+- [minor] G1 — **`artifacts/playtest.log` does not actually evidence the context-loss
+  behaviour it claims to check.** Line 11 induces a loss, waits 4 000 ms, and records only
+  the *post-restore* state (`"lost":false`, `framesSkippedWhileLost":0`); line 12's
+  "overlay afterwards" is likewise post-restore (`FPS | 8`). Nothing in the log observes
+  the page *while* the context is dead, so the log alone cannot distinguish the current
+  honest behaviour from the old stale-FPS bug. I verified the honest behaviour myself
+  rather than from the artefact. (`framesSkippedWhileLost` was 1 in my run and 0 in the
+  frozen log — the induced loss is simply shorter than one frame on this rasteriser, which
+  is another reason the log is thin evidence here.)
+- [minor] G5 — no in-page recovery affordance after an unrecoverable loss: the page tells
+  the player to reload (at desktop width) but offers no button, and 421 skipped rAF
+  callbacks later it is still asking. `scratchpad/gameplay/t4-unrecoverable.png`.
+
+### What is good
+
+- The overlay is honest where it counts, and it is honest *immediately*. Read from inside
+  the `webglcontextlost` dispatch, `__dragonveinStats()` already returns
+  `{drawCalls:null, triangles:null, frameMs:null, cpuFrameMs:null, contextLost:true}` and
+  the HUD already shows em dashes plus a status line. Through a 7 s sustained loss it never
+  once printed a frame rate for a canvas that was not drawing (`T4 +200/+1000/+3000/+7000 ms`).
+  `null` rather than `0` is the right call: zero draw calls is a claim about a frame.
+- The boot-failure path is genuinely good. A browser with no WebGL2 gets a plain-language
+  explanation on the splash — wrapped, centred and readable at 360 px — instead of an
+  eternal "đang khởi tạo thế giới…". Verified with `getContext` stubbed to `null`.
+- Boot is fast and reproducible: FCP 104 ms, first frame 303 ms, 1 754 B of navigation
+  transfer, and three reloads in a row landing on the identical steady state.
+- The frame loop is resilient: induced loss → automatic restore → 86 frames rendered in the
+  next 2.5 s with the HUD back to real numbers, zero page errors and zero console errors
+  across every context I drove (seven browser contexts, three viewports, two fault
+  injections).
+- The backdrop stays put while the island turns. Across `00-boot/01-wide/03-late/
+  04-context-restored` only the island's rotation changes; the nine companion islands and
+  the birds are pixel-identical, so there is no swim or pop to find at this milestone.
+
+SCORE_MACHINE: 8.2
