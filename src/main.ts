@@ -33,7 +33,13 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+// The art-critic measured the island 10-15 L* under the bible's values with its hues
+// within 1-7 deg — sunlit leaf tips #7ea331 (L* 62.4) against foliage light #8fd24a
+// (L* 77.5), lit cliff #50311c (L* 23.6) against rock mid #5a4a40 (L* 32.8) — i.e. the
+// right colours, under-exposed, which is an exposure problem and not a palette one.
+// Safe to raise: the sky mesh is `toneMapped: false`, so the gradient the critic measured
+// at deltaE 0.0 does not move with this number.
+renderer.toneMappingExposure = 1.18;
 
 const scene = new THREE.Scene();
 // Far and faint: the island must not wash out, but distance still reads.
@@ -79,6 +85,24 @@ const skyGeo = new THREE.SphereGeometry(SKY_RADIUS, 24, 192);
   const zenith = toSrgb(PALETTE.skyZenith);
   const horizon = toSrgb(PALETTE.skyHorizon);
   const abyss = toSrgb(PALETTE.deepShadow);   // below the horizon: the drop under a sky-world
+  /**
+   * The cloud sea, baked into the same gradient.
+   *
+   * The island's root cone was merging into the lower sky at 1.04:1 (rubric A1), because
+   * the bottom of the frame was one flat `deep shadow` for 97 rows and a dark cone has
+   * nothing to separate against. The fix has to be *behind* the cone, and it cannot be
+   * geometry: a deck of flattened spheres big enough to sit behind the root is also big
+   * enough to fill the near frame, where it stops reading as cloud and starts reading as
+   * pale rock plates. Tried, rendered, rejected.
+   *
+   * In the gradient it costs no draw call, cannot sort wrongly against the island, and is
+   * perfectly soft. It invents no colour either — it is `sky horizon` lifted toward white
+   * by a fixed amount, so the band stays on the bible's warm axis.
+   */
+  const cloudSea = horizon.map((c) => c + (1 - c) * 0.46) as [number, number, number];
+  /** Where the deck sits, as a fraction of the sphere's height below the horizon. */
+  const SEA_CENTRE = -0.345;
+  const SEA_HALF_WIDTH = 0.15;
   const pos = skyGeo.attributes['position'];
   if (!pos) throw new Error('sky geometry has no position attribute');
   const colors = new Float32Array(pos.count * 3);
@@ -91,12 +115,29 @@ const skyGeo = new THREE.SphereGeometry(SKY_RADIUS, 24, 192);
     // The warm band is narrow on purpose — a golden-hour band at the horizon, not an
     // orange hemisphere. Below it, the sky falls away slowly into the abyss colour.
     const t = smooth(Math.abs(h) / (up ? 0.12 : 0.45));
-    c.setRGB(
-      horizon[0] + (other[0] - horizon[0]) * t,
-      horizon[1] + (other[1] - horizon[1]) * t,
-      horizon[2] + (other[2] - horizon[2]) * t,
-      THREE.SRGBColorSpace,
-    );
+    let r = horizon[0] + (other[0] - horizon[0]) * t;
+    let g = horizon[1] + (other[1] - horizon[1]) * t;
+    let b = horizon[2] + (other[2] - horizon[2]) * t;
+    if (!up) {
+      // A soft band, brightest at its centre and gone at both edges, so it reads as a lit
+      // deck of cloud under the island rather than as a second horizon line — and broken
+      // along its length, because an unmodulated band is an airbrush, not a cloud sea.
+      // The break is three sines of the azimuth: cheap, seamless at the wrap (every term
+      // is a whole number of cycles), and it moves the deck's height as well as its
+      // strength, so the near edge is ragged rather than ruled.
+      const theta = Math.atan2(pos.getZ(i), pos.getX(i));
+      const lobes =
+        Math.sin(theta * 3 + 0.7) * 0.5 +
+        Math.sin(theta * 7 - 1.9) * 0.3 +
+        Math.sin(theta * 13 + 2.6) * 0.2;
+      const centre = SEA_CENTRE + lobes * 0.042;
+      const strength = 0.52 + 0.48 * (0.5 + 0.5 * Math.sin(theta * 5 + 0.4));
+      const sea = (1 - smooth(Math.abs(h - centre) / SEA_HALF_WIDTH)) * strength;
+      r += (cloudSea[0] - r) * sea;
+      g += (cloudSea[1] - g) * sea;
+      b += (cloudSea[2] - b) * sea;
+    }
+    c.setRGB(r, g, b, THREE.SRGBColorSpace);
     colors[i * 3] = c.r;
     colors[i * 3 + 1] = c.g;
     colors[i * 3 + 2] = c.b;
@@ -110,7 +151,10 @@ sky.renderOrder = -1;
 scene.add(sky);
 
 // --- lighting: one sun, one cool fill, one warm rim (docs/ART_BIBLE.md §Lighting) -------
-const sun = new THREE.DirectionalLight(0xffd9a8, 3.1);
+// Warm, but less orange than it was (0xffd9a8). The critic measured the island's chroma
+// at roughly double the bible's — lit cliff C 22.3 against rock mid's 9.9 — with hue
+// correct, which is a key that is too saturated rather than a wrong palette.
+const sun = new THREE.DirectionalLight(0xfff1e2, 2.95);
 // Right and slightly in front of the island: the camera-facing slope stays lit (a
 // backlit island reads as a dark blob against a bright sky) while the shadows still
 // rake across open ground to the left, where they are in frame.
@@ -119,8 +163,13 @@ sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);   // the Medium tier in docs/PERF_BUDGET.md
 sun.shadow.camera.near = 1;
 sun.shadow.camera.far = 60;
-sun.shadow.bias = -0.0007;
-sun.shadow.normalBias = 0.022;     // kills acne on the instanced scatter without peter-panning
+// 16 isolated shadow-acne pixels survived the previous pair (-0.0007 / 0.022) on
+// otherwise smooth lit faces, worst a 4-px dotted line down a cone face at (636,353).
+// More normal bias and less depth bias: normal bias offsets along the surface normal, so
+// it kills acne on curved instanced geometry without the peter-panning that more depth
+// bias would cost under the contact shadows A3 depends on.
+sun.shadow.bias = -0.00035;
+sun.shadow.normalBias = 0.042;
 // Tight to the island, so the 1024 texels land where the contact shadows are
 // (about 57 texels per world unit) instead of being spread over empty sky.
 sun.shadow.camera.left = -9;
@@ -130,16 +179,114 @@ sun.shadow.camera.bottom = -9;
 scene.add(sun);
 scene.add(sun.target);
 
+// Cool fill, opposite the key. Declaring one is not the same as it reaching anything: the
+// art-critic measured the key-averted underside at relative luminance 0.0000-0.0008 — a
+// fill/key ratio of 0-3% against the bible's 20% — and no cool tint anywhere in shadow.
+// The cause was geometric, not an intensity: a single fill above the horizon (y = 5.5)
+// contributes nothing to a *downward*-facing normal, and the whole lower half of this
+// island is downward-facing. One light cannot be both the opposite-side fill and the
+// bounce from below, so there are two, and together they are the bible's one cool fill.
 const fill = new THREE.DirectionalLight(0x7aa0ff, 0.62);   // ~20% of key, opposite side
 fill.position.set(-11, 5.5, 9);
 scene.add(fill);
+
+// The bounce half: below the horizon, aimed up at the root cone. On a sky-world the light
+// under an island comes off the cloud sea, so this is cool and dim rather than a second
+// sun. It also gives rubric A1 something to work with — the cone's lower silhouette was
+// merging into the sky at 1.04:1 partly because the cone itself was at luminance 0.006.
+const bounce = new THREE.DirectionalLight(0x9db9f2, 2.5);
+bounce.position.set(-7.5, -8.5, 6.5);
+scene.add(bounce);
 
 const rim = new THREE.DirectionalLight(PALETTE.skyHorizon, 1.15);  // warm rim from behind
 rim.position.set(-6, 3, -11.5);
 scene.add(rim);
 
-// Sky bounce only; kept low so the shadows stay legible.
-scene.add(new THREE.HemisphereLight(0x8fb6ff, PALETTE.deepShadow, 0.30));
+// Sky bounce. The ground term was `deepShadow` (#1a1420), which is the colour the bible
+// gives an island's *underside* — so using it here meant every downward-facing normal was
+// told to be near-black, and shadows came out warm-black (5,2,1) instead of cool. The
+// ground term is now the cool bounce colour and the intensity is up, which is what put a
+// blue cast into the shadows the critic found warm.
+scene.add(new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 0.8));
+
+// --- the warm rim, as a rim and not as a lamp -------------------------------------------
+/**
+ * A `DirectionalLight` cannot make a rim. It shades by `N·L`, so a light behind the
+ * subject lights the faces pointing away from the camera and leaves every visible edge
+ * dark. The art-critic scanned horizontally across a backlit conifer and measured exactly
+ * that: sky (195,111,59) -> edge (75,84,35) -> interior (97,140,39) -> (126,163,49).
+ * Brightness rose *inward*. Two of the bible's three lights were in the scene graph and
+ * only one was in the frame.
+ *
+ * A rim is a view-dependent term, so it is computed per fragment: Fresnel on `N·V`, gated
+ * by `N·L` against the rim light's direction so it lands on the backlit edges rather than
+ * haloing the whole silhouette. Injected into the stock `MeshStandardMaterial` program
+ * rather than written as a new shader, so the materials keep three's lighting, shadows,
+ * tone mapping and colour management — the bible's hexes still come out the other end.
+ *
+ * `totalEmissiveRadiance` is the injection point: it is summed into `outgoingLight` by
+ * `<opaque_fragment>`, which is the last chunk to touch the colour, and adding there
+ * means the rim is tone-mapped with everything else instead of clipping on top of it.
+ */
+const RIM_UNIFORMS = {
+  uRimColor: { value: new THREE.Color(PALETTE.skyHorizon).multiplyScalar(1.0) },
+  /** Rim light direction in *view* space — refreshed once per frame, never reallocated. */
+  uRimDir: { value: new THREE.Vector3(0, 0, 1) },
+  uRimStrength: { value: 1.1 },
+  /** Higher = tighter band at the silhouette. 2.6 keeps it an edge, not a glow. */
+  uRimPower: { value: 2.9 },
+};
+
+/** Light-space direction of the rim light, recomputed per frame into scratch vectors. */
+const rimWorldDir = new THREE.Vector3();
+
+function updateRimDirection(): void {
+  // `rim` is a directional light at a position aimed at the origin, so its world-space
+  // direction is its position normalised. Into view space via the camera's rotation only
+  // — a direction is not translated.
+  rimWorldDir.copy(rim.position).normalize();
+  RIM_UNIFORMS.uRimDir.value
+    .copy(rimWorldDir)
+    .transformDirection(camera.matrixWorldInverse);
+}
+
+/** Patches a stock standard material so it also carries the rim term. */
+function withRim<T extends THREE.MeshStandardMaterial>(material: T): T {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms['uRimColor'] = RIM_UNIFORMS.uRimColor;
+    shader.uniforms['uRimDir'] = RIM_UNIFORMS.uRimDir;
+    shader.uniforms['uRimStrength'] = RIM_UNIFORMS.uRimStrength;
+    shader.uniforms['uRimPower'] = RIM_UNIFORMS.uRimPower;
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+         uniform vec3 uRimColor;
+         uniform vec3 uRimDir;
+         uniform float uRimStrength;
+         uniform float uRimPower;`,
+      )
+      .replace(
+        '#include <opaque_fragment>',
+        `{
+           // normal and vViewPosition are both view-space in this program.
+           vec3 rimN = normalize( normal );
+           vec3 rimV = normalize( vViewPosition );
+           float facing = 1.0 - clamp( dot( rimN, rimV ), 0.0, 1.0 );
+           // Gate on the rim light: 0 on the key-lit side, 1 on the backlit side. The
+           // smoothstep floor is below 0 so faces exactly perpendicular still catch a
+           // little, which is where a real rim is brightest.
+           float backlit = smoothstep( -0.45, 0.55, dot( rimN, normalize( uRimDir ) ) );
+           totalEmissiveRadiance += uRimColor * uRimStrength * backlit * pow( facing, uRimPower );
+         }
+         #include <opaque_fragment>`,
+      );
+  };
+  // All patched materials share one program variant; without a stable key three would
+  // reuse an unpatched program compiled for an identical material earlier in the frame.
+  material.customProgramCacheKey = () => 'dragonvein-rim-v1';
+  return material;
+}
 
 // --- placeholder island ----------------------------------------------------------------
 const island = new THREE.Group();
@@ -151,18 +298,22 @@ const TOP_RADIUS = 6;
 // Grass cap, rock sides: without the rock band the island reads as a green coin rather
 // than as soil over stone. CylinderGeometry already splits side / top / bottom into
 // material groups, so this is one mesh, not three.
-const rockSide = new THREE.MeshStandardMaterial({ color: PALETTE.rockMid, roughness: 0.98 });
+const rockSide = withRim(new THREE.MeshStandardMaterial({ color: PALETTE.rockMid, roughness: 0.98 }));
 const top = new THREE.Mesh(
   new THREE.CylinderGeometry(TOP_RADIUS, TOP_RADIUS - 0.4, 1.1, 48),
-  [rockSide, new THREE.MeshStandardMaterial({ color: PALETTE.foliageMid, roughness: 0.95 }), rockSide],
+  [rockSide, withRim(new THREE.MeshStandardMaterial({ color: PALETTE.foliageMid, roughness: 0.95 })), rockSide],
 );
 top.castShadow = true;
 top.receiveShadow = true;
 island.add(top);
 
 const base = new THREE.Mesh(
-  new THREE.ConeGeometry(TOP_RADIUS - 0.4, 6.5, 48),
-  new THREE.MeshStandardMaterial({ color: PALETTE.rockMid, roughness: 0.98 }),
+  // 96 radial segments, up from 48. The art-critic read three flat facets across
+  // x 540-760 and scored A9 down for a faceted diamond where the concept has a smooth
+  // cone; at 48 the facet width was ~4 px of a 1080p frame, which is exactly the scale
+  // that reads as flat. 96 costs 96 triangles against a 900 000 budget.
+  new THREE.ConeGeometry(TOP_RADIUS - 0.4, 6.5, 96),
+  withRim(new THREE.MeshStandardMaterial({ color: PALETTE.rockMid, roughness: 0.98 })),
 );
 base.position.y = -3.25;
 base.rotation.x = Math.PI;
@@ -229,14 +380,17 @@ function place(
 
 /** Instanced props get white base material colour so per-instance tints are the literal
  *  bible hexes rather than a product of two colours. */
-function instanced(geo: THREE.BufferGeometry, count: number, roughness: number): THREE.InstancedMesh {
+function instanced(
+  geo: THREE.BufferGeometry, count: number, roughness: number,
+  parent: THREE.Object3D = island,
+): THREE.InstancedMesh {
   const mesh = new THREE.InstancedMesh(
     geo,
-    new THREE.MeshStandardMaterial({ color: 0xffffff, roughness, flatShading: true }),
+    withRim(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness, flatShading: true })),
     count,
   );
   mesh.receiveShadow = true;
-  island.add(mesh);
+  parent.add(mesh);
   return mesh;
 }
 
@@ -244,6 +398,69 @@ function instanced(geo: THREE.BufferGeometry, count: number, roughness: number):
 // for a contact shadow to land on, and rubric A3 reads the frame as shadowless. Placed on
 // the camera-facing side so it is in shot.
 const CLEARING: Spot = { x: 0.4, z: 2.6, r: 2.3 };
+
+// --- reservations: the path and the crystal clusters, laid out before the scatter -------
+/**
+ * These two are *authored* positions, not sampled ones — a path has to be a path and the
+ * concept puts the crystals in three clusters left of centre. So they cannot go through
+ * `pick`, and if they were simply added afterwards the scatter would already be standing
+ * where they go. Rubric A5 fails `blocking` on interpenetration, and a bush growing out
+ * of a stepping stone is exactly that.
+ *
+ * Laying them out here and pushing their footprints into `taken` means every later
+ * rejection sample avoids them, which is the same guarantee the props give each other.
+ */
+type Placed = { x: number; y: number; z: number; sx: number; sy: number; sz: number; rot: number;
+  tiltX: number; tiltZ: number; mix: number };
+
+const pathStones: Placed[] = [];
+{
+  const rng = makeRng(0x57_0e0106);
+  const STONES = 22;
+  for (let i = 0; i < STONES; i++) {
+    // A shallow arc from the clearing out to the island's edge, drifting as it goes.
+    const t = i / (STONES - 1);
+    const a = -1.05 + t * 1.9;
+    const d = 1.1 + t * 4.5;
+    const sc = 0.78 + rng() * 0.5;
+    const x = Math.cos(a) * d + (rng() - 0.5) * 0.22;
+    const z = Math.sin(a) * d + (rng() - 0.5) * 0.22;
+    pathStones.push({
+      x, y: TOP_Y + 0.03, z, sx: sc, sy: 1, sz: sc * (0.85 + rng() * 0.3),
+      rot: rng() * Math.PI * 2, tiltX: 0, tiltZ: 0, mix: 0.08 + rng() * 0.3,
+    });
+    taken.push({ x, z, r: 0.36 * sc });
+  }
+}
+
+const crystalShards: Placed[] = [];
+{
+  const rng = makeRng(0x2d92_ba05);
+  // Three clusters, left of centre as in docs/concept/03-island-scene.png.
+  const CENTRES: Spot[] = [
+    { x: -3.5, z: -0.6, r: 1.0 },
+    { x: -2.2, z: 2.9, r: 0.85 },
+    { x: -4.4, z: 2.1, r: 0.7 },
+  ];
+  for (const centre of CENTRES) {
+    const shards = 9 + Math.floor(rng() * 4);
+    for (let k = 0; k < shards; k++) {
+      const a = rng() * Math.PI * 2;
+      const d = Math.sqrt(rng()) * centre.r;
+      const h = 0.45 + rng() * 1.15;
+      const sx = 0.3 + rng() * 0.3;
+      const sz = 0.3 + rng() * 0.3;
+      const x = centre.x + Math.cos(a) * d;
+      const z = centre.z + Math.sin(a) * d;
+      crystalShards.push({
+        x, y: TOP_Y + h * 0.42, z, sx, sy: h, sz,
+        rot: rng() * Math.PI * 2, tiltX: (rng() - 0.5) * 0.45, tiltZ: (rng() - 0.5) * 0.45,
+        mix: 0.25 + rng() * 0.7,
+      });
+      taken.push({ x, z, r: Math.max(sx, sz) * 0.6 });
+    }
+  }
+}
 
 // Trees — three values per asset (ART_BIBLE §Direction): dark trunk, mid lower canopy,
 // light upper tier. Two tiers so the silhouette still reads as a tree at 25% (rubric A1).
@@ -269,7 +486,7 @@ crowns.castShadow = true;
     place(crowns, n, spot.x, TOP_Y + h * 1.95, spot.z, w, h, w, rotY, lean, lean);
     trunks.setColorAt(n, tint.copy(cShadow).lerp(cRock, 0.3 + rng() * 0.35));
     canopies.setColorAt(n, tint.copy(cDark).lerp(cMid, 0.45 + rng() * 0.5));
-    crowns.setColorAt(n, tint.copy(cMid).lerp(cLight, 0.35 + rng() * 0.5));
+    crowns.setColorAt(n, tint.copy(cMid).lerp(cLight, 0.3 + rng() * 0.45));
     n++;
   }
   trunks.count = canopies.count = crowns.count = n;
@@ -330,6 +547,121 @@ const tufts = instanced(new THREE.ConeGeometry(0.075, 0.36, 3), TUFTS, 0.9);
     n++;
   }
   tufts.count = n;
+}
+
+// --- the world around the island (rubric A6, A1, A9) -----------------------------------
+/**
+ * The art-critic measured the island at 18.6% of the frame and the other 81.4% as "a
+ * featureless two-stop gradient": no second island, no clouds, no distant silhouettes,
+ * nothing at a second depth. `docs/concept/03-island-scene.png` puts two further islands
+ * and a cloud sea in exactly that space, and the point of them is not decoration — it is
+ * the difference between a world and a prop on a backdrop.
+ *
+ * It also fixes A1 from the other side. The island's root cone was merging into the lower
+ * sky at 1.04:1 because the bottom of the frame is one flat colour (#1a1420, the bible's
+ * `deep shadow`) and a dark cone has nothing to separate against. A broken cloud deck
+ * below the island puts a lighter, warm-lit surface behind the root — which is also where
+ * a sky-world's light comes from, hence the `bounce` light above.
+ *
+ * Everything here is static and lives on `scene`, not on `island`: only the island
+ * rotates, so nothing in the distance can swim relative to anything else (rubric A5).
+ * Everything repeated is one `InstancedMesh`, so the whole section costs 7 draw calls.
+ */
+const far = new THREE.Group();
+scene.add(far);
+
+const cCloudLit = new THREE.Color(0xffc49a);     // horizon light on a cloud top
+const cWater = new THREE.Color(0x2d92ba);        // ART_BIBLE §Palette, water near
+const cWaterFar = new THREE.Color(0xa6f1f2);     // ART_BIBLE §Palette, water far
+
+// Cloud sea — a *broken* deck, not a plane. A solid plane would cover the lower sky band
+// the critic measured at deltaE 0.0 against `deep shadow`; puffs leave the abyss visible
+// between them, which is both on-bible and what a sky-world looks like.
+// Companion islands. Three, at three depths, built from the same cap + cone silhouette as
+// the hero island so the world reads as one place. Cap, cone and their trees are three
+// InstancedMeshes shared across all three islands.
+type Companion = { x: number; y: number; z: number; s: number; trees: number };
+const COMPANIONS: Companion[] = [
+  // Laid out by unprojecting the screen positions they have to land in, at six different
+  // distances from the camera, because `docs/concept/03-island-scene.png` puts its
+  // companions at different *depths* on purpose: that is what turns a backdrop into a
+  // world. Guessing world coordinates for this put all of them in a vertical column over
+  // the hero island, which reads as a stack, not as distance.
+  { x: -3, y: 10, z: -28, s: 0.3, trees: 6 },      // right of centre, nearest
+  { x: -1, y: 5, z: -45, s: 0.5, trees: 8 },      // right, one step back
+  { x: -56, y: 8, z: -13, s: 0.62, trees: 9 },    // upper left
+  { x: -54, y: 21, z: -63, s: 1.0, trees: 10 },    // top centre, high and far
+  { x: 1, y: -10, z: -108, s: 1.2, trees: 8 },     // far right, below the eyeline
+  { x: -120, y: -12, z: -25, s: 1.35, trees: 7 },  // far left, deep in the haze
+];
+{
+  const caps = instanced(new THREE.CylinderGeometry(6, 5.6, 1.1, 36), COMPANIONS.length, 0.95, far);
+  const cones = instanced(new THREE.ConeGeometry(5.6, 6.5, 36), COMPANIONS.length, 0.98, far);
+  const treeTotal = COMPANIONS.reduce((t, c) => t + c.trees, 0);
+  const farTrees = instanced(new THREE.ConeGeometry(0.62, 1.9, 6), treeTotal, 0.85, far);
+  const rng = makeRng(0x15_1a4d);
+  let t = 0;
+  COMPANIONS.forEach((c, i) => {
+    place(caps, i, c.x, c.y, c.z, c.s, c.s, c.s, rng() * Math.PI * 2);
+    // The cone is the island's root: same inverted-cone trick as the hero island.
+    place(cones, i, c.x, c.y - 3.8 * c.s, c.z, c.s, c.s, c.s, rng() * Math.PI * 2, Math.PI);
+    caps.setColorAt(i, tint.copy(cMid).lerp(cWaterFar, 0.1 + rng() * 0.12));
+    cones.setColorAt(i, tint.copy(cRock).lerp(cShadow, 0.25 + rng() * 0.3));
+    for (let k = 0; k < c.trees; k++) {
+      const a = rng() * Math.PI * 2;
+      const d = Math.sqrt(rng()) * 4.9 * c.s;
+      const h = (0.8 + rng() * 0.8) * c.s;
+      place(farTrees, t, c.x + Math.cos(a) * d, c.y + 0.55 * c.s + h * 0.95,
+        c.z + Math.sin(a) * d, h, h, h, rng() * Math.PI * 2);
+      farTrees.setColorAt(t, tint.copy(cDark).lerp(cMid, 0.3 + rng() * 0.5));
+      t++;
+    }
+  });
+  farTrees.count = t;
+}
+
+// Birds. Nine, static, far enough that they read as a flock rather than as props — the
+// cheapest thing in the frame that says "inhabited" (rubric A6).
+{
+  const BIRDS = 11;
+  const birds = instanced(new THREE.ConeGeometry(0.5, 1.6, 3), BIRDS, 1.0, far);
+  const rng = makeRng(0xb13d_0001);
+  for (let i = 0; i < BIRDS; i++) {
+    const a = 1.6 + rng() * 2.4;
+    const d = 58 + rng() * 60;
+    const sc = 0.5 + rng() * 0.5;
+    place(birds, i, Math.cos(a) * d, 9 + rng() * 15, Math.sin(a) * d,
+      sc * 2.3, sc * 0.3, sc, rng() * Math.PI * 2, 0, (rng() - 0.5) * 0.8);
+    birds.setColorAt(i, tint.copy(cShadow).lerp(cRock, rng() * 0.35));
+  }
+}
+
+// --- the island reads as inhabited (rubric A6, A9) -------------------------------------
+// Three crystal clusters and a stepping-stone path, both in the concept image and both
+// called out as absent. Positions come from the reservations above, so the scatter has
+// already made room for them. These live on `island`, so they rotate with it.
+{
+  const crystals = instanced(new THREE.OctahedronGeometry(0.3, 0), crystalShards.length, 0.35);
+  crystals.castShadow = true;
+  // The shards glow. A shared `emissive` lights every instance the same, so the hue
+  // variation rides the per-instance colour and the material carries a modest emissive of
+  // its own — enough to read against the grass without blowing out under ACES.
+  const crystalMat = crystals.material as THREE.MeshStandardMaterial;
+  crystalMat.emissive = new THREE.Color(cWaterFar).multiplyScalar(0.3);
+  crystalMat.roughness = 0.25;
+  crystalMat.metalness = 0.1;
+  crystalShards.forEach((c, i) => {
+    place(crystals, i, c.x, c.y, c.z, c.sx, c.sy, c.sz, c.rot, c.tiltX, c.tiltZ);
+    crystals.setColorAt(i, tint.copy(cWater).lerp(cWaterFar, c.mix));
+  });
+}
+{
+  const stones = instanced(new THREE.CylinderGeometry(0.34, 0.3, 0.1, 7), pathStones.length, 1.0);
+  stones.castShadow = true;
+  pathStones.forEach((c, i) => {
+    place(stones, i, c.x, c.y, c.z, c.sx, c.sy, c.sz, c.rot, c.tiltX, c.tiltZ);
+    stones.setColorAt(i, tint.copy(cRock).lerp(cCloudLit, c.mix));
+  });
 }
 
 // --- overlay (rubric A7). Kept in index.html / here on purpose: src/ui/ is another -------
@@ -606,6 +938,9 @@ function frame(now: number): void {
   const startedAt = performance.now();
   resize();
   island.rotation.y = now * 0.00012;
+  // The rim is gated in view space, so its direction has to be re-derived whenever the
+  // camera moves. Allocation-free: two pre-allocated vectors, written in place.
+  updateRimDirection();
 
   collectGpuTimings();
   const timed = gpuTimer && idleQueries.length > 0 ? idleQueries.pop() ?? null : null;
