@@ -115,6 +115,17 @@ describe('stats contract read by the gates', () => {
     }
   });
 
+  it('reports no frame at all over a dead context, rather than the last live one', () => {
+    // The accessor used to return the last good frame's numbers forever, so a gate
+    // polling it alone would pass on a canvas that had stopped drawing. The HUD and
+    // __dragonveinPerf.read().context both got this right; this one was missed.
+    expect(main).toMatch(/drawCalls: contextLost \? null :/);
+    expect(main).toMatch(/triangles: contextLost \? null :/);
+    expect(main).toMatch(/cpuFrameMs: contextLost \? null :/);
+    // …and says which it is, so a reader can tell "dead" from "not started yet".
+    expect(main).toMatch(/contextLost,/);
+  });
+
   it('survives a WebGL context loss instead of dying silently', () => {
     // A driver reset is a normal event on the weak iGPU CLAUDE.md §0 targets. Before
     // this, nothing listened and nothing asked for the context back, so an induced loss
@@ -157,15 +168,43 @@ describe('budgets are not quietly relaxed', () => {
     const gate = read('tools/gate-perf.mjs');
     expect(gate).toMatch(/cpuFrameMs:\s*3\.5\b/);
     // Unconditional: no `frameBudgetEnforced` or `software` guard on this comparison.
-    // It is the median that carries it — SwiftShader rasterises on worker threads that
-    // compete for the same cores, so the p95 of cpuFrameMs measures how busy the box is
-    // (identical bytes, two machines: p50 0.7 -> 0.9, p95 1.8 -> 3.7).
     expect(gate).toMatch(/if \(cpu !== null && cpu\.p50 > BUDGET\.cpuFrameMs\) \{/);
-    // …and the tail is held to the same number where a real GPU means the tail is the
-    // app rather than the runner.
+    // The tail is held to the SAME 3.5 ms, and no longer only on real hardware.
+    // STATE.md §2026-10-10 decisions, decision 2: the p95 was unenforceable because the
+    // software rasteriser competed for the main thread's cores, so the tail measured the
+    // box (identical bytes, two machines: p50 0.7 -> 0.9, p95 1.8 -> 3.7). The ruling was
+    // to remove the contention rather than drop the statistic, so the guard is now the
+    // rasteriser cap's own verdict. Reverting this to `frameBudgetEnforced` would leave
+    // no p95 enforced on any machine this project runs on, which is what the decision
+    // exists to prevent.
     expect(gate).toMatch(
+      /if \(cpu !== null && report\.mainThreadTailEnforced && cpu\.p95 > BUDGET\.cpuFrameMs\) \{/,
+    );
+    expect(gate).not.toMatch(
       /if \(cpu !== null && report\.frameBudgetEnforced && cpu\.p95 > BUDGET\.cpuFrameMs\) \{/,
     );
+  });
+
+  it('enforces the main-thread tail only when the cap is verified and the window closed', () => {
+    // Two failure modes this guards, both named in STATE.md. A cap Chromium accepted
+    // without complaint is not a cap: `verified` is set by re-reading every thread's
+    // affinity mask out of /proc, never by a taskset exit code. And a p95 from a
+    // deadline-limited window does not reproduce, which is the defect that moved the
+    // sample target to 360 in the first place.
+    const gate = read('tools/gate-perf.mjs');
+    expect(gate).toMatch(/const tailMachineOk = !paced\.software \|\| paced\.cap\.verified;/);
+    expect(gate).toMatch(/const enforceTail = tailMachineOk && paced\.windowClosedOnTarget;/);
+
+    const cap = read('tools/rasteriser-cap.mjs');
+    // The verdict comes from the mask, not from the call that set it.
+    expect(cap).toContain('Cpus_allowed_list');
+    // Non-empty, disjoint halves are the property the budget actually needs.
+    expect(cap).toMatch(/page\.some\(\(c\) => rest\.includes\(c\)\)/);
+    // And the attempts that failed stay in the artefact, so the fallback cannot read as
+    // a shortcut later (decision 2's fallback clause).
+    expect(cap).toContain('THREAD_COUNT_CAP_ATTEMPTS');
+    expect(cap).toContain('SwiftShader.ini');
+    expect(cap).toContain('--num-raster-threads=1');
   });
 
   it('never lets the gates chain pass without a build to measure', () => {

@@ -53,6 +53,11 @@
  *   - Frame cost — enforced only on a real GPU. On SwiftShader the CPU rasterises, so the
  *     figure is a rasteriser benchmark rather than a frame cost. Recorded as advisory,
  *     with `softwareRenderer` and `frameBudgetEnforced` saying so.
+ *   - The main-thread half of frame cost, `cpuFrameMs` ≤ 3.5 ms — the median everywhere,
+ *     and the p95 against the same number wherever no rasteriser thread shares a core
+ *     with the main thread. On a software rasteriser that is arranged by
+ *     `tools/rasteriser-cap.mjs` and has to be *verified*, not merely attempted;
+ *     `rasteriserCap` and `mainThreadTailEnforced` in perf.json say which happened.
  *
  * Evidence discipline: `artifacts/` and a first `artifacts/perf.json` are written before
  * anything that can throw, and a crash rewrites perf.json with the reason. A red gate
@@ -65,6 +70,7 @@ import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 import pw from 'playwright';
 import { startPreview } from './preview-server.mjs';
+import { applyRasteriserCap, verifyRasteriserCap } from './rasteriser-cap.mjs';
 
 const BUDGET = {
   frameMs: 16.6,
@@ -100,20 +106,27 @@ const BUDGET = {
    * would on an iGPU. Before this budget existed, nothing in a GPU-less container
    * policed frame cost at all.
    *
-   * It is the **median** that is enforced everywhere, and the first version of this
-   * budget got that wrong by comparing the p95. SwiftShader does not rasterise *on* the
-   * main thread but it does rasterise on worker threads that compete for the same cores,
-   * so on a small runner the tail of `cpuFrameMs` measures core contention rather than
-   * app work. Identical bytes, two machines, one CI run apart:
+   * Both the **median and the tail** are held to this number, and the tail is the part
+   * with a history. An earlier version compared the p95 and went red at random: on a
+   * software rasteriser the marl worker threads compete for the same cores as the main
+   * thread, so the tail measured how busy the box was. Identical bytes, two machines,
+   * one CI run apart:
    *
    *   build container   cpu p50 0.7   p95 1.8   gpu p50 117 ms
    *   GitHub runner     cpu p50 0.9   p95 3.7   gpu p50 237 ms
    *
-   * The rasteriser is 2x slower on the runner and the p95 doubles with it (+106%) while
-   * the median moves +29%. A budget that goes red because the box is busy is a budget
-   * everyone learns to ignore, so the median carries the enforcement everywhere and the
-   * p95 is held to the same 3.5 ms only where a real GPU means nothing is competing for
-   * the main thread's cores. The number did not move; the statistic did.
+   * The rasteriser is 2x slower on the runner and the p95 doubled with it (+106%) while
+   * the median moved +29%. The fix at the time was to enforce the median everywhere,
+   * which worked but left no p95 enforced on any machine this project has run on.
+   *
+   * The owner's ruling (`STATE.md` §2026-10-10 decisions, decision 2) was to remove the
+   * contention instead: `tools/rasteriser-cap.mjs` partitions the cores so the page's
+   * renderer process never shares one with the rasteriser, which brings the tail back
+   * under the app's control (p95 1.6-1.8 -> 1.2-1.3, p95/p50 2.3-2.6 -> 1.6-1.7). So the
+   * p95 is enforced wherever that cap is **verified** — not merely attempted — or where
+   * the renderer is real hardware and there is nothing to cap. Where neither holds, the
+   * median still carries it and `perf.json` says why the tail was not enforced. The
+   * number has never moved; only what it is compared against.
    */
   cpuFrameMs: 3.5,
   /** CLAUDE.md §2.6, assets excluded. Source maps are not shipped and do not count. */
@@ -132,7 +145,22 @@ const WARMUP_MS = 3000;                           // shaders, shadow map, first 
  * is not evidence either way. The budget did not move; the window did.
  */
 const TARGET_SAMPLES = 360;
-const SAMPLE_DEADLINE_MS = 70_000;                // SwiftShader is slow; still bounded
+/**
+ * The window has to close on `TARGET_SAMPLES`, not on this deadline — a p95 taken from a
+ * deadline-limited window is the irreproducible number a previous run already fixed once.
+ * The deadline is the bound on a hung page, not the normal exit.
+ *
+ * 420 s, up from 70 s, because the rasteriser cap costs sample rate: confining
+ * SwiftShader to half the cores roughly doubles its per-frame time (gpu p50 ~200 ms ->
+ * ~375 ms here), so 360 frames took 152 s on this box and should take ~300 s on a runner
+ * that rasterises half as fast. Raising it is close to free — the loop exits the moment
+ * the target is met, so the deadline only costs time on a page that has stopped
+ * producing frames, and CI allows 30 minutes for the whole chain.
+ *
+ * `enforceTail` below still refuses to enforce the tail on a window that ends up short,
+ * so an unexpectedly slow box loses the tail check rather than failing at random.
+ */
+const SAMPLE_DEADLINE_MS = 420_000;
 const IDLE_BASELINE_MS = 6_000;                   // long enough for 24 heap samples
 const UNPACED_WINDOW_MS = 4000;                   // the cadence pass needs no more
 const VSYNC_TICK_MS = 1000 / 60;
@@ -343,13 +371,23 @@ async function measure({ url, extraArgs, errors, targetSamples, windowMs, sample
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 
     await page.goto(url, { waitUntil: 'load', timeout: 30_000 });
-    await page.waitForTimeout(WARMUP_MS);
 
+    // Read the renderer before the warm-up, because whether the rasteriser is software
+    // decides whether the cap below is applied at all — and the cap has to be in place
+    // *before* the warm-up, so shaders, the shadow map and the first GC all happen under
+    // the same core partition the measurement runs under.
     const renderer = await page.evaluate(() => {
       const gl = document.createElement('canvas').getContext('webgl2');
       const d = gl?.getExtension('WEBGL_debug_renderer_info');
       return d && gl ? String(gl.getParameter(d.UNMASKED_RENDERER_WEBGL)) : 'unknown';
     });
+    const software = /swiftshader|llvmpipe|software|mesa offscreen/i.test(renderer);
+
+    // Stop the rasteriser competing with the page's main thread for cores, so the tail
+    // of `cpuFrameMs` is the app rather than the box. See tools/rasteriser-cap.mjs.
+    const cap = await applyRasteriserCap({ rootPid: process.pid, software });
+
+    await page.waitForTimeout(WARMUP_MS);
 
     const hasProbe = await page.evaluate(() => globalThis.__dragonveinPerf !== undefined);
     if (!hasProbe) {
@@ -413,6 +451,12 @@ async function measure({ url, extraArgs, errors, targetSamples, windowMs, sample
     const ticksAtStart = (await page.evaluate(
       () => globalThis.__dragonveinPerf?.counts().loopTicks ?? 0));
 
+    // Verified here rather than at pin time, and after the idle pass has started and
+    // stopped rendering — so the masks are read back off the threads that are about to
+    // be measured, including any the warm-up created. A `taskset` that exited 0 is a
+    // claim; the mask in /proc is the fact.
+    await verifyRasteriserCap(cap);
+
     const startedAt = Date.now();
     let framesAtEnd = framesAtStart;
     let ticksAtEnd = ticksAtStart;
@@ -445,8 +489,10 @@ async function measure({ url, extraArgs, errors, targetSamples, windowMs, sample
     if (!probe) throw new Error('__dragonveinPerf.read() returned nothing');
 
     return {
-      probe, stats, renderer,
-      software: /swiftshader|llvmpipe|software|mesa offscreen/i.test(renderer),
+      probe, stats, renderer, software, cap,
+      /** Did the window close on its sample target, or run out of clock? */
+      windowClosedOnTarget: targetSamples > 0
+        && (probe.cpuFrameMs?.length ?? 0) >= targetSamples,
       collectionWindowMs: Date.now() - startedAt,
       heap: summariseHeap(
         heapKB, framesAtEnd - framesAtStart, Date.now() - startedAt, baseline,
@@ -486,11 +532,39 @@ try {
   // CPU and GPU pipeline: a frame costs whichever of the two is slower, not their sum.
   const frameCostP95 = Math.max(cpu?.p95 ?? 0, gpu?.p95 ?? 0);
 
+  /**
+   * Is the main-thread **tail** enforceable on this machine?
+   *
+   * Two ways to earn it, and both are about the same property: no rasteriser thread may
+   * share a core with the page's main thread. Real hardware has it for free. A software
+   * rasteriser has it only where `tools/rasteriser-cap.mjs` pinned the cores and then
+   * read the masks back — `verified`, never merely `applied`.
+   *
+   * And a third condition that is about the statistic rather than the machine: the p95
+   * has to come from a window that closed on its sample target. A deadline-limited
+   * window rests its tail on a handful of samples and does not reproduce, and enforcing
+   * an irreproducible number is how a gate becomes one people learn to ignore.
+   */
+  const tailMachineOk = !paced.software || paced.cap.verified;
+  const enforceTail = tailMachineOk && paced.windowClosedOnTarget;
+
   const report = {
     status: 'complete',
     renderer: paced.renderer,
     softwareRenderer: paced.software,
     frameBudgetEnforced: !paced.software,
+    rasteriserCap: paced.cap,
+    mainThreadTailEnforced: enforceTail,
+    mainThreadTailNote: enforceTail
+      ? 'cpuFrameMs.p95 is enforced: nothing shares a core with the main thread, and the ' +
+        'sampling window closed on its target.'
+      : 'cpuFrameMs.p95 is advisory on this run. ' +
+        (tailMachineOk
+          ? `The sampling window closed on the deadline rather than on ` +
+            `${TARGET_SAMPLES} samples (${paced.probe.cpuFrameMs.length} collected in ` +
+            `${paced.collectionWindowMs} ms), so the tail would not reproduce.`
+          : `The rasteriser could not be kept off the main thread's cores — ` +
+            `${paced.cap.reason}. See rasteriserCap.`),
     viewport: paced.probe.viewport,
     tier: paced.probe.tier,
     context: paced.probe.context,
@@ -514,16 +588,18 @@ try {
       budgetMs: BUDGET.cpuFrameMs,
       withinBudget: cpu.p50 <= BUDGET.cpuFrameMs,
       p95WithinBudget: cpu.p95 <= BUDGET.cpuFrameMs,
-      enforcedStatistic: 'p50 everywhere; p95 additionally where frameBudgetEnforced',
+      enforcedStatistic: enforceTail
+        ? 'p50 and p95, both against the same 3.5 ms'
+        : 'p50 only on this run; see mainThreadTailNote for why the tail is advisory',
       note: 'Main-thread wall time around the render call. The hardware-independent ' +
         'half of the 16.6 ms line, so this one IS enforced on the software rasteriser: ' +
         'SwiftShader rasterises off this thread (compare cpu p50 here with the GPU ' +
         'timer figure below), so a main-thread regression shows up in this number ' +
-        'whatever renders the pixels. The median is what is enforced everywhere — ' +
-        'SwiftShader does rasterise on worker threads that compete for the same cores, ' +
-        'so on a small runner the p95 measures contention rather than app work ' +
-        '(identical bytes: p50 0.7 -> 0.9 between two machines, p95 1.8 -> 3.7). The ' +
-        'p95 is held to the same number where frameBudgetEnforced is true. Budget from ' +
+        'whatever renders the pixels. The tail used to be unenforceable because the ' +
+        'rasteriser competed for the main thread\'s cores and the p95 measured the box ' +
+        '(identical bytes: p50 0.7 -> 0.9 between two machines, p95 1.8 -> 3.7); ' +
+        'rasteriserCap removes that competition by partitioning the cores, so the p95 ' +
+        'is held to the same 3.5 ms wherever the cap verifies. Budget from ' +
         'docs/PERF_BUDGET.md §Per-frame budget: sim + logic 2.0 ms + scene update/' +
         'culling 1.5 ms.',
     },
@@ -647,12 +723,14 @@ try {
       '— the regression is on the CPU side, not in the rasteriser',
     );
   }
-  // The same 3.5 ms against the tail, but only where no software rasteriser is competing
-  // for the main thread's cores. See BUDGET.cpuFrameMs for the two-machine measurement.
-  if (cpu !== null && report.frameBudgetEnforced && cpu.p95 > BUDGET.cpuFrameMs) {
+  // The same 3.5 ms against the tail. Enforced wherever nothing shares a core with the
+  // main thread — real hardware, or a verified rasteriser cap — from a window that
+  // closed on its sample target. See BUDGET.cpuFrameMs and tools/rasteriser-cap.mjs.
+  if (cpu !== null && report.mainThreadTailEnforced && cpu.p95 > BUDGET.cpuFrameMs) {
     fail.push(
-      `main-thread frame cost p95 ${cpu.p95} ms > ${BUDGET.cpuFrameMs} ms on real ` +
-      'hardware, where the tail is the app and not the box',
+      `main-thread frame cost p95 ${cpu.p95} ms > ${BUDGET.cpuFrameMs} ms with the ` +
+      `rasteriser off this thread's cores (${report.rasteriserCap.reason}), so the tail ` +
+      'is the app and not the box',
     );
   }
   // Cost, not cadence. A vsync-locked frame now reports what it cost and is not failed by
@@ -668,9 +746,14 @@ try {
   console.log(`viewport: ${report.viewport.cssWidth}x${report.viewport.cssHeight} ` +
     `(drawing buffer ${report.viewport.drawingBufferWidth}x${report.viewport.drawingBufferHeight}), ` +
     `tier: ${report.tier.name}`);
+  console.log(`rasteriser cap: ${report.rasteriserCap.reason ?? 'n/a'}` +
+    (report.rasteriserCap.verified
+      ? ` (${report.rasteriserCap.threadsVerified} threads re-read)`
+      : ''));
   console.log(`cpu frame cost p50=${cpu?.p50 ?? 'n/a'}ms (enforced) p95=${cpu?.p95 ?? 'n/a'}ms ` +
-    `(${report.frameBudgetEnforced ? 'enforced' : 'advisory — rasteriser contention'}) ` +
-    `vs budget ${BUDGET.cpuFrameMs}ms over ${report.sampleCount.cpuFrameMs} samples`);
+    `(${report.mainThreadTailEnforced ? 'enforced' : 'advisory'}) ` +
+    `vs budget ${BUDGET.cpuFrameMs}ms over ${report.sampleCount.cpuFrameMs} samples ` +
+    `of ${TARGET_SAMPLES} target in ${report.sampleCount.collectionWindowMs}ms`);
   console.log(gpu
     ? `gpu frame cost p50=${gpu.p50}ms p95=${gpu.p95}ms over ${report.sampleCount.gpuFrameMs} samples`
     : `gpu frame cost: not measured — ${report.gpuTimer.unavailableReason}`);

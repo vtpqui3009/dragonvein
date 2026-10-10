@@ -1240,7 +1240,10 @@ interface FrameCostReport {
 // The gates read these. Keep the shapes stable even as the renderer is replaced.
 declare global {
   var __dragonveinStats: (() => {
-    drawCalls: number; triangles: number; frameMs: number; cpuFrameMs: number;
+    /** null while the WebGL context is lost: there is no frame to report. */
+    drawCalls: number | null; triangles: number | null;
+    frameMs: number | null; cpuFrameMs: number | null;
+    contextLost: boolean;
   }) | undefined;
   var __dragonveinPerf: {
     reset: () => void;
@@ -1256,13 +1259,26 @@ declare global {
     read: () => FrameCostReport;
   } | undefined;
 }
+/**
+ * A dead context must not read as a healthy frame.
+ *
+ * The honesty fix for context loss reached the HUD and `__dragonveinPerf.read().context`
+ * but not this accessor, which kept returning the last live frame's draw calls and frame
+ * time forever — so a gate polling only `__dragonveinStats` would pass on a canvas that
+ * had stopped drawing. `null` rather than `0`, for the same reason the HUD prints `—`:
+ * zero draw calls is a claim about a frame that was rendered, and no frame was.
+ * `tools/playtest.mjs` reads `drawCalls ?? 0 > 0` as its "is it drawing" probe, so this
+ * makes that probe correct rather than merely cautious.
+ */
 globalThis.__dragonveinStats = () => ({
-  drawCalls: renderer.info.render.calls,
-  triangles: renderer.info.render.triangles,
+  drawCalls: contextLost ? null : renderer.info.render.calls,
+  triangles: contextLost ? null : renderer.info.render.triangles,
   /** Present interval: rAF cadence, quantised to vsync. Kept for continuity. */
-  frameMs,
+  frameMs: contextLost ? null : frameMs,
   /** What the frame actually cost the main thread. This is the one to budget against. */
-  cpuFrameMs: lastCpuMs,
+  cpuFrameMs: contextLost ? null : lastCpuMs,
+  /** So a reader that gets nulls can tell "dead" from "not started". */
+  contextLost,
 });
 
 globalThis.__dragonveinPerf = {

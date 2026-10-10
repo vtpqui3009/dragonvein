@@ -78,7 +78,7 @@ moves. `tests/spine.test.ts` fails if the comparison is made conditional again.
 Which statistic carries it matters, and the first version of this budget got it wrong by
 comparing the p95. SwiftShader does not rasterise *on* the main thread, but it does
 rasterise on worker threads that compete for the same cores, so on a small runner the
-tail of `cpuFrameMs` measures contention rather than app work. Identical bytes, two
+tail of `cpuFrameMs` measured contention rather than app work. Identical bytes, two
 machines:
 
 | | cpu p50 | cpu p95 | gpu p50 |
@@ -86,16 +86,100 @@ machines:
 | build container | 0.7 ms | 1.8 ms | 117 ms |
 | GitHub runner | 0.9 ms | 3.7 ms | 237 ms |
 
-The rasteriser is twice as slow on the runner and the p95 doubles with it (+106%) while
-the median moves +29%. A budget that goes red because the box is busy is one everybody
-learns to ignore — the same argument that keeps `frameCostMs` advisory here. So the
-**median** carries the enforcement everywhere, and the **p95** is held to the same 3.5 ms
-where `frameBudgetEnforced` is true and nothing is competing for the main thread's cores.
-The number did not move; the statistic did.
+The rasteriser is twice as slow on the runner and the p95 doubled with it (+106%) while
+the median moved +29%. A budget that goes red because the box is busy is one everybody
+learns to ignore — the same argument that keeps `frameCostMs` advisory here. So for one
+run of this project the **median** carried the enforcement and the p95 was held only where
+`frameBudgetEnforced` was true.
+
+That was the right read of the measurement and the wrong place to stop, because no machine
+this project has ever run on has a real GPU, so in practice **no p95 was enforced
+anywhere**. A tail nobody looks at is a tail nobody fixes. The owner ruled
+(`STATE.md` §2026-10-10 decisions, decision 2) that the contention should be removed rather
+than the statistic, and that is now done — see §Capping the rasteriser below. The p95 is
+held to the same unchanged 3.5 ms wherever the cap is *verified*; the median is enforced
+everywhere regardless. The number has never moved. Only what it is compared against.
 
 This does **not** stand in for the 16.6 ms line, and nothing here should be read as having
 verified it. Being inside 3.5 ms of CPU says a frame is not CPU-bound; it says nothing
 about whether the GPU can draw it in time.
+
+## Capping the rasteriser
+
+The budget needs one property: **no rasteriser thread may share a core with the page's
+main thread.** Real hardware has it for free. This section is how a software rasteriser is
+made to have it, and — because the ruling asked for the record either way — exactly what
+was tried and what each attempt did.
+
+### What did not work: capping the thread count
+
+Chromium's bundled `libvk_swiftshader.so` runs one `marl` worker per core. On this 4-core
+container, `/proc/<gpu-pid>/task/*/comm` shows `Thread<00>` … `Thread<03>`, which is a
+direct observation of the pool rather than an inference, and is what makes a claimed cap
+checkable.
+
+| attempt | what it did |
+|---|---|
+| `SwiftShader.ini` with `[Processor] ThreadCount=1`, written into the GPU process's own cwd (confirmed via `/proc/<gpu-pid>/cwd`) | **No effect.** Still 4 `Thread<NN>` workers. The strings `SwiftShader.ini`, `Processor` and `ThreadCount` are all present in the shipped library, so the `Configurator` is compiled in, but nothing in Chromium's build wires it to the marl pool. |
+| `--num-raster-threads=1` | **No effect** on the pool (still 4 workers). It is Chromium's own tile-raster pool, not SwiftShader's. Main-thread p95 came out 3.9 ms, i.e. worse than uncapped. |
+
+Chromium accepted both without complaint. Neither capped anything. This is why
+`tools/rasteriser-cap.mjs` reports `verified` only after re-reading the kernel's own
+masks, and never from an exit code.
+
+### What worked: capping the thread *placement*
+
+`sched_setaffinity` (via `taskset`) on every thread of every browser process partitions
+the cores. The page's renderer process gets the lower half to itself; the GPU process with
+its marl pool, and every other helper process, is confined to the upper half. The
+rasteriser then cannot be scheduled onto a core the main thread runs on.
+
+Measured on the M0 scene at 1920×1080, this container, four runs:
+
+| | cpu p50 | cpu p95 | cpu max | p95/p50 | gpu p50 |
+|---|---|---|---|---|---|
+| uncapped | 0.7 ms | 1.6–1.8 ms | 4.7–9.0 ms | 2.3–2.6 | ~200 ms |
+| **capped** | 0.7–0.8 ms | **1.1–1.3 ms** | 2.5–3.8 ms | **1.6–1.7** | ~375 ms |
+
+The p95/p50 ratio falling towards 1 is the evidence the ruling asked for: what remains in
+the tail is the app, not the box. The spread across runs narrows with it, which is the
+same statement in a different form.
+
+Two variants were measured and rejected, because the obvious cap is not the best one:
+
+- **GPU process pinned to cpus 1–3, page left free.** p95 **3.0 ms** — *worse than
+  uncapped*. Confining 4 workers to 3 cores raises their density, and a page free to roam
+  gets scheduled right onto them. Pinning the rasteriser is not enough; the page has to be
+  pinned away from it.
+- **Page pinned to one core (cpu 0), GPU to 1–3.** p95 1.9–2.3 ms. Better than uncapped,
+  worse than the split: on a single core the page's own compositor thread becomes the
+  competitor. This is why `CAP_MIN_CPUS` is 4 — below that the cap declines instead of
+  guessing, and the median carries the budget alone.
+
+### What it costs, and the window
+
+Halving the rasteriser's cores roughly doubles its per-frame time (gpu p50 ~200 → ~375 ms).
+GPU time is advisory on a software rasteriser, so no budget moves — but the **sample rate**
+halves with it, and a p95 from a window that hit its deadline instead of its sample target
+is the irreproducible number a previous run already fixed once. So:
+
+- The sampling deadline is 420 s, against a 360-sample target. Measured: 369 samples in
+  153 s here, and the loop exits the moment the target is met, so the deadline only costs
+  time on a page that has stopped producing frames.
+- `gate:perf` enforces the tail only when the window **closed on its target**. A slow box
+  loses the tail check and says so in `perf.json.mainThreadTailNote`; it does not fail at
+  random.
+
+### What the artefact records
+
+`artifacts/perf.json` carries `rasteriserCap` — mechanism, the cpu partition, every
+process pinned, the observed marl worker count, how many thread masks were re-read, and
+the failed thread-count attempts above — plus `mainThreadTailEnforced` and a note saying
+why if it is false. A critic reading only the artefacts can tell whether the p95 it is
+looking at was enforced, and why.
+
+Linux-only: it reads `/proc` and shells out to `taskset`. Anywhere else the cap declines
+and the median carries the budget, which is the documented fallback rather than a failure.
 
 ### Real-GPU verification — a human step, and its record
 
