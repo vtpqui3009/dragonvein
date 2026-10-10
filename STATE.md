@@ -5,6 +5,177 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 
 ---
 
+## 2026-10-10 — run 3 — M0, decision 2 implemented; rubric blocks the close (IN_PROGRESS)
+
+**Milestone**: M0, still the lowest-numbered milestone not `DONE`. Nothing else touched.
+M1 not started.
+
+**Step 0 (prove the push path) passed**: `8ec0985` pushed to `main` with Bash git before
+any other work. The stale-checkout trap the last run warned about is real and recurred:
+the checkout arrived in detached HEAD with local `main` **20 commits** behind
+`origin/main`. `git reset --hard origin/main` was refused by this session's permission
+layer, so it was fixed with `git merge --ff-only origin/main` on a clean tree, which is
+the same end state here. A future run that cannot reset should reach for `--ff-only`
+rather than concluding its credentials are broken.
+
+### Scores
+
+| cycle | art | perf | gameplay |
+|---|---|---|---|
+| 1 (run 1) | 7.6 | 3.8 | 8.8 |
+| 2 (run 2) | 6.9 | 5.9 | 8.2 |
+| 3 (run 2) | 7.4 | 5.7 | 8.6 |
+| **4 (this run, cycle 1 of a fresh run)** | **6.1** | **6.1** | **8.2** / 5.6 literal |
+
+Scored against `2d1ff42` on a genuinely frozen tree: the perf-critic ran alone on a quiet
+container, then art and gameplay scored in parallel from a byte-identical `artifacts/`
+(md5 of `perf.json` checked before and after; the perf-critic's own reproduction run
+restored it). **No critic raised a blocking defect this cycle** — a first for this
+milestone. The three scores are not on one scale, which is itself a finding: see below.
+
+### What shipped
+
+**Decision 2, preferred branch, implemented and verified** — `tools/rasteriser-cap.mjs`.
+
+The main-thread p95 is enforceable again, at the same unchanged 3.5 ms, on this
+GPU-less container. The thread-*count* cap the decision asked for first does not exist in
+Chromium's SwiftShader, and both attempts were accepted without complaint while changing
+nothing — which is exactly the failure mode the decision warned about:
+
+| attempt | what it did |
+|---|---|
+| `SwiftShader.ini` `[Processor] ThreadCount=1`, in the GPU process's **own** cwd (confirmed via `/proc/<gpu-pid>/cwd`) | nothing. All 4 `Thread<NN>` marl workers remained. The strings `SwiftShader.ini`, `Processor` and `ThreadCount` are all in the shipped `libvk_swiftshader.so`, so the `Configurator` is compiled in — but nothing wires it to the marl pool. |
+| `--num-raster-threads=1` | nothing to the pool (still 4). It is Chromium's tile-raster pool, not SwiftShader's. Main-thread p95 came out **3.9 ms** — worse. |
+
+Thread *placement* is reachable. `sched_setaffinity` on every thread of every browser
+process partitions the cores: the page's renderer takes cpus 0–1, the GPU process with its
+marl pool and every helper are confined to 2–3, so no rasteriser thread can share a core
+with the main thread. Four runs at 1920×1080:
+
+| | cpu p50 | cpu p95 | cpu max | p95/p50 | gpu p50 |
+|---|---|---|---|---|---|
+| uncapped | 0.7 ms | 1.6–1.8 ms | 4.7–9.0 ms | 2.3–2.6 | ~200 ms |
+| **capped** | 0.7–0.8 ms | **1.1–1.3 ms** | 2.5–3.8 ms | **1.6–1.7** | ~375 ms |
+
+The p95/p50 ratio falling towards 1 is the evidence the decision named. **The cap held**,
+and it is reported `verified` only after re-reading all 55 threads' `Cpus_allowed_list`
+out of `/proc` and checking the two sets are non-empty and disjoint — never from a
+`taskset` exit code. The perf-critic then reproduced it through a different code path of
+its own and confirmed all four marl workers confined to cpus 2–3. Two variants were
+measured and **rejected**: pinning only the GPU process gave p95 3.0 ms (*worse* than
+uncapped — a page free to roam gets scheduled onto the rasteriser's cores), and the page
+on a single core gave 1.9–2.3 ms (its own compositor becomes the competitor). Hence
+`CAP_MIN_CPUS = 4`: below that the cap declines rather than guessing.
+
+Cost, stated because it nearly reintroduced an old defect: halving the rasteriser's cores
+roughly doubles its frame time, so the sample rate halves. The deadline rose 70 s → 420 s
+against the unchanged 360-sample target, and `gate:perf` now **refuses to enforce the tail
+on a window that closed on the deadline instead of the target** — an irreproducible p95 is
+precisely what moved that target to 360 in the first place. Measured: 369 samples in 153 s.
+
+Budget numbers untouched: 16.6 / 180 / 900 000 / 3.5 / 40 960. Only what the 3.5 is
+compared against changed. `tests/spine.test.ts` now asserts the stronger guard and fails
+if it is reverted to the real-GPU-only condition.
+
+Also fixed, from the last run's "next" list: `__dragonveinStats()` reported the last live
+frame forever over a dead context, so a gate polling it alone would have passed on a canvas
+that had stopped drawing. It now returns null per-frame figures plus `contextLost`.
+The gameplay-critic verified the lost state at +0/+5/+200/+1000/+3000/+7000 ms and found
+one remaining hole — see next steps.
+
+`npm run gates` exits 0, twice, with the tail enforced both times.
+
+### Blocker: M0 cannot close under `docs/RUBRIC.md` as written. This needs the owner.
+
+This is the run's main finding and it is not a build problem. Rubric lines that have **no
+possible subject at M0** take enough points off the maximum that two of the three critics
+cannot reach 8.0 with any amount of work:
+
+| critic | lines with no subject at M0 | points removed | **literal ceiling** |
+|---|---|---|---|
+| gameplay | G2 bred dragon (M9), G4 state survives reload (M8) | 3.2 | **6.8** |
+| perf | P3 bred-dragon mesh ≤ 120 ms (M3) | 1.8 | 8.2 |
+| perf | …and P4's "GC pauses < 2 ms", which the web platform exposes no API for at all | 0.3 | **7.9** |
+| art | A4 variant sheets (M1) — but scorable against the frame's own repeated set | 0 | 10.0 |
+
+So M0 is unreachable by construction, exactly as P1 was before the owner fixed it this
+week — and for the same reason. All three critics found this independently, none of them
+touched the rubric (CLAUDE.md §7), and they then resolved it in **opposite directions**:
+the gameplay-critic headlined the renormalised figure (8.2, with 5.6 literal as the
+aside), the perf-critic headlined the literal one (6.1, with 8.7 as the aside), and the
+art-critic set out all three readings and chose to score A4 against the frame. That
+inconsistency means the three numbers in the table above are not comparable, which is a
+second-order consequence of the same gap.
+
+**The decision is the owner's, and there is no honest way for a run to make it.** The
+options, with the one this run would pick:
+
+1. **Preferred — word the affected lines like P1 now is.** P1 was not deleted or lowered;
+   it was re-worded so the thing it measures exists on the machine doing the measuring.
+   The same treatment: a line whose subject does not exist at the milestone under test is
+   scored out of the denominator and reported `n/a`, not as 0 and not as a blocking
+   defect. A4 additionally gets P1's shape — blocking only when a variant sheet exists and
+   fails, otherwise scored against the largest repeated set in the frame, which is what
+   A4's own note exists to catch. On this cycle's numbers that reads art 6.1 (unchanged,
+   A4 already scored that way), perf 8.7, gameplay 8.2.
+2. Keep the rubric literal and accept that milestones close on a lower bar early on.
+3. Keep the rubric literal and accept that M0 never closes.
+
+Under option 1, **art at 6.1 is the only genuine blocker left**, and it is real build work
+rather than an instrument problem — which is the useful outcome of this cycle.
+
+A second, smaller owner question, carried from the last run and now sharper: the sole
+real-hardware row is a `sighting` at ~1365×610, which costs P1 0.4 even under option 1.
+`docs/PERF_BUDGET.md` §Real-GPU verification is four steps on any machine with a GPU.
+
+### Next, in order
+
+1. **The owner decision above.** Nothing a run can do substitutes for it.
+2. **Art, which is the one genuine build blocker** (art-critic's own order of leverage,
+   all measured, all with pointers in `FINDINGS.md`):
+   - no contact shadow *anywhere* — 3369 grass pixels under six cones and eight pebbles,
+     69% within ±1 of `#7ba042`, zero darkening. This falsifies AC8's own claim.
+   - no warm rim — canopy top edge averages `#729a47` against `#72a44e` 6 px inside, i.e.
+     darker rather than warmer. The Fresnel term is in the frame but does not reach it.
+   - nine islands from one prefab; ~60 trees from one archetype, three bit-identical at
+     14.6° half-angle. Varies by scale and rotation only.
+   - satellites bare between features; no ambient motion anywhere outside the hero
+     island's spin (a satellite centroid holds ±0.03 px for 7.28 s).
+   - off-bible haze band, ~20% of frame at ΔE 25.9–28.6.
+3. **HUD at phone width** — a 512 px non-wrapping flex row at `left:14px`, clipping 168 px
+   at 360 px wide. Worse than cosmetic: the context-loss status line sits ~145 px past the
+   right edge, so a dead canvas at phone width is an unexplained black screen. The
+   boot-failure path already wraps and reads correctly at 360 px, so the fix is routine.
+4. **One-frame hole in `__dragonveinStats()`** — between `webglcontextrestored` and the
+   first restored frame it reports a stale healthy frame. The HUD has a
+   `framesSinceRestore === 0` guard; the accessor the gates poll does not. Cheap.
+5. **P6 is reachable today without M6's tier system** — the perf-critic notes a
+   1280×720 / no-shadow / no-post pass needs only `gate:perf`'s existing `VIEWPORT`
+   constant and the shadow toggle. Worth 1.2 and it removes one no-subject line from the
+   argument above.
+6. `artifacts/playtest.log` never observes the page *while* the context is dead (line 11
+   is post-restore), so the log alone cannot distinguish today's honest behaviour from the
+   old bug. Sample during the loss.
+
+### Recorded forward risk
+
+Heap churn, not draw calls, is what actually binds scene growth. 21 draws already cost
+34 080 of the 40 960 B/frame budget; at the measured ~4 kB fixed + ~1.8 kB per draw, the
+180 draws P2 permits would cost ~328 kB/frame — 8× the heap budget. The practical ceiling
+is ~20 draw calls. When the scene grows, the answer is instancing and batching, never a
+larger heap number (CLAUDE.md §2.7).
+
+### Scores for the record
+
+art-critic **6.1**, perf-critic **6.1**, gameplay-critic **8.2** (5.6 read literally).
+Gates green (`npm run gates` exit 0), the rasteriser cap verified, and M0 remains
+`IN_PROGRESS` — not stretched to close. Rework cycles 2 and 3 of this run were deliberately
+not spent: with the gameplay ceiling at 6.8 and the perf ceiling at 7.9, no amount of
+building closes M0 before the owner rules, and CLAUDE.md §7 is explicit that a wrong target
+is raised in `STATE.md` and asked about rather than edited.
+
+---
+
 ## 2026-10-10 — run 2 — M0 rework cycles 2 and 3 (IN_PROGRESS)
 
 **Milestone**: M0, still the lowest-numbered milestone not `DONE`. Nothing else touched.
