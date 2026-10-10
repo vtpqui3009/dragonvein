@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /**
  * M0 spine: prove the whole chain works end to end — build, deploy, render, measure.
@@ -28,7 +29,39 @@ const PALETTE = {
 } as const;
 
 const canvas = document.getElementById('c') as HTMLCanvasElement;
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+
+/**
+ * A browser with no WebGL2 used to sit on the boot splash forever. `WebGLRenderer` throws
+ * "Error creating WebGL context", nothing caught it, so the splash stayed at opacity 1,
+ * the HUD read `FPS — DRAWS — TRIS —` and the only trace was a console throw the player
+ * never sees. CLAUDE.md §0 names a weak Intel iGPU as the target, where a driver
+ * blocklist or an enterprise 3D-API policy is an ordinary way to land here.
+ *
+ * The page already knows how to say a context it *had* has died; this is the same
+ * courtesy for one that never existed.
+ */
+function failToBoot(reason: string): never {
+  const boot = document.getElementById('boot');
+  if (boot) {
+    const line = boot.querySelector('p');
+    if (line) line.textContent = reason;
+    boot.style.opacity = '1';
+  }
+  const status = document.getElementById('hud-status');
+  if (status) { status.textContent = 'NO WEBGL2 — CANNOT RENDER'; status.hidden = false; }
+  throw new Error(reason);
+}
+
+let renderer: THREE.WebGLRenderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+} catch (e) {
+  failToBoot(
+    'This browser could not create a WebGL2 context, so DRAGONVEIN cannot render. ' +
+    'Check that hardware acceleration is on. ' +
+    `(${e instanceof Error ? e.message : String(e)})`,
+  );
+}
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -43,7 +76,11 @@ renderer.toneMappingExposure = 1.18;
 
 const scene = new THREE.Scene();
 // Far and faint: the island must not wash out, but distance still reads.
-scene.fog = new THREE.Fog(PALETTE.skyHorizon, 46, 190);
+// Far plane 260, up from 190. At 190 an island 150 units out was 72% horizon colour,
+// which turned a green deck tan (#ae965a) — the art-critic measured it 18.4 deltaE off the
+// nearest bible swatch. Aerial perspective should read as distance, not as a different
+// material, so the curve is stretched rather than removed.
+scene.fog = new THREE.Fog(PALETTE.skyHorizon, 60, 260);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 600);
 // Framing is a compromise the geometry forces: look far enough down to see the ground
@@ -207,7 +244,12 @@ scene.add(rim);
 // told to be near-black, and shadows came out warm-black (5,2,1) instead of cool. The
 // ground term is now the cool bounce colour and the intensity is up, which is what put a
 // blue cast into the shadows the critic found warm.
-scene.add(new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 0.8));
+// 1.05, up from 0.8. The cool fill reaches the island's *outside*, but the art-critic
+// found 2698 px inside the island bbox at RGB sum < 30 and a shadowed canopy underside
+// at (0,18,4): a directional fill does not cast into a closed canopy, and the hemisphere
+// term is the only light that does. Raising it lifts the interior without flattening the
+// key, because it is strongest exactly where the key is absent.
+scene.add(new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 1.05));
 
 // --- the warm rim, as a rim and not as a lamp -------------------------------------------
 /**
@@ -276,7 +318,11 @@ function withRim<T extends THREE.MeshStandardMaterial>(material: T): T {
            // Gate on the rim light: 0 on the key-lit side, 1 on the backlit side. The
            // smoothstep floor is below 0 so faces exactly perpendicular still catch a
            // little, which is where a real rim is brightest.
-           float backlit = smoothstep( -0.45, 0.55, dot( rimN, normalize( uRimDir ) ) );
+           // Widened from (-0.45, 0.55): the critic sampled the island's sun-side edge and
+           // correctly found no rim there, because the gate had cut it to zero. A real
+           // backlight still wraps a little past the terminator, and a silhouette the
+           // viewer can only see on one side is half a rim.
+           float backlit = smoothstep( -0.7, 0.5, dot( rimN, normalize( uRimDir ) ) );
            totalEmissiveRadiance += uRimColor * uRimStrength * backlit * pow( facing, uRimPower );
          }
          #include <opaque_fragment>`,
@@ -295,31 +341,80 @@ scene.add(island);
 const TOP_Y = 0.55;        // world y of the grass surface
 const TOP_RADIUS = 6;
 
-// Grass cap, rock sides: without the rock band the island reads as a green coin rather
-// than as soil over stone. CylinderGeometry already splits side / top / bottom into
-// material groups, so this is one mesh, not three.
-const rockSide = withRim(new THREE.MeshStandardMaterial({ color: PALETTE.rockMid, roughness: 0.98 }));
-const top = new THREE.Mesh(
-  new THREE.CylinderGeometry(TOP_RADIUS, TOP_RADIUS - 0.4, 1.1, 48),
-  [rockSide, withRim(new THREE.MeshStandardMaterial({ color: PALETTE.foliageMid, roughness: 0.95 })), rockSide],
-);
-top.castShadow = true;
-top.receiveShadow = true;
-island.add(top);
+/**
+ * Grass cap over a rock root, as **one** mesh with one material.
+ *
+ * It was four draw calls: a cylinder whose three geometry groups resolved to two
+ * materials (so three calls) plus the cone (one), doubled by the shadow pass. Eight in
+ * all for two shapes. Heap churn inside `three.WebGLRenderer.render` scales with draw
+ * calls — about 2 kB a call, measured — and CI went over the 40 960 B/frame budget at 28
+ * calls. docs/PERF_BUDGET.md §Heap churn says the way to pay for a bigger scene is fewer
+ * draw calls, not a bigger number, so this is that.
+ *
+ * The three-value split the materials used to carry is baked into vertex colours
+ * instead: grass on the cap's top face, rock on its skirt and on the whole root. The
+ * hexes are the bible's, converted through `setHex(..., SRGBColorSpace)` so they land in
+ * three's linear working space exactly as a material colour would have.
+ */
+const islandBody = (() => {
+  const grass = new THREE.Color().setHex(PALETTE.foliageMid, THREE.SRGBColorSpace);
+  const rock = new THREE.Color().setHex(PALETTE.rockMid, THREE.SRGBColorSpace);
 
-const base = new THREE.Mesh(
-  // 96 radial segments, up from 48. The art-critic read three flat facets across
-  // x 540-760 and scored A9 down for a faceted diamond where the concept has a smooth
-  // cone; at 48 the facet width was ~4 px of a 1080p frame, which is exactly the scale
-  // that reads as flat. 96 costs 96 triangles against a 900 000 budget.
-  new THREE.ConeGeometry(TOP_RADIUS - 0.4, 6.5, 96),
-  withRim(new THREE.MeshStandardMaterial({ color: PALETTE.rockMid, roughness: 0.98 })),
-);
-base.position.y = -3.25;
-base.rotation.x = Math.PI;
-base.castShadow = true;
-base.receiveShadow = true;
-island.add(base);
+  /** Paints every vertex of `geo` one colour, except the groups named in `grassGroups`. */
+  const paint = (geo: THREE.BufferGeometry, grassGroups: number[]): void => {
+    const pos = geo.attributes['position'];
+    const index = geo.getIndex();
+    if (!pos) throw new Error('island geometry has no position attribute');
+    const colors = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      colors[i * 3] = rock.r;
+      colors[i * 3 + 1] = rock.g;
+      colors[i * 3 + 2] = rock.b;
+    }
+    // By *group*, not by height. A cylinder's side ring shares its top vertices with the
+    // cap, so colouring by `y >= TOP_Y` paints the top of the skirt green and three.js
+    // interpolates that down the whole rock band — rendered, and the island came out a
+    // green coin, which is the exact failure the rock band exists to prevent.
+    if (index) {
+      for (const g of geo.groups) {
+        if (!grassGroups.includes(g.materialIndex ?? 0)) continue;
+        for (let k = g.start; k < g.start + g.count; k++) {
+          const v = index.getX(k);
+          colors[v * 3] = grass.r;
+          colors[v * 3 + 1] = grass.g;
+          colors[v * 3 + 2] = grass.b;
+        }
+      }
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  };
+
+  // CylinderGeometry groups: 0 side, 1 top cap, 2 bottom cap. Only the top is grass.
+  const cap = new THREE.CylinderGeometry(TOP_RADIUS, TOP_RADIUS - 0.4, 1.1, 48);
+  paint(cap, [1]);
+  // 96 radial segments on the root, up from 48. The art-critic read three flat facets
+  // across x 540-760 and scored A9 down for a faceted diamond where the concept has a
+  // smooth cone; at 48 the facet width was about 4 px of a 1080p frame, which is the
+  // scale that reads as flat. 96 costs 96 triangles against a 900 000 budget.
+  const root = new THREE.ConeGeometry(TOP_RADIUS - 0.4, 6.5, 96);
+  root.rotateX(Math.PI);
+  root.translate(0, -3.25, 0);
+  paint(root, []);
+
+  const merged = mergeGeometries([cap, root], false);
+  if (!merged) throw new Error('could not merge the island cap and root');
+  cap.dispose();
+  root.dispose();
+
+  const mesh = new THREE.Mesh(merged, withRim(new THREE.MeshStandardMaterial({
+    vertexColors: true, roughness: 0.97,
+  })));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  island.add(mesh);
+  return mesh;
+})();
+void islandBody;
 
 // --- scatter: every repeated prop is one InstancedMesh = one draw call ------------------
 type Spot = { x: number; z: number; r: number };
@@ -364,6 +459,7 @@ const cMid = new THREE.Color(PALETTE.foliageMid);
 const cLight = new THREE.Color(PALETTE.foliageLight);
 const cRock = new THREE.Color(PALETTE.rockMid);
 const cShadow = new THREE.Color(PALETTE.deepShadow);
+const cCloudLit = new THREE.Color(0xffc49a);     // horizon light on a cloud top
 
 function place(
   mesh: THREE.InstancedMesh, i: number,
@@ -492,9 +588,13 @@ crowns.castShadow = true;
   trunks.count = canopies.count = crowns.count = n;
 }
 
-// Scatter rocks — the island reads as rock under the grass, not as a green coin.
+// Scatter rocks — the island reads as rock under the grass, not as a green coin. The
+// stepping stones ride in this mesh too: they are the same material at a different
+// scale, and a second InstancedMesh for 22 flattened discs cost two draw calls (one
+// opaque, one shadow) and about 4 kB a frame of churn for no visual difference that
+// survives at 1080p.
 const ROCKS = 76;
-const rocks = instanced(new THREE.IcosahedronGeometry(0.3, 0), ROCKS, 1.0);
+const rocks = instanced(new THREE.IcosahedronGeometry(0.3, 0), ROCKS + pathStones.length, 1.0);
 rocks.castShadow = true;
 {
   const rng = makeRng(0x5a4a_4001);
@@ -507,6 +607,13 @@ rocks.castShadow = true;
       s, s * (0.5 + rng() * 0.4), s * (0.8 + rng() * 0.5),
       rng() * Math.PI * 2, (rng() - 0.5) * 0.5, (rng() - 0.5) * 0.5);
     rocks.setColorAt(n, tint.copy(cShadow).lerp(cRock, 0.45 + rng() * 0.55));
+    n++;
+  }
+  // The path, from the reservations above: flattened hard so a faceted rock reads as a
+  // trodden stone, and lighter than the scatter so the line of them is legible.
+  for (const c of pathStones) {
+    place(rocks, n, c.x, c.y, c.z, c.sx * 1.25, 0.22, c.sz * 1.25, c.rot, c.tiltX, c.tiltZ);
+    rocks.setColorAt(n, tint.copy(cRock).lerp(cCloudLit, 0.2 + c.mix));
     n++;
   }
   rocks.count = n;
@@ -570,7 +677,6 @@ const tufts = instanced(new THREE.ConeGeometry(0.075, 0.36, 3), TUFTS, 0.9);
 const far = new THREE.Group();
 scene.add(far);
 
-const cCloudLit = new THREE.Color(0xffc49a);     // horizon light on a cloud top
 const cWater = new THREE.Color(0x2d92ba);        // ART_BIBLE §Palette, water near
 const cWaterFar = new THREE.Color(0xa6f1f2);     // ART_BIBLE §Palette, water far
 
@@ -593,19 +699,34 @@ const COMPANIONS: Companion[] = [
   { x: -54, y: 21, z: -63, s: 1.0, trees: 10 },    // top centre, high and far
   { x: 1, y: -10, z: -108, s: 1.2, trees: 8 },     // far right, below the eyeline
   { x: -120, y: -12, z: -25, s: 1.35, trees: 7 },  // far left, deep in the haze
+  // Three below the eyeline. The art-critic ran a Sobel scan over the bottom bands and
+  // got **zero** edge pixels across x0-540, y540-720 and x0-400, y420-540: the lower
+  // quarter of the frame was a smooth painted gradient with nothing in it. A sky-world
+  // has islands *below* you as well as above, and a silhouette is the cheapest form
+  // there is.
+  { x: -75, y: -41, z: -17, s: 1.1, trees: 6 },    // low left, under the cloud deck
+  { x: 3, y: -35, z: -61, s: 1.0, trees: 6 },      // low right
+  { x: -64, y: -54, z: -36, s: 1.1, trees: 5 },    // bottom centre, nearer so the fog leaves it green
 ];
 {
   const caps = instanced(new THREE.CylinderGeometry(6, 5.6, 1.1, 36), COMPANIONS.length, 0.95, far);
   const cones = instanced(new THREE.ConeGeometry(5.6, 6.5, 36), COMPANIONS.length, 0.98, far);
   const treeTotal = COMPANIONS.reduce((t, c) => t + c.trees, 0);
-  const farTrees = instanced(new THREE.ConeGeometry(0.62, 1.9, 6), treeTotal, 0.85, far);
+  const BIRD_COUNT = 11;
+  const farTrees = instanced(new THREE.ConeGeometry(0.62, 1.9, 6), treeTotal + BIRD_COUNT, 0.85, far);
   const rng = makeRng(0x15_1a4d);
   let t = 0;
   COMPANIONS.forEach((c, i) => {
     place(caps, i, c.x, c.y, c.z, c.s, c.s, c.s, rng() * Math.PI * 2);
     // The cone is the island's root: same inverted-cone trick as the hero island.
     place(cones, i, c.x, c.y - 3.8 * c.s, c.z, c.s, c.s, c.s, rng() * Math.PI * 2, Math.PI);
-    caps.setColorAt(i, tint.copy(cMid).lerp(cWaterFar, 0.1 + rng() * 0.12));
+    // On the bible's foliage axis, not off it. The first version lerped `foliage mid`
+    // toward `water far` (#a6f1f2) for a sense of distance; that path crosses green into
+    // cyan, and the art-critic measured two decks at #5a967e — blue above red — 16.0 deltaE
+    // off the nearest swatch, with a third at #ae965a. Distance is the fog's job, not the
+    // albedo's, so these now sit between `foliage dark` and `foliage light` like every
+    // other green in the frame.
+    caps.setColorAt(i, tint.copy(cDark).lerp(cLight, 0.3 + rng() * 0.3));
     cones.setColorAt(i, tint.copy(cRock).lerp(cShadow, 0.25 + rng() * 0.3));
     for (let k = 0; k < c.trees; k++) {
       const a = rng() * Math.PI * 2;
@@ -617,24 +738,59 @@ const COMPANIONS: Companion[] = [
       t++;
     }
   });
-  farTrees.count = t;
-}
 
-// Birds. Nine, static, far enough that they read as a flock rather than as props — the
-// cheapest thing in the frame that says "inhabited" (rubric A6).
-{
-  const BIRDS = 11;
-  const birds = instanced(new THREE.ConeGeometry(0.5, 1.6, 3), BIRDS, 1.0, far);
-  const rng = makeRng(0xb13d_0001);
-  for (let i = 0; i < BIRDS; i++) {
+  // The flock rides in the same mesh. A cone squashed flat along one axis and tilted is
+  // a dart, and at 60-120 units a dart is a bird; it is also the difference between a
+  // draw call and no draw call, which heap churn charges about 2 kB a frame for.
+  for (let i = 0; i < BIRD_COUNT; i++) {
     const a = 1.6 + rng() * 2.4;
     const d = 58 + rng() * 60;
     const sc = 0.5 + rng() * 0.5;
-    place(birds, i, Math.cos(a) * d, 9 + rng() * 15, Math.sin(a) * d,
-      sc * 2.3, sc * 0.3, sc, rng() * Math.PI * 2, 0, (rng() - 0.5) * 0.8);
-    birds.setColorAt(i, tint.copy(cShadow).lerp(cRock, rng() * 0.35));
+    place(farTrees, t, Math.cos(a) * d, 9 + rng() * 15, Math.sin(a) * d,
+      sc * 1.9, sc * 0.16, sc * 0.5, rng() * Math.PI * 2, Math.PI / 2, (rng() - 0.5) * 0.9);
+    farTrees.setColorAt(t, tint.copy(cShadow).lerp(cRock, rng() * 0.35));
+    t++;
   }
+  farTrees.count = t;
+
+  // A6: the satellites were flat discs carrying identical cones — "a dressed island is
+  // never bare between features" (ART_BIBLE §Density) applied to one island out of
+  // seven. Two more shared meshes dress all six: scatter boulders and low bushes, the
+  // same two archetypes as the hero deck so the world reads as one place, at the same
+  // cost as a single island's worth because they are instanced across all of them.
+  const DRESS_PER = 14;
+  const farRocks = instanced(
+    new THREE.IcosahedronGeometry(0.3, 0), COMPANIONS.length * DRESS_PER, 1.0, far);
+  const farBushes = instanced(
+    new THREE.SphereGeometry(0.34, 6, 4), COMPANIONS.length * DRESS_PER, 0.9, far);
+  let r = 0;
+  let b = 0;
+  for (const c of COMPANIONS) {
+    for (let k = 0; k < DRESS_PER; k++) {
+      const a = rng() * Math.PI * 2;
+      const d = Math.sqrt(rng()) * 5.2 * c.s;
+      const x = c.x + Math.cos(a) * d;
+      const z = c.z + Math.sin(a) * d;
+      if (k % 2 === 0) {
+        const sc = (0.5 + rng() * 0.9) * c.s;
+        place(farRocks, r, x, c.y + 0.55 * c.s + sc * 0.1, z,
+          sc, sc * (0.5 + rng() * 0.4), sc * (0.8 + rng() * 0.5),
+          rng() * Math.PI * 2, (rng() - 0.5) * 0.5, (rng() - 0.5) * 0.5);
+        farRocks.setColorAt(r, tint.copy(cShadow).lerp(cRock, 0.45 + rng() * 0.55));
+        r++;
+      } else {
+        const sc = (0.55 + rng() * 0.8) * c.s;
+        place(farBushes, b, x, c.y + 0.55 * c.s + sc * 0.18, z,
+          sc, sc * 0.62, sc, rng() * Math.PI * 2);
+        farBushes.setColorAt(b, tint.copy(cDark).lerp(cLight, 0.2 + rng() * 0.5));
+        b++;
+      }
+    }
+  }
+  farRocks.count = r;
+  farBushes.count = b;
 }
+
 
 // --- the island reads as inhabited (rubric A6, A9) -------------------------------------
 // Three crystal clusters and a stepping-stone path, both in the concept image and both
@@ -647,20 +803,16 @@ const COMPANIONS: Companion[] = [
   // variation rides the per-instance colour and the material carries a modest emissive of
   // its own — enough to read against the grass without blowing out under ACES.
   const crystalMat = crystals.material as THREE.MeshStandardMaterial;
-  crystalMat.emissive = new THREE.Color(cWaterFar).multiplyScalar(0.3);
+  // 0.85, up from 0.3. At 0.3 the cluster measured matte neutral-white (brightest
+  // [219,235,234]) where docs/concept/03-island-scene.png shows emissive cyan shards.
+  // There is no GI here so it cannot spill onto the grass, but it can at least be the
+  // brightest, bluest thing on the island instead of looking like quartz.
+  crystalMat.emissive = new THREE.Color(cWater).lerp(cWaterFar, 0.45).multiplyScalar(0.85);
   crystalMat.roughness = 0.25;
   crystalMat.metalness = 0.1;
   crystalShards.forEach((c, i) => {
     place(crystals, i, c.x, c.y, c.z, c.sx, c.sy, c.sz, c.rot, c.tiltX, c.tiltZ);
     crystals.setColorAt(i, tint.copy(cWater).lerp(cWaterFar, c.mix));
-  });
-}
-{
-  const stones = instanced(new THREE.CylinderGeometry(0.34, 0.3, 0.1, 7), pathStones.length, 1.0);
-  stones.castShadow = true;
-  pathStones.forEach((c, i) => {
-    place(stones, i, c.x, c.y, c.z, c.sx, c.sy, c.sz, c.rot, c.tiltX, c.tiltZ);
-    stones.setColorAt(i, tint.copy(cRock).lerp(cCloudLit, c.mix));
   });
 }
 
@@ -741,6 +893,16 @@ class Samples {
 
   reset(): void { this.written = 0; }
 }
+
+/**
+ * When false the frame loop keeps running — rAF, the HUD timer, the rotation — but does
+ * not call `renderer.render`. `gate:perf` uses it to measure the part of the heap churn
+ * that is driven by *time* rather than by frames (the HUD's 250 ms repaint, the loop
+ * itself) so it can subtract that before charging the rest per frame. Without the
+ * separation a slow pass divides a fixed per-second cost by fewer frames and reads over
+ * a budget it did not breach, which is exactly what happened on the CI runner.
+ */
+let renderingEnabled = true;
 
 const cpuFrameMs = new Samples(PERF_CAPACITY);
 const presentIntervalMs = new Samples(PERF_CAPACITY);
@@ -843,6 +1005,8 @@ const CONTEXT_RESTORE_ATTEMPTS = 5;
 const CONTEXT_RESTORE_BACKOFF_MS = 400;
 
 let contextLost = false;
+/** Frames drawn since the last context restore; see the HUD's `—` branch below. */
+let framesSinceRestore = 1;
 let contextLostAt = 0;
 let contextRestoreAttempts = 0;
 let contextRestoredCount = 0;
@@ -870,6 +1034,11 @@ canvas.addEventListener('webglcontextlost', () => {
   contextLost = true;
   contextLostAt = performance.now();
   contextRestoreAttempts = 0;
+  // A dead canvas renders as the browser's broken-image glyph on white, which covers
+  // the body behind it — a white viewport on a game whose palette is #070d14, with the
+  // recovery message sitting on top of it. Hiding it puts the page's own background
+  // back, so the overlay reads against the dark it was designed for.
+  canvas.style.visibility = 'hidden';
   // Repaint now rather than waiting up to 250 ms for the sampler: the overlay must not
   // keep showing a frame rate for a canvas that has stopped rendering.
   paintHud();
@@ -883,6 +1052,12 @@ canvas.addEventListener('webglcontextlost', () => {
 canvas.addEventListener('webglcontextrestored', () => {
   contextLost = false;
   contextRestoredCount++;
+  canvas.style.visibility = '';
+  // `renderer.info.render` is zeroed by the restore and stays zero until the first
+  // restored frame lands. The HUD repaints on a 250 ms timer, so without this it prints
+  // a confident `DRAWS 0 TRIS 0` for one tick — a smaller lie than the stale `DRAWS 20`
+  // it used to tell, but still a number the frame about to be drawn will not match.
+  framesSinceRestore = 0;
   clearTimeout(restoreTimer);
   // Every GL object from the dead context is gone, the timer queries included.
   acquireContextExtensions();
@@ -942,18 +1117,21 @@ function frame(now: number): void {
   // camera moves. Allocation-free: two pre-allocated vectors, written in place.
   updateRimDirection();
 
-  collectGpuTimings();
-  const timed = gpuTimer && idleQueries.length > 0 ? idleQueries.pop() ?? null : null;
-  if (gl2 && gpuTimer && timed) gl2.beginQuery(gpuTimer.TIME_ELAPSED_EXT, timed);
-  renderer.render(scene, camera);
-  if (gl2 && gpuTimer && timed) {
-    gl2.endQuery(gpuTimer.TIME_ELAPSED_EXT);
-    busyQueries.push(timed);
-  }
+  if (renderingEnabled) {
+    collectGpuTimings();
+    const timed = gpuTimer && idleQueries.length > 0 ? idleQueries.pop() ?? null : null;
+    if (gl2 && gpuTimer && timed) gl2.beginQuery(gpuTimer.TIME_ELAPSED_EXT, timed);
+    renderer.render(scene, camera);
+    if (gl2 && gpuTimer && timed) {
+      gl2.endQuery(gpuTimer.TIME_ELAPSED_EXT);
+      busyQueries.push(timed);
+    }
 
-  lastCpuMs = performance.now() - startedAt;
-  cpuFrameMs.push(lastCpuMs);
-  framesRendered++;
+    lastCpuMs = performance.now() - startedAt;
+    cpuFrameMs.push(lastCpuMs);
+    framesRendered++;
+    framesSinceRestore++;
+  }
   // `performance.now()` is measured from navigation start, so the first frame's end *is*
   // boot-to-first-frame. No second clock to disagree with.
   if (bootMs === 0) bootMs = performance.now();
@@ -991,6 +1169,16 @@ function paintHud(): void {
     return;
   }
   if (hud.status) hud.status.hidden = true;
+  if (framesSinceRestore === 0) {
+    // Restored, but nothing drawn through the new context yet. There is no measurement
+    // to report, and `0` is not one.
+    if (hud.fps) hud.fps.textContent = '—';
+    if (hud.draws) hud.draws.textContent = '—';
+    if (hud.tris) hud.tris.textContent = '—';
+    framesSinceSample = 0;
+    msSinceSample = 0;
+    return;
+  }
   if (msSinceSample > 0) fps = (framesSinceSample * 1000) / msSinceSample;
   framesSinceSample = 0;
   msSinceSample = 0;
@@ -1049,6 +1237,8 @@ declare global {
   }) | undefined;
   var __dragonveinPerf: {
     reset: () => void;
+    /** Pause or resume `renderer.render` without stopping the loop. See `renderingEnabled`. */
+    setRendering: (on: boolean) => void;
     /** Cheap progress poll. `read()` copies the whole window and would itself be a
      *  measurable allocation if the gate called it in a loop — which it must not, because
      *  the gate samples the heap through that same loop. */
@@ -1074,6 +1264,7 @@ globalThis.__dragonveinPerf = {
     presentIntervalMs: presentIntervalMs.count,
     framesRendered,
   }),
+  setRendering: (on: boolean) => { renderingEnabled = on; },
   reset: () => {
     cpuFrameMs.reset();
     gpuFrameMs.reset();
