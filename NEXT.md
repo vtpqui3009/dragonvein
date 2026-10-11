@@ -6,7 +6,11 @@ Every run rewrites this before it stops, including a run that is cut off mid-fli
 `STATE.md` is the journal and explains *why*; this file says *what now*. If the two
 disagree, `STATE.md` is the record of fact and this file is stale — fix it.
 
-Last updated: **2026-10-10** · at commit `37ebd67`
+If the commit stamp below is older than `git log -1`, commits have landed that this file
+has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
+trusting anything here.
+
+Last updated: **2026-10-11** · at commit `c1b4cce`
 
 ---
 
