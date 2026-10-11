@@ -181,8 +181,19 @@ const skyGeo = new THREE.SphereGeometry(SKY_RADIUS, 24, 192);
    * than spread over the fifth of the frame the art-critic measured.
    */
   const SEA_TOP = 0.085;
-  /** Where the deck gives way to the abyss. Between the two the sky *is* `rock mid`. */
-  const SEA_BOTTOM = 0.30;
+  /**
+   * Where the deck gives way to the abyss. Between the two the sky *is* `rock mid`.
+   *
+   * 0.16, down from 0.30. At 0.30 the deck colour held most of the lower frame and the
+   * art-critic read the result as "a flat brown-grey... it reads as mud, not dusk",
+   * sampling #53453d at y=300 and #4e403a at y=540 and marking A2 down to 0.6/1.0 for
+   * it. The deck is meant to be a *band* — a lit cloud layer the island's root crosses,
+   * which is what gives A1 something for the dark cone to separate against — not the
+   * floor of the sky. Narrowing it to a band puts the lower third of the frame on
+   * `deep shadow`, which is both the bible's colour for the drop under a sky-world and
+   * the dusk the critic was asking for.
+   */
+  const SEA_BOTTOM = 0.16;
   const pos = skyGeo.attributes['position'];
   if (!pos) throw new Error('sky geometry has no position attribute');
   const colors = new Float32Array(pos.count * 3);
@@ -209,7 +220,7 @@ const skyGeo = new THREE.SphereGeometry(SKY_RADIUS, 24, 192);
         Math.sin(theta * 7 - 1.9) * 0.3 +
         Math.sin(theta * 13 + 2.6) * 0.2;
       const top = SEA_TOP + lobes * 0.035;
-      const bottom = SEA_BOTTOM + lobes * 0.05;
+      const bottom = SEA_BOTTOM + lobes * 0.035;
       /*
        * The deck's own colour, varied by azimuth so the plateau is patchy rather than
        * one flat value — but varied **along `rock mid` -> `deep shadow`**, not by
@@ -231,7 +242,7 @@ const skyGeo = new THREE.SphereGeometry(SKY_RADIUS, 24, 192);
       const deckColG = (haze[1] as number) + ((abyss[1] as number) - (haze[1] as number)) * shade;
       const deckColB = (haze[2] as number) + ((abyss[2] as number) - (haze[2] as number)) * shade;
       const toDeck = smooth(-h / Math.max(0.02, top));
-      const toAbyss = smooth((-h - bottom) / 0.45);
+      const toAbyss = smooth((-h - bottom) / 0.30);
       const deckR = (horizon[0] as number) + (deckColR - (horizon[0] as number)) * toDeck;
       const deckG = (horizon[1] as number) + (deckColG - (horizon[1] as number)) * toDeck;
       const deckB = (horizon[2] as number) + (deckColB - (horizon[2] as number)) * toDeck;
@@ -358,7 +369,12 @@ scene.add(rim);
 // at (0,18,4): a directional fill does not cast into a closed canopy, and the hemisphere
 // term is the only light that does. Raising it lifts the interior without flattening the
 // key, because it is strongest exactly where the key is absent.
-scene.add(new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 0.72));
+// 0.86, up from 0.72. The art-critic counted 3864 px of bush underside and conifer
+// shade face crushed below #0a0a0a — "flat black blocks... they read as holes". The
+// hemisphere term is the only light that reaches a closed canopy's interior, so it is
+// the one to raise; the cast shadows survive it because the rim no longer washes the
+// deck (see `withRim`), which bought back more contrast than this spends.
+scene.add(new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 0.86));
 
 // --- the warm rim, as a rim and not as a lamp -------------------------------------------
 /**
@@ -756,7 +772,11 @@ const crystalShards: Placed[] = [];
         rot: rng() * Math.PI * 2, tiltX: (rng() - 0.5) * 0.45, tiltZ: (rng() - 0.5) * 0.45,
         mix: 0.25 + rng() * 0.7,
       });
-      taken.push({ x, z, r: Math.max(sx, sz) * 0.6 });
+      // 1.15x the shard's own half-width, not 0.6x. The art-critic found a shard
+      // passing through a tree trunk at 01-wide x520-560 / y370-420: at 0.6 the
+      // reservation was smaller than the shard, so a later sample could clear the
+      // footprint and still intersect the geometry.
+      taken.push({ x, z, r: Math.max(sx, sz) * 1.15 });
     }
   }
 }
@@ -1063,6 +1083,29 @@ const COMPANIONS: Companion[] = [
   { x: -64, y: -54, z: -36, s: 1.1, trees: 5,      // bottom centre, near enough to stay green
     aspect: 1.4, thick: 1.2, keel: 1.2, keelR: 0.95, tiltX: -0.05, tiltZ: 0.09,
     bob: 1.5, bobRate: 0.00015 },
+  /*
+   * Four more in the lower band, added after the art-critic read the bottom half as "a
+   * large empty dusk void around eight sparse satellites" and marked A6 down for it. The
+   * remedy it suggested first was cloud banks and haze; that was tried in this run and
+   * removed (see the note where the cloud sea used to be — `scene.fog` resolves anything
+   * far enough back to its own colour, `sky horizon`, so a cloud deck repaints the band
+   * orange). Distant islands do not have that problem: they are opaque silhouettes at a
+   * distance the fog only softens, and the machinery for them already exists.
+   *
+   * Small, low and far apart, so they read as depth rather than as more furniture.
+   */
+  { x: 58, y: -30, z: -84, s: 0.8, trees: 4,
+    aspect: 1.6, thick: 0.8, keel: 1.1, keelR: 0.7, tiltX: 0.07, tiltZ: -0.06,
+    bob: 1.0, bobRate: 0.00023 },
+  { x: -28, y: -58, z: -52, s: 0.7, trees: 3,
+    aspect: 0.75, thick: 1.5, keel: 2.2, keelR: 0.35, tiltX: -0.08, tiltZ: 0.07,
+    bob: 1.3, bobRate: 0.00031 },
+  { x: 96, y: -16, z: -132, s: 1.3, trees: 5,
+    aspect: 1.1, thick: 0.9, keel: 0.7, keelR: 1.2, tiltX: 0.04, tiltZ: 0.1,
+    bob: 1.8, bobRate: 0.00013 },
+  { x: -98, y: -68, z: -70, s: 1.2, trees: 4,
+    aspect: 1.3, thick: 1.1, keel: 1.6, keelR: 0.6, tiltX: 0.09, tiltZ: -0.04,
+    bob: 1.6, bobRate: 0.00018 },
 ];
 
 /*
@@ -1160,7 +1203,7 @@ const vKeel = new THREE.Vector3();
     // albedo's, so these now sit between `foliage dark` and `foliage light` like every
     // other green in the frame. The range is wider than it was: "no colour difference
     // between any two" was one of A4's specific complaints.
-    caps.setColorAt(i, tint.copy(cDark).lerp(cLight, 0.15 + rng() * 0.7));
+    caps.setColorAt(i, tint.copy(cDark).lerp(cLight, 0.15 + rng() * 0.48));
     cones.setColorAt(i, tint.copy(cRock).lerp(cShadow, 0.1 + rng() * 0.7));
 
     for (let k = 0; k < c.trees; k++) {
@@ -1272,18 +1315,22 @@ const vKeel = new THREE.Vector3();
  * eleven of them wheeling slowly is the cheapest motion in the frame: eleven matrices a
  * frame, composed from the same scratch objects everything else uses.
  */
-const BIRD_COUNT = 11;
+// 18, up from 11, and flying nearer. The art-critic could pick out "only two to four
+// tiny dark bird-like specks... barely visible": at 58-118 units a 0.5-1.0 unit dart is
+// about two pixels. They now range from 26 to 96 units and are half again as large,
+// which is the difference between a speck and a bird.
+const BIRD_COUNT = 18;
 const birds = instanced(new THREE.ConeGeometry(0.62, 1.9, 6), BIRD_COUNT, 0.85, far);
 /** Orbit radius, height, angular speed, start angle and size for each bird. */
 const birdOrbit = new Float32Array(BIRD_COUNT * 5);
 {
   const rng = makeRng(0xb1_7d5);
   for (let i = 0; i < BIRD_COUNT; i++) {
-    birdOrbit[i * 5] = 58 + rng() * 60;                      // radius
-    birdOrbit[i * 5 + 1] = 9 + rng() * 15;                   // height
-    birdOrbit[i * 5 + 2] = (rng() < 0.5 ? -1 : 1) * (0.000055 + rng() * 0.00009);
-    birdOrbit[i * 5 + 3] = 1.6 + rng() * 2.4;                // start angle
-    birdOrbit[i * 5 + 4] = 0.5 + rng() * 0.5;                // size
+    birdOrbit[i * 5] = 46 + rng() * 62;                      // radius
+    birdOrbit[i * 5 + 1] = 6 + rng() * 20;                   // height
+    birdOrbit[i * 5 + 2] = (rng() < 0.5 ? -1 : 1) * (0.00007 + rng() * 0.00012);
+    birdOrbit[i * 5 + 3] = rng() * Math.PI * 2;              // start angle
+    birdOrbit[i * 5 + 4] = 0.55 + rng() * 0.5;               // size
     birds.setColorAt(i, tint.copy(cShadow).lerp(cRock, rng() * 0.35));
   }
   birds.count = BIRD_COUNT;
@@ -1337,7 +1384,10 @@ function updateFarMotion(nowMs: number): void {
       Math.cos(angle) * radius,
       height + Math.sin(nowMs * 0.0006 + i) * 1.4,
       Math.sin(angle) * radius,
-      size * 1.9, size * 0.16, size * 0.5,
+      // Long, thin and nearly flat. At 11 instances and radius 58-118 these were
+      // specks; brought nearer and scaled up they became black lozenges, which is a
+      // worse failure than a speck. A dart only reads as a bird if it stays a dart.
+      size * 2.4, size * 0.1, size * 0.42,
       // Nose into the turn, so the dart points where it is going.
       -angle, Math.PI / 2, Math.sin(nowMs * 0.0011 + i) * 0.35);
   }
