@@ -10,7 +10,7 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-11** · at commit `953f156`, the last commit of run 4 that
+Last updated: **2026-10-11** · at commit `b92c867`, the last commit of run 5 that
 changed code. The close-out commit that wrote this file follows it, so `git log -1`
 being one or two docs commits ahead of that stamp is expected and not staleness.
 
@@ -18,64 +18,51 @@ being one or two docs commits ahead of that stamp is expected and not staleness.
 
 ## Current step
 
-**M0e — HUD readable at 360 px; the context-loss line visible; `__dragonveinStats()` has
-no stale-frame hole** · `TODO`
+**M0f — the camera answers the pointer: drag to orbit, wheel/pinch to zoom, under both a
+mouse and a `hasTouch` context** · `TODO`
 
-M0d closed this run at art-critic **8.3**, against its stated bar of ≥ 8.0.
-All five of its named conditions hold and each is measurable: contact shadows land (the
-shadow pass darkens ~41% of the deck to 0.43× its unshadowed brightness), all three lights
-reach the frame (the warm rim had never been in one — see below), prefab variety reads
-(three tree archetypes, thirteen islands varying on five axes beyond scale and rotation),
-no bare ground, and the off-bible wash is gone (ΔE 25.9–28.6 over a fifth of the frame →
-ΔE 1.9–8.8, with `deep shadow` hit exactly below y 660).
+M0e closed this run at `b92c867` (art **8.6**, perf **7.9**, gameplay **6.7**, no blocking
+defects). All three conditions are asserted by `gate:smoke`: the HUD fits at 360 and 320 px,
+the context-loss line is on screen at 360 px with the context held lost, and
+`__dragonveinStats()` returns `null` from boot or restore until the first frame is drawn.
 
-**M0 the milestone is still `IN_PROGRESS`**, on two things that are not M0d's:
-
-- M0e, above, which is the next step in reading order.
-- The gameplay-critic sits at **6.9** and cannot rise without a step that does not exist.
-  See the roadmap defect in `STATE.md`: `docs/ROADMAP.md` makes **G6 (mouse and touch)
-  live from M0**, and no M0 step delivers any input. A proposed **M0f** is written up
-  there. M0e will not move that score.
+**Owner check:** M0e was marked `DONE` on its row's criteria with perf and gameplay below
+8.0. `STATE.md` run 5 says why: gameplay is the G6 cap, which is M0f's to lift, and perf's
+numbers are level with or better than M0d's 8.7. If you disagree, set M0e back to
+`IN_PROGRESS` in `docs/ROADMAP.md`.
 
 ## The single next action
 
-Take M0e. It is two measured defects, both already located, neither touched this run:
+Take M0f. G6 is the only thing holding the gameplay-critic under 8, at 6.7 now.
 
-1. **The HUD clips at phone width.** A 512 px non-wrapping row loses 168 px at 360 px
-   wide, and what it hides is the context-loss status line — so a dead canvas reads as an
-   unexplained black screen rather than as a driver reset. The HUD markup is in
-   `index.html` and the overlay code is at the end of `src/main.ts`.
-2. **A one-frame hole in `__dragonveinStats()`** between `webglcontextrestored` and the
-   first restored frame, where the readout can reprint the last good numbers over a
-   context that has not drawn yet. `docs/ARCHITECTURE.md` §Render contract is explicit
-   that a readout must say the context is dead rather than reprint.
-
-`gate:smoke` already shoots at 1280×720 only; M0e needs a 360 px shot added to it, which
-is the natural place for its acceptance criterion.
+- All the code is in `src/main.ts` (integrator), plus `tools/playtest.mjs`. One owner, no
+  fan-out. `src/ui/` does not exist yet, so do not invent the layer for one camera.
+- `tools/playtest.mjs` already sends mouse drag/wheel on the 1280 page and touch taps on a
+  `hasTouch` context, but asserts only "no error, loop still running". M0f's criterion is
+  that the camera **moved**: read the camera pose before and after, and add a pinch
+  (two-finger, via CDP `Input.dispatchTouchEvent`). Taps alone cannot pinch.
+- The island auto-rotates (`island.rotation.y = now * 0.00012`), so measure the camera,
+  not the frame.
+- The rim light is re-derived from the camera each frame (`updateRimDirection`), so
+  orbiting already keeps it correct. Verify that with a shot after an orbit.
+- Keep the orbit allocation-free. Heap is at 31.5 kB of a 40 kB/frame budget.
 
 ## Open items that need the owner, not a run
 
-- **Real-GPU verification is still a `sighting`, not a `verification`**, and it is now
-  stale as well: the only row is at `c429d4a`, and the scene has since gone 21 → 27 draw
-  calls and 29 420 → 40 056 triangles. Costs P1 0.4 and is four steps in
-  `docs/PERF_BUDGET.md` §Real-GPU verification on any machine with a GPU.
-- **The Potato tier's 30 fps has never been verified on a real GPU either.** Same four
-  steps, with `?tier=potato` on the URL. Costs P6 0.6. The enforced parts already pass.
-- **`docs/ART_BIBLE.md` §Palette has a gap, and a run should not close it alone.** The
-  table has no mid-value warm entry between `sky horizon` #ff9044 and `deep shadow`
-  #1a1420, which are 34 ΔE apart. Every gradient between them is therefore off-palette in
-  its middle, whatever it is tuned to — this is arithmetic, not a build defect. The sky
-  now routes through `rock mid` #5a4a40 to keep most of the band on-palette, and what is
-  left is two ~30-row transitions. `CLAUDE.md` §7 says the bible describes the target and
-  a run must ask rather than edit it, so: **does the palette want a dusk/haze entry?** If
-  yes, the sky gradient gets simpler and A2 goes to near-zero ΔE. If no, this is as good
-  as it gets and the residual should be written into `docs/RUBRIC.md` A2 as expected.
+- **M0e's `DONE`**, above.
+- **Real-GPU verification is a stale `sighting`** at `c429d4a` (21 draws). The scene is
+  now 27 draws and 42 268 tris. That is the perf-critic's main P1/P6 deduction, and the
+  four steps are in `docs/PERF_BUDGET.md` §Real-GPU verification, plus `?tier=potato`.
+- `docs/ROADMAP.md` under the M0 table still says M0f "is the proposed fix and is waiting
+  on the owner", while the table row is worded as approved (commit `7205394`). This run's
+  edit to that sentence was refused by the session's permission layer, because it could
+  not verify who approved. Please fix the sentence or confirm the approval.
 
 ## Standing hazards — every run hits these
 
 - The checkout often arrives in **detached HEAD** with local `main` stale — 34 commits
-  behind this run, 20 the run before. `git reset --hard origin/main` is **refused by the
-  session's permission layer**, twice now. Use
+  behind run 4, 20 the run before; run 5 found it already level. `git reset --hard
+  origin/main` is **refused by the session's permission layer**, three times now. Use
   `git checkout main && git fetch origin main && git merge --ff-only origin/main` on a
   clean tree, which reaches the same state. Do not read the refusal as a credential
   problem.

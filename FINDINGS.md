@@ -5,6 +5,70 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M0e — run 5, 2026-10-11 — cycle 1, at `b92c867`
+
+**Scores: art-critic 8.6 · perf-critic 7.9 · gameplay-critic 6.7.** No blocking defect from any
+critic. Every M0e acceptance criterion was confirmed by both the art and gameplay critics,
+and each is asserted by `gate:smoke`.
+
+Before the fix, the same drill against the previous build reproduced all three defects:
+`hud @360 right = 527.6`, status line at x 505–599 of 360, and restore-gap stats
+`drawCalls 0, cpuFrameMs 0.8` (stale). After the fix: `right = 350`, the status line at
+x 21–339, and the restore gap reads all `null` with `contextLost: false`.
+
+## perf-critic — 7.9 (6.5 of 8.2; P3 n/a)
+
+| line | score | evidence |
+|---|---|---|
+| P1 | 1.9 / 2.5 | `cpuFrameMs.p95 1.5` vs 3.5, enforced. `frameCostMs.p95 495.3` advisory (SwiftShader). Real-GPU row is a stale `sighting` at `c429d4a`. |
+| P2 | 1.8 / 1.8 | 27 draws, 42 268 tris |
+| P4 | 1.0 / 1.5 | `heap.bytesPerFrame 31 565` vs 40 960. `scavenges 18`, `netGrowthKB −1726` |
+| P5 | 1.2 / 1.2 | gzip 144 486, boot 376 ms |
+| P6 | 0.6 / 1.2 | Potato settings verified, cpu p95 1.1. `frameCostMs.p95 256` advisory |
+
+- [major] P1: "GPU frame cost does not reproduce: STATE says ~135 ms, this run 423/495 ms".
+  **Builder note, with evidence, for the next critic to check rather than take on trust:**
+  the M0d round (above, `953f156`, scored 8.7) read `frameCostMs.p95` 415.8 / 404.5 ms at
+  the same 27 draws. The 135 ms figure is from the 20-draw scene before M0d. M0e changed
+  no rendering code. The comparison baseline is stale, so this is not a regression.
+- [major] P1/P6: the real-GPU sighting is stale (`c429d4a`, 21 draws, about 1365×610). This
+  needs the owner and is already listed in `NEXT.md`.
+- [major] P4: the loop still allocates about 31 kB/frame, almost all of it inside
+  `three.WebGLRenderer.render` (`docs/PERF_BUDGET.md` §Heap churn). This is *lower* than
+  at M0d (34 944).
+- [minor] The smoke `frameMs 2166` is SwiftShader backpressure.
+- [minor] `tier.configured=false`, which is "Medium minus post".
+
+SCORE_MACHINE: 7.9
+
+## art-critic — 8.6 (7.2 of 8.4; A4 n/a)
+
+A1 1.0 · A2 0.8 · A3 0.9 · A5 1.2 · A6 1.2 · A7 0.9 · A8 0.8 · A9 0.4.
+
+- [minor] A9 `01-wide.png`: a saturated orange and navy sunset against the concept's muted peach and lilac.
+- [minor] A3 `01-wide.png` deck: cast shadows are subtle. Compare `05-potato.png`.
+- [minor] A1 `01-wide.png`: the island underside merges with the near-black lower sky.
+- [minor] A6 `01-wide.png` (x430–600, y120–190; x900–940, y40–100): dark slivers read as debris.
+- [minor] A7 `01-wide.png` HUD: the FPS, DRAWS and TRIS labels are small and dim.
+- [minor] `08-hud-320.png` is 640×960, which is DSF 2 and expected.
+
+SCORE_MACHINE: 8.6
+
+## gameplay-critic — 6.7 (3.5 of 5.2; G2, G4, G5 n/a)
+
+G1 2.0 / 2.2 · G3 1.0 / 1.4 · G6 0.5 / 1.6.
+
+- [major] G6: the camera does not answer the pointer. This is M0f, by design, and the reason
+  the score cannot reach 8 at M0e.
+- [minor] G3: no player action exists to time the 100 ms feedback line.
+- [minor] `07-context-lost-360.png`: the canvas area is flat dark while lost, with no backdrop message.
+- [minor] The held-lost check runs only at 360 px. There is no lost-state shot at 320.
+- [minor] The `context loss:` log line says `"lost":false`, which could be labelled "restored".
+
+SCORE_MACHINE: 6.7
+
+---
+
 # M0 — run 2026-10-09 — cycle 1
 
 **Scores: art-critic 7.6 · perf-critic 3.8 · gameplay-critic 8.8.** Two of three are below

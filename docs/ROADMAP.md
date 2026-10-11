@@ -30,8 +30,8 @@ meaning what they said.
 | M0b | Pages serves the build; a human has seen it running and the sighting is logged | DONE |
 | M0c | `gate:perf` measures frame **cost**, reproducibly, with the Potato tier and heap churn recorded | DONE |
 | M0d | the placeholder frame meets `docs/ART_BIBLE.md` — contact shadows land, all three lights reach the frame, prefab variety reads, no bare ground, no off-bible haze. art-critic ≥ 8.0 | DONE |
-| **M0e** | **HUD readable at 360 px; the context-loss line visible; `__dragonveinStats()` has no stale-frame hole** | **TODO** |
-| M0f | the camera answers the pointer — drag to orbit, wheel/pinch to zoom — under both a mouse and a `hasTouch` context, so rubric G6 has a subject at M0 | TODO |
+| M0e | HUD readable at 360 px; the context-loss line visible; `__dragonveinStats()` has no stale-frame hole | DONE |
+| **M0f** | **the camera answers the pointer — drag to orbit, wheel/pinch to zoom — under both a mouse and a `hasTouch` context, so rubric G6 has a subject at M0** | **TODO** |
 
 M0a–M0c were delivered and verified inside the M0 runs — gates and CI are green, the
 sighting is in `STATE.md`. They were never scored as separate steps, because this split did
@@ -39,6 +39,10 @@ not exist yet.
 
 M0d closed on 2026-10-11 at `953f156`, art-critic **8.3** against its bar of ≥ 8.0, with
 perf 8.7 alongside it and no blocking defect in four scoring rounds.
+
+M0e closed on 2026-10-11 at `b92c867`: all three of its conditions are asserted by
+`gate:smoke` and confirmed by two critics (art 8.6, perf 7.9, gameplay 6.7 — see `STATE.md`
+for why the two sub-8 scores are not M0e's to move).
 
 **M0 the milestone does not close with M0e alone.** The gameplay-critic sits at 6.9 and
 cannot rise without input existing, because §When each rubric line goes live puts **G6

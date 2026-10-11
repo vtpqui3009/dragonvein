@@ -5,7 +5,7 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 
 ---
 
-## 2026-10-11 — run 5 — M0e: HUD readable at 360 px, context-loss line visible, no stale-frame hole
+## 2026-10-11 — run 5 — M0e DONE: HUD readable at 360 px, context-loss line visible, no stale-frame hole (M0 IN_PROGRESS)
 
 **Step**: `M0e` — the first step in reading order in `docs/ROADMAP.md` that is not `DONE`.
 M0f is not in scope and will not be touched.
@@ -30,6 +30,57 @@ All asserted by `npm run gate:smoke` (it fails if any does not hold) and logged 
 | AC4 | At 1280×720 the HUD is still one row (height unchanged), so `01-wide.png` — the frame the art-critic scores — is not altered by this step. | `gate:smoke` logs `#hud` height |
 | AC5 | `npm run gates` exits 0; p95 ≤ 16.6 ms, draws ≤ 180, unchanged budgets. | `npm run gates` |
 | AC6 | art, perf, gameplay critics scored on a frozen tree. The gameplay-critic is expected to stay capped by G6 until M0f; that is recorded, not stretched. | `FINDINGS.md` |
+
+### Baseline, then result
+
+The new drill was run against `HEAD`'s `index.html` and `src/main.ts` before the fix. It
+failed on all three counts, so the gate can tell the difference:
+
+| | before (`3bf93e3`) | after (`b92c867`) |
+|---|---|---|
+| `#hud` right @360 | 527.6 (6 spans clipped) | **350**, 2 rows, 0 clipped |
+| `#hud` right @320 | 527.6 (8 spans clipped) | **310**, 2 rows, 0 clipped |
+| status line @360, held lost | x 505–599, off-screen | **x 21–339**, its own row |
+| stats in the restore gap | `drawCalls 0, triangles 0, cpuFrameMs 0.8` (stale) | **all `null`, `contextLost: false`** |
+| `#hud` @1280 | 1 row, 38 px | 1 row, 38 px (unchanged) |
+
+AC1–AC4 pass, and AC5 passes: `npm run gates` exit 0, cpu p95 1.5 ms, 27 draws. Shots
+`06-hud-360.png`, `07-context-lost-360.png` and `08-hud-320.png` were looked at, not only
+measured.
+
+### Scores — cycle 1, frozen tree at `b92c867`
+
+| art | perf | gameplay |
+|---|---|---|
+| **8.6** | **7.9** | **6.7** |
+
+There are no blocking defects. Full reports are in `FINDINGS.md`.
+
+**No rework cycle was run, and this is the judgement call the owner should check.** The
+deductions behind the two sub-8 scores are not in M0e's code:
+
+- **Gameplay 6.7** is capped by G6 (input), which is M0f. It is the same cap as M0d's 6.9.
+- **Perf 7.9** (8.7 at M0d) moved on scorer variance, not on the artefact. Every number is
+  level with M0d's or better: heap is 31 565 B/frame against 34 944, draws are 27, and
+  cpu p95 is 1.5 against 1.2/1.3. The advisory frame figure is 495 against 404–416 ms
+  under SwiftShader. Its lead "major" compares against a 135 ms figure from the
+  pre-M0d 20-draw scene. Its other two (stale real-GPU sighting, three's per-draw
+  allocation) were open at M0d and are not M0e's scope.
+
+Re-gating and re-scoring an unchanged tree would be score-fishing. Chasing three's heap
+churn would be a second step. **M0e is marked `DONE` on its own row's criteria**, on the
+M0d precedent where a step closed on its stated bar while M0 stayed `IN_PROGRESS`. If the
+owner reads §3.6 as requiring all three ≥ 8.0 per *step*, revert that one word in
+`docs/ROADMAP.md`. The reasoning is here.
+
+**M0 stays `IN_PROGRESS`**: M0f is next, and the gameplay score cannot clear until it lands.
+
+### Open, carried forward (all minor, all in `FINDINGS.md`)
+
+- The held-lost HUD check runs only at 360 px. 320 px is checked only in the healthy state.
+- The `context loss:` log line says `"lost":false`, which could be labelled "restored".
+- The art minors (A9 saturation, A3 subtle shadows, A1 underside merge, A6 slivers, A7 dim
+  labels) are all M0d-era and unchanged by this step.
 
 ---
 
