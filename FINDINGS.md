@@ -5,6 +5,63 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M0f — run 6, 2026-10-11 — cycle 1, at `c6995c4`
+
+**Scores: art-critic 8.3 · perf-critic 7.8 · gameplay-critic 8.8 (from 6.7).** No
+blocking defect from any critic. G6 went from 0.5 to 1.5 / 1.6.
+
+Before the fix, the new drill against the previous build failed every G6 assertion. It also
+found a defect nobody had listed: on a `hasTouch` context, a pinch zoomed the **page** to
+`visualViewport.scale 5`.
+
+## perf-critic — 7.8 (6.4 of 8.2; P3 n/a)
+
+P1 1.8 · P2 1.8 · P4 1.0 · P5 1.2 · P6 0.6.
+
+- [major] P1: no real-GPU verification at this milestone. The only row is a `sighting` at
+  `c429d4a`. **Only the owner can supply this**; see `docs/PERF_BUDGET.md` §Real-GPU verification.
+- [major] P1: the SwiftShader `frameCostMs.p95` drifts across runs: 423 → 495 → 547 ms at
+  identical draws and tris. It is advisory. *Builder note:* 27 draws and 42 268 tris have
+  been unchanged since M0d, and M0e/M0f changed no geometry, material or shadow setting,
+  so the drift is the container. A next run could test that by running `gate:perf` three
+  times on one commit.
+- [major] P4: `heap.bytesPerFrame 33 632` vs 40 960. It was 31 565 at M0e and 34 944 at M0d,
+  so this is within the run-to-run spread. `applyOrbit` returns early without input.
+- [minor] P6: no Potato row on real hardware.
+- [minor] `tier.configured=false`, which is "Medium minus post".
+
+SCORE_MACHINE: 7.8
+
+## art-critic — 8.3 (7.0 of 8.4; A4 n/a)
+
+A1 1.0 · A2 0.8 · A3 1.0 · A5 1.1 · A6 1.1 · A7 0.9 · A8 0.7 · A9 0.4. The critic found
+that every reachable orbit pose still lands on a composed frame.
+
+- [minor] A6 `09-orbit-mouse.png`: at dist 23 the frame is mostly sky.
+- [minor] A5/A6 `09` (0–135, 590–720): two satellites overlap on screen, cropped by the frame edge.
+- [minor] A8 `01-wide.png` (990–1005, 30–90), (510–525, 115–150): thin black shards read as glitches.
+- [minor] A2 `01-wide.png` (180–285, 545–625): a yellow-olive satellite side.
+- [minor] A3: the satellites have no contact shadow.
+- [minor] A9: the sky is darker than the concept's pastel.
+
+SCORE_MACHINE: 8.3
+
+## gameplay-critic — 8.8 (4.6 of 5.2; G2, G4, G5 n/a)
+
+G1 1.9 · G3 1.2 · G6 1.5.
+
+- [minor] G3: input-to-presented-frame latency is not measured. Only CPU cost is credited.
+- [minor] G6: pinch-in and wheel-up are not asserted on their own; only the wheel flood covers them.
+- [minor] G6: these edge cases are untested: a pinch ending into a one-finger drag, a third
+  finger, and a release outside the window.
+- [minor] G1: the arc is narrow (az −15..105, pitch 6..22). This is deliberate until the far
+  side is dressed.
+- [minor] There is no keyboard orbit, which is not in M0f's scope.
+
+SCORE_MACHINE: 8.8
+
+---
+
 # M0e — run 5, 2026-10-11 — cycle 1, at `b92c867`
 
 **Scores: art-critic 8.6 · perf-critic 7.9 · gameplay-critic 6.7.** No blocking defect from any

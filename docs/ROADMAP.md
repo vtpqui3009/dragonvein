@@ -31,7 +31,7 @@ meaning what they said.
 | M0c | `gate:perf` measures frame **cost**, reproducibly, with the Potato tier and heap churn recorded | DONE |
 | M0d | the placeholder frame meets `docs/ART_BIBLE.md` — contact shadows land, all three lights reach the frame, prefab variety reads, no bare ground, no off-bible haze. art-critic ≥ 8.0 | DONE |
 | M0e | HUD readable at 360 px; the context-loss line visible; `__dragonveinStats()` has no stale-frame hole | DONE |
-| **M0f** | **the camera answers the pointer — drag to orbit, wheel/pinch to zoom — under both a mouse and a `hasTouch` context, so rubric G6 has a subject at M0** | **TODO** |
+| M0f | the camera answers the pointer — drag to orbit, wheel/pinch to zoom — under both a mouse and a `hasTouch` context, so rubric G6 has a subject at M0 | DONE |
 
 M0a–M0c were delivered and verified inside the M0 runs — gates and CI are green, the
 sighting is in `STATE.md`. They were never scored as separate steps, because this split did
@@ -44,7 +44,16 @@ M0e closed on 2026-10-11 at `b92c867`: all three of its conditions are asserted 
 `gate:smoke` and confirmed by two critics (art 8.6, perf 7.9, gameplay 6.7 — see `STATE.md`
 for why the two sub-8 scores are not M0e's to move).
 
-**M0 the milestone does not close with M0e alone.** The gameplay-critic sits at 6.9 and
+M0f closed on 2026-10-11 at `c6995c4`: gameplay-critic 6.7 → **8.8** (G6 0.5 → 1.5),
+art 8.3, perf 7.8.
+
+**M0 the milestone is still `IN_PROGRESS`, and no run can close it.** Every step is `DONE`.
+What remains is the perf-critic at 7.8, whose deductions need a real-GPU verification row
+(`docs/PERF_BUDGET.md` §Real-GPU verification). `CLAUDE.md` §7 also forbids marking a
+milestone `DONE` that no human has seen running. Both belong to the owner. Runs move on to
+M1a in the meantime, per "take the first step that is not `DONE`".
+
+*History, kept for the record:* **M0 the milestone does not close with M0e alone.** The gameplay-critic sits at 6.9 and
 cannot rise without input existing, because §When each rubric line goes live puts **G6
 (mouse and touch) live from M0** and no step in M0a–M0e delivers any. That is a defect in
 this table, not in the build — M0f above is the proposed fix and is waiting on the owner.
@@ -55,7 +64,7 @@ nothing listens to proves nothing, are in `STATE.md` 2026-10-11.
 
 | step | done when | status |
 |---|---|---|
-| M1a | one generator goes end to end: script → LOD0/1/2 `.glb` → 8-seed variant sheet → turntable → `MANIFEST.json` | TODO |
+| **M1a** | **one generator goes end to end: script → LOD0/1/2 `.glb` → 8-seed variant sheet → turntable → `MANIFEST.json`** | **TODO** |
 | M1b | `assets:build` and `assets:render` run in CI and publish their artefacts | TODO |
 
 ## M2 — Genome in TypeScript

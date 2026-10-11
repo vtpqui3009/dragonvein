@@ -10,7 +10,7 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-11** · at commit `b92c867`, the last commit of run 5 that
+Last updated: **2026-10-11** · at commit `c6995c4`, the last commit of run 6 that
 changed code. The close-out commit that wrote this file follows it, so `git log -1`
 being one or two docs commits ahead of that stamp is expected and not staleness.
 
@@ -18,45 +18,60 @@ being one or two docs commits ahead of that stamp is expected and not staleness.
 
 ## Current step
 
-**M0f — the camera answers the pointer: drag to orbit, wheel/pinch to zoom, under both a
-mouse and a `hasTouch` context** · `TODO`
+**M1a — one generator goes end to end: script → LOD0/1/2 `.glb` → 8-seed variant sheet →
+turntable → `MANIFEST.json`** · `TODO`
 
-M0e closed this run at `b92c867` (art **8.6**, perf **7.9**, gameplay **6.7**, no blocking
-defects). All three conditions are asserted by `gate:smoke`: the HUD fits at 360 and 320 px,
-the context-loss line is on screen at 360 px with the context held lost, and
-`__dragonveinStats()` returns `null` from boot or restore until the first frame is drawn.
+Every M0 step is now `DONE`. M0f closed this run at `c6995c4` with art **8.3**, perf **7.8**
+and gameplay **8.8**. Gameplay passed 8.0 for the first time since M0d, because the
+camera now answers drag, wheel and pinch.
 
-**Owner check:** M0e was marked `DONE` on its row's criteria with perf and gameplay below
-8.0. `STATE.md` run 5 says why: gameplay is the G6 cap, which is M0f's to lift, and perf's
-numbers are level with or better than M0d's 8.7. If you disagree, set M0e back to
-`IN_PROGRESS` in `docs/ROADMAP.md`.
+**M0 the milestone stays `IN_PROGRESS`, and only the owner can close it.** Perf is held at
+7.8–7.9 by deductions no run can move: there is no real-GPU verification row, and
+SwiftShader frame cost drifts with no scene change. `CLAUDE.md` §7 also needs a human to
+have seen it running. This does not block M1a.
 
 ## The single next action
 
-Take M0f. G6 is the only thing holding the gameplay-critic under 8, at 6.7 now.
+Take M1a. It is the first asset step, and the contract's first workstream.
 
-- All the code is in `src/main.ts` (integrator), plus `tools/playtest.mjs`. One owner, no
-  fan-out. `src/ui/` does not exist yet, so do not invent the layer for one camera.
-- `tools/playtest.mjs` already sends mouse drag/wheel on the 1280 page and touch taps on a
-  `hasTouch` context, but asserts only "no error, loop still running". M0f's criterion is
-  that the camera **moved**: read the camera pose before and after, and add a pinch
-  (two-finger, via CDP `Input.dispatchTouchEvent`). Taps alone cannot pinch.
-- The island auto-rotates (`island.rotation.y = now * 0.00012`), so measure the camera,
-  not the frame.
-- The rim light is re-derived from the camera each frame (`updateRimDirection`), so
-  orbiting already keeps it correct. Verify that with a shot after an orbit.
-- Keep the orbit allocation-free. Heap is at 31.5 kB of a 40 kB/frame budget.
+- **Pick the generator from `docs/ASSET_PLAN.md`. Do not invent one.** B1 canopy trees are
+  the natural first: the M0 island already has three tree archetypes hand-built in
+  `src/main.ts`, so the critic has a direct before/after.
+- **`assetgen/build_all.py` and `assetgen/render_all.py` do not exist yet**, although
+  `package.json` already calls them. M1a writes them. Only `genome.py`, `dragon/` and
+  `render_proof.py` are there.
+- `CLAUDE.md` §1.2: a committed `.glb` must be reproduced **byte-for-byte** by
+  `npm run assets:build` and named in `public/assets/MANIFEST.json`. `check:assets` must
+  enforce that. Prove the byte-for-byte claim by building twice and comparing hashes
+  before committing anything.
+- The 8-seed variant sheet must read as eight different trees. If it does not, fix the
+  generator rather than picking luckier seeds (`ops/build-prompt.md`).
+- `asset-builder` owns `assetgen/`. Wiring into `check:assets` (`tools/`) is the
+  integrator's. That makes two owners, so run them sequentially, not in parallel.
+- Setup: `pip install bpy`, the GL libraries in `assetgen/README.md`, and
+  `export LIBGL_ALWAYS_SOFTWARE=1`. Cycles renders on CPU at roughly 25–100 s per frame,
+  so budget for the turntable.
+- **This step may be too big for one run.** If it is, `CLAUDE.md` §4b.4 says to propose
+  the split in `STATE.md` and take the half that fits, for example generator + LODs +
+  variant sheet first, then turntable + manifest + check.
 
 ## Open items that need the owner, not a run
 
-- **M0e's `DONE`**, above.
-- **Real-GPU verification is a stale `sighting`** at `c429d4a` (21 draws). The scene is
-  now 27 draws and 42 268 tris. That is the perf-critic's main P1/P6 deduction, and the
-  four steps are in `docs/PERF_BUDGET.md` §Real-GPU verification, plus `?tier=potato`.
-- `docs/ROADMAP.md` under the M0 table still says M0f "is the proposed fix and is waiting
-  on the owner", while the table row is worded as approved (commit `7205394`). This run's
-  edit to that sentence was refused by the session's permission layer, because it could
-  not verify who approved. Please fix the sentence or confirm the approval.
+- **Closing M0** needs a real-GPU verification row (`docs/PERF_BUDGET.md` §Real-GPU
+  verification, four steps, plus `?tier=potato`) and a human sighting of the current build.
+  The camera now orbits, so the sighting can also confirm drag and pinch on a real phone.
+- **M0e was marked `DONE` with perf 7.9 and gameplay 6.7.** M0f was marked `DONE` with
+  perf 7.8. `STATE.md` runs 5 and 6 give the reasoning. Overrule it in `docs/ROADMAP.md`
+  if you read §3.6 per step.
+- `docs/ROADMAP.md` (the "History" paragraph under M0) still says M0f "is waiting on the
+  owner". An edit to that sentence was refused by the permission layer in run 5.
+
+## Carried forward, minor (in `FINDINGS.md`)
+
+- G6: pinch-in and wheel-up are covered only by the wheel flood, not asserted on their own.
+- G3: input-to-presented-frame latency is unmeasured.
+- Art: thin black shards read as glitches; one satellite side is yellow-olive; the sky is
+  darker than the concept's pastel.
 
 ## Standing hazards — every run hits these
 

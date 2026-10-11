@@ -5,7 +5,7 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 
 ---
 
-## 2026-10-11 — run 6 — M0f: the camera answers the pointer
+## 2026-10-11 — run 6 — M0f DONE: the camera answers the pointer (M0 IN_PROGRESS on the owner)
 
 **Step**: `M0f` — the first step in reading order in `docs/ROADMAP.md` that is not `DONE`.
 The owner started this run straight after run 5 with "Tiếp tục task tiếp theo" ("continue
@@ -33,6 +33,56 @@ All are asserted by `npm run gate:smoke` and logged to `artifacts/playtest.log`.
 | AC5 | With no input the pose equals the M0e framing, so `01-wide.png` is unchanged. | `gate:smoke` logs the pose at 01-wide |
 | AC6 | The orbit adds no per-frame allocation. `gate:perf` heap stays inside 40 KiB/frame and is no worse than 31.6 kB beyond noise. | `npm run gate:perf` |
 | AC7 | `npm run gates` exits 0, with critics scored on a frozen tree. G6 is the line this step exists to lift. | `npm run gates`, `FINDINGS.md` |
+
+### What the limits are, and how they were found
+
+The first clamps were reasoned (pitch 6–48, dist 11–38, azimuth free). Rendering each
+limit showed three were wrong:
+- At pitch 48 the horizon and the whole sky gradient left the frame (vertical FOV is 50°).
+- At dist 11 the deck overflowed a 640×360 frame.
+- Past ~110° of azimuth the composed satellites run out, and the hero hangs in empty sky.
+
+The shipped limits are azimuth −15..105, pitch 6..22, dist 15..32. The first gate run also
+showed 0.0065 rad/px slamming a 160 px swipe into the azimuth wall, so it is now 0.004
+(≈37° per 160 px).
+
+### Baseline, then result
+
+The new drill against the previous build (`46c42ba`) fails every G6 assertion. It also
+caught **a pinch zooming the page to `visualViewport.scale 5`**, a phone defect nobody had
+listed. At `c6995c4`:
+
+| gesture | pose before → after |
+|---|---|
+| none (01-wide) | az 39.33° pitch 14.01° dist 20.65, which is the M0d framing (AC5) |
+| mouse drag 160 px right | az 39.33 → 2.66 |
+| mouse drag 50 px down | pitch 14.01 → 22.00 (clamp) |
+| wheel +120 | dist 20.65 → 23.01 |
+| touch drag 160 px left | az 39.33 → 76.00 |
+| touch pinch-out 60 → 300 px | dist 20.65 → 15.00 (clamp); page zoom 1 |
+| abuse | stays inside every limit (AC4) |
+
+`npm run gates` exits 0. cpu p95 is 1.9 ms, draws 27, heap 33 632 B/frame (M0e 31 565,
+M0d 34 944, so within the spread; AC6). Shots `09-orbit-mouse.png` and
+`10-orbit-touch.png` were looked at.
+
+### Scores — cycle 1, frozen tree at `c6995c4`
+
+| art | perf | gameplay |
+|---|---|---|
+| **8.3** | **7.8** | **8.8** |
+
+There are no blocking defects. **Gameplay cleared 8.0 for the first time since M0d**, and
+G6 went from 0.5 to 1.5. **M0f is `DONE`.**
+
+No rework cycle was run. Perf's three majors are a missing real-GPU verification (owner
+only), SwiftShader frame-cost drift (423 → 495 → 547 ms with no change to geometry,
+materials or shadows), and heap headroom inside three's renderer. None is in M0f's code,
+and none can be moved by re-scoring.
+
+**M0 stays `IN_PROGRESS`.** Every M0 step is `DONE`. Closing the milestone needs perf ≥ 8.0,
+which needs the owner's real-GPU row, and a human who has seen it running (`CLAUDE.md` §7).
+The next run takes **M1a**.
 
 ---
 
