@@ -18,19 +18,33 @@
          1280x720: accent 11.4:1 and readouts 14.8:1 against the panel as rendered, and
          6.6:1 / 8.6:1 against the worst-case panel composited over the brightest pixel
          in frame. Rubric A7 asks for 4.5:1. */
+      /* Wraps instead of clipping. At a fixed one-row 512 px it lost 168 px off a 360 px
+         phone, and what fell off was the context-loss line — so a driver reset read as an
+         unexplained black screen. max-width keeps the panel's right edge 14 px inside the
+         viewport, mirroring `left`; the readout groups wrap whole (each is nowrap), never
+         mid-number. At 1280x720 the content is narrower than the cap, so the desktop frame
+         the art-critic scores is the same single row it was. */
       #hud{position:fixed;top:14px;left:14px;pointer-events:none;
-        display:flex;align-items:baseline;gap:14px;
+        display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;
+        box-sizing:border-box;max-width:calc(100vw - 28px);
         padding:9px 14px;border-radius:10px;
         background:rgba(11,36,48,0.82);border:1px solid rgba(255,212,121,.38);
         font:600 14px/1.25 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
         letter-spacing:.06em;color:#eef7fd}
       #hud .t{color:#ffd479;letter-spacing:.2em}
-      #hud .g{display:flex;align-items:baseline;gap:6px}
+      #hud .g{display:flex;align-items:baseline;gap:6px;white-space:nowrap}
       #hud .k{color:#ffd479;font-size:11px;text-transform:uppercase;letter-spacing:.14em}
       #hud .v{font-variant-numeric:tabular-nums;min-width:3ch;text-align:right}
       /* Shown only when the WebGL context dies. #ff9044 (ART_BIBLE sky horizon) on the
          panel measures 7.1:1, past A7's 4.5:1. */
-      #hud .w{color:#ff9044;letter-spacing:.14em}
+      #hud .w{color:#ff9044;letter-spacing:.14em;flex-basis:100%;min-width:0;
+        overflow-wrap:anywhere}
+      /* Phone width: same layout, a size step down so the four readouts take two rows
+         rather than four. Labels keep their 11 px; readouts go 14 → 12 px. */
+      @media (max-width:480px){
+        #hud{top:10px;left:10px;max-width:calc(100vw - 20px);padding:7px 10px;
+          gap:3px 10px;font-size:12px}
+      }
       #hud [hidden]{display:none}
     </style>
   </head>

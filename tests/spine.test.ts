@@ -126,6 +126,14 @@ describe('stats contract read by the gates', () => {
     expect(main).toMatch(/contextLost,/);
   });
 
+  it('reports no frame between a context restore and the first restored frame', () => {
+    // M0e. `contextLost` is already false in that gap, and `renderer.info` reads 0/0 while
+    // `lastCpuMs` still holds the dead context's last frame. Boot is the same gap.
+    // The behaviour itself is asserted live by gate:smoke (stats in the restore gap).
+    expect(main).toMatch(/let framesSinceRestore = 0;/);
+    expect(main).toMatch(/__dragonveinStats = \(\) => \(framesSinceRestore === 0 && !contextLost \? \{\s*drawCalls: null, triangles: null, frameMs: null, cpuFrameMs: null,/);
+  });
+
   it('survives a WebGL context loss instead of dying silently', () => {
     // A driver reset is a normal event on the weak iGPU CLAUDE.md §0 targets. Before
     // this, nothing listened and nothing asked for the context back, so an induced loss

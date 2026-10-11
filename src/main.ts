@@ -1659,8 +1659,12 @@ const CONTEXT_RESTORE_ATTEMPTS = 5;
 const CONTEXT_RESTORE_BACKOFF_MS = 400;
 
 let contextLost = false;
-/** Frames drawn since the last context restore; see the HUD's `—` branch below. */
-let framesSinceRestore = 1;
+/**
+ * Frames drawn through the *current* context: zero at boot and again at every restore,
+ * until the first `renderer.render` lands. While it is zero there is no frame to report,
+ * and both the HUD and `__dragonveinStats` say so — see the `—` branch in `paintHud`.
+ */
+let framesSinceRestore = 0;
 /**
  * rAF callbacks, drawn or not. `framesRendered` counts only frames that reached
  * `renderer.render`, so it cannot tell gate:perf how many times the loop body ran during
@@ -1832,7 +1836,7 @@ function paintHud(): void {
   }
   if (hud.status) hud.status.hidden = true;
   if (framesSinceRestore === 0) {
-    // Restored, but nothing drawn through the new context yet. There is no measurement
+    // Booting, or restored with nothing drawn through the new context yet. There is no measurement
     // to report, and `0` is not one.
     if (hud.fps) hud.fps.textContent = '—';
     if (hud.draws) hud.draws.textContent = '—';
@@ -1925,7 +1929,19 @@ declare global {
  * `tools/playtest.mjs` reads `drawCalls ?? 0 > 0` as its "is it drawing" probe, so this
  * makes that probe correct rather than merely cautious.
  */
-globalThis.__dragonveinStats = () => ({
+/*
+ * The second hole, closed for M0e. Between `webglcontextrestored` and the first frame drawn
+ * through the restored context, `contextLost` is already false but nothing has been
+ * drawn: `renderer.info.render` reads `0`/`0` and `lastCpuMs` is still the cost of the
+ * last frame of the *dead* context. Reporting those is the stale-frame lie the HUD
+ * already refuses to tell (docs/ARCHITECTURE.md §Render contract), so this answers with
+ * the same nulls as a dead context — and `contextLost: false`, which is how a reader
+ * tells "restored, first frame pending" from "dead". The same branch covers boot,
+ * before the first frame.
+ */
+globalThis.__dragonveinStats = () => (framesSinceRestore === 0 && !contextLost ? {
+  drawCalls: null, triangles: null, frameMs: null, cpuFrameMs: null, contextLost,
+} : {
   drawCalls: contextLost ? null : renderer.info.render.calls,
   triangles: contextLost ? null : renderer.info.render.triangles,
   /** Present interval: rAF cadence, quantised to vsync. Kept for continuity. */

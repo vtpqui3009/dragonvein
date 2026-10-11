@@ -12,6 +12,11 @@
  *    03-late.png        ≥ 8 s in, so rubric A5 has two frames to diff for pops
  *    04-context-restored.png   after an induced WebGL context loss (rubric G5)
  *
+ *  And from a separate phone-sized session (M0e), so the 1280×720 set above is untouched:
+ *    06-hud-360.png            the HUD at 360×640 — every readout inside the viewport
+ *    07-context-lost-360.png   the same, with the context held lost: the status line shown
+ *    08-hud-320.png            the HUD at 320×480, the narrowest width checked
+ *
  *  And one motion artefact, `artifacts/turntables/m0-island.webm`: rubric A5 asks whether
  *  anything pops in a scene whose whole definition of done is that it *rotates*, and
  *  three stills are weak evidence for that. The critic should be able to watch it.
@@ -31,6 +36,41 @@ const VIEW = { width: 1280, height: 720 };
 const SILHOUETTE_SCALE = 0.25;        // rubric A1 judges the shape at 25% zoom
 const LATE_SHOT_AFTER_MS = 8_500;     // rubric A5 wants ≥ 8 s of running before the diff
 const CONTEXT_RESTORE_WAIT_MS = 4_000;   // the window the gameplay-critic's G5 repro used
+/** Phone viewports for the HUD drill. 360×640 is the width the defect was measured at. */
+const PHONES = [
+  { name: '360', viewport: { width: 360, height: 640 }, shot: '06-hud-360.png' },
+  { name: '320', viewport: { width: 320, height: 480 }, shot: '08-hud-320.png' },
+];
+const HELD_LOSS_MS = 1_200;           // long enough for the first restore attempts to no-op
+
+/**
+ * Runs in the page. Where every visible piece of the HUD sits against the viewport.
+ * `clipped` lists anything whose box leaves the viewport, or whose text overflows its
+ * own box — the two ways a readout stops being readable.
+ */
+function measureHud() {
+  const hud = document.getElementById('hud');
+  if (!hud) return null;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const r = hud.getBoundingClientRect();
+  const clipped = [];
+  const tops = new Set();
+  for (const el of hud.querySelectorAll('span')) {
+    if (el.closest('[hidden]')) continue;
+    const b = el.getBoundingClientRect();
+    if (b.width === 0 && b.height === 0) continue;
+    if (el.parentElement === hud) tops.add(Math.round(b.top));
+    if (b.left < 0 || b.top < 0 || b.right > vw + 0.5 || b.bottom > vh + 0.5
+      || el.scrollWidth > el.clientWidth + 1) {
+      clipped.push(`${el.id || el.className}:${el.textContent}@${b.left.toFixed(1)}-${b.right.toFixed(1)}`);
+    }
+  }
+  return {
+    innerWidth: vw, right: Math.round(r.right * 10) / 10, height: Math.round(r.height),
+    overflow: hud.scrollWidth > hud.clientWidth + 1, rows: tops.size, clipped,
+  };
+}
 
 // First, before anything that can throw: the directories the critics read.
 await mkdir(SHOTS, { recursive: true });
@@ -92,6 +132,13 @@ try {
   await page.waitForTimeout(2000);
   const wide = await page.screenshot({ path: `${SHOTS}/01-wide.png` });
   say(`shot: ${SHOTS}/01-wide.png  (t+${Date.now() - loadedAt}ms)`);
+  // M0e made the HUD wrap. At desktop width it must not: 01-wide is the frame the
+  // art-critic scores, and a second HUD row would change it.
+  const desktopHud = await page.evaluate(measureHud);
+  say(`hud @1280: ${JSON.stringify(desktopHud)}`);
+  if (desktopHud?.rows !== 1 || desktopHud.clipped.length) {
+    errors.push(`hud @1280 is not a single unclipped row: ${JSON.stringify(desktopHud)}`);
+  }
 
   // 02 is 01 downscaled, not a second render, so the silhouette the critic reads at 25%
   // is provably the same frame it judged the lighting from.
@@ -264,6 +311,102 @@ try {
       errors.push(`touch drill failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       await touchContext.close();
+    }
+  }
+  await flush();
+
+  // --- the HUD at phone width, and the context-loss line on it (M0e) -----------------
+  /*
+   * Measured before M0e: the HUD was a 512 px non-wrapping row, `right = 527.6` against a
+   * 360 px viewport. What fell off the edge was the context-loss status line, so on a
+   * phone a driver reset read as an unexplained black screen. Each phone runs in its own
+   * context after the main page has gone, for the same SwiftShader starvation reason the
+   * touch drill and turntable do.
+   */
+  for (const phone of PHONES) {
+    const ctx = await browser.newContext({
+      viewport: phone.viewport, hasTouch: true, isMobile: true, deviceScaleFactor: 2,
+    });
+    const p = await ctx.newPage();
+    p.on('pageerror', (e) => errors.push(`hud ${phone.name}: ${String(e)}`));
+    try {
+      await p.goto(preview.url, { waitUntil: 'load', timeout: 30_000 });
+      await p.waitForFunction(
+        () => (globalThis.__dragonveinStats?.().drawCalls ?? 0) > 0,
+        undefined, { timeout: 30_000 },
+      );
+      await p.waitForTimeout(800);     // past the boot splash's 0.5 s fade
+      const fit = await p.evaluate(measureHud);
+      await p.screenshot({ path: `${SHOTS}/${phone.shot}` });
+      say(`hud @${phone.name}: ${JSON.stringify(fit)}`);
+      say(`shot: ${SHOTS}/${phone.shot}  (${phone.viewport.width}x${phone.viewport.height}, M0e AC1)`);
+      if (!fit || fit.right > fit.innerWidth || fit.overflow || fit.clipped.length) {
+        errors.push(`hud @${phone.name} does not fit the viewport: ${JSON.stringify(fit)}`);
+      }
+      if (phone.name !== '360') continue;
+
+      // Hold the context lost long enough to photograph it. The page restores through
+      // the `WEBGL_lose_context` handle it took at boot, and `getExtension` hands back
+      // that same object, so stubbing its `restoreContext` keeps the loss in place;
+      // putting the original back and calling it is then the driver coming back.
+      // A listener added now runs after the page's own `webglcontextrestored` handler,
+      // so what it reads is exactly what a gate polling in that gap would see (AC3).
+      await p.evaluate(() => {
+        const c = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
+        const ext = c.getContext('webgl2')?.getExtension('WEBGL_lose_context');
+        if (!ext) return;
+        const g = /** @type {any} */ (globalThis);
+        g.__m0eRestore = ext.restoreContext.bind(ext);
+        ext.restoreContext = () => {};
+        c.addEventListener('webglcontextrestored', () => {
+          g.__m0eGap = globalThis.__dragonveinStats?.() ?? 'absent';
+        }, { once: true });
+        ext.loseContext();
+      });
+      await p.waitForTimeout(HELD_LOSS_MS);
+      const lost = await p.evaluate(() => {
+        const st = document.getElementById('hud-status');
+        const b = st?.getBoundingClientRect();
+        return {
+          shown: Boolean(st && !st.hidden && b && b.width > 0 && b.height > 0),
+          text: st?.textContent ?? '',
+          left: b?.left ?? null, right: b?.right ?? null, bottom: b?.bottom ?? null,
+          innerWidth: window.innerWidth, innerHeight: window.innerHeight,
+          stats: globalThis.__dragonveinStats?.() ?? null,
+        };
+      });
+      const lostFit = await p.evaluate(measureHud);
+      await p.screenshot({ path: `${SHOTS}/07-context-lost-360.png` });
+      say(`context held lost @360: ${JSON.stringify(lost)}`);
+      say(`hud @360 while lost: ${JSON.stringify(lostFit)}`);
+      say(`shot: ${SHOTS}/07-context-lost-360.png  (M0e AC2)`);
+      if (!lost.shown || !lost.text || lost.left === null || lost.left < 0
+        || lost.right > lost.innerWidth || lost.bottom > lost.innerHeight
+        || !lostFit || lostFit.clipped.length || lostFit.overflow) {
+        errors.push(`context-loss line is not fully visible at 360 px: ${JSON.stringify(lost)} ` +
+          `${JSON.stringify(lostFit)}`);
+      }
+
+      await p.evaluate(() => /** @type {any} */ (globalThis).__m0eRestore?.());
+      await p.waitForFunction(
+        () => (globalThis.__dragonveinStats?.().drawCalls ?? 0) > 0,
+        undefined, { timeout: 15_000 },
+      );
+      const gap = await p.evaluate(() => /** @type {any} */ (globalThis).__m0eGap ?? null);
+      const firstDrawn = await p.evaluate(() => globalThis.__dragonveinStats?.() ?? null);
+      say(`stats in the restore gap: ${JSON.stringify(gap)}`);
+      say(`stats after the first restored frame: ${JSON.stringify(firstDrawn)}`);
+      const gapHonest = gap && typeof gap === 'object' && gap.contextLost === false
+        && gap.drawCalls === null && gap.triangles === null
+        && gap.frameMs === null && gap.cpuFrameMs === null;
+      if (!gapHonest) {
+        errors.push('__dragonveinStats() reported a frame between webglcontextrestored and ' +
+          `the first restored frame: ${JSON.stringify(gap)} (M0e AC3)`);
+      }
+    } catch (e) {
+      errors.push(`hud ${phone.name} drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
     }
   }
   await flush();
