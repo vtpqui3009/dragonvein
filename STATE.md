@@ -5,6 +5,37 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 
 ---
 
+## 2026-10-11 — run 6 — M0f: the camera answers the pointer
+
+**Step**: `M0f` — the first step in reading order in `docs/ROADMAP.md` that is not `DONE`.
+The owner started this run straight after run 5 with "Tiếp tục task tiếp theo" ("continue
+to the next task"). Push was proven by run 5 earlier in the same session (`d68723f`).
+
+**Ownership**: `src/main.ts`, `index.html`, `tools/playtest.mjs` — all `integrator`. One owner,
+sequential. `src/ui/` does not exist, and creating the layer for one camera would be a
+second step.
+
+**Scope**: a minimal orbit around the island's fixed target. Drag orbits, wheel and pinch
+zoom, and the result is clamped so the frame stays one the art bible was tuned for. This is
+*not* M6's camera system. It has no inertia, no keyboard, and no follow mode.
+
+### Acceptance criteria
+
+All are asserted by `npm run gate:smoke` and logged to `artifacts/playtest.log`.
+`__dragonveinCamera()` exposes `{ azimuthDeg, pitchDeg, distance }`.
+
+| # | criterion | instrument |
+|---|---|---|
+| AC1 | Mouse: a 160 px horizontal drag changes azimuth by ≥ 10°, and a vertical drag changes pitch. The frame visibly differs. | `gate:smoke`, shot `09-orbit-mouse.png` |
+| AC2 | Mouse wheel: a wheel step changes distance, and the direction matches (scroll down = farther). | `gate:smoke` |
+| AC3 | Touch, on a `hasTouch` context: a one-finger drag changes azimuth, and a two-finger pinch-out reduces distance. The page itself does not scroll or zoom (`touch-action: none`). | `gate:smoke` (CDP `Input.dispatchTouchEvent`), shot `10-orbit-touch.png` |
+| AC4 | Clamps hold under extreme input: pitch and distance stay inside their limits, the island stays in frame, and the camera never goes under the deck. | `gate:smoke` |
+| AC5 | With no input the pose equals the M0e framing, so `01-wide.png` is unchanged. | `gate:smoke` logs the pose at 01-wide |
+| AC6 | The orbit adds no per-frame allocation. `gate:perf` heap stays inside 40 KiB/frame and is no worse than 31.6 kB beyond noise. | `npm run gate:perf` |
+| AC7 | `npm run gates` exits 0, with critics scored on a frozen tree. G6 is the line this step exists to lift. | `npm run gates`, `FINDINGS.md` |
+
+---
+
 ## 2026-10-11 — run 5 — M0e DONE: HUD readable at 360 px, context-loss line visible, no stale-frame hole (M0 IN_PROGRESS)
 
 **Step**: `M0e` — the first step in reading order in `docs/ROADMAP.md` that is not `DONE`.
