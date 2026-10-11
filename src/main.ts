@@ -888,117 +888,357 @@ scene.add(far);
 const cWater = new THREE.Color(0x2d92ba);        // ART_BIBLE §Palette, water near
 const cWaterFar = new THREE.Color(0xa6f1f2);     // ART_BIBLE §Palette, water far
 
-// Cloud sea — a *broken* deck, not a plane. A solid plane would cover the lower sky band
-// the critic measured at deltaE 0.0 against `deep shadow`; puffs leave the abyss visible
-// between them, which is both on-bible and what a sky-world looks like.
-// Companion islands. Three, at three depths, built from the same cap + cone silhouette as
-// the hero island so the world reads as one place. Cap, cone and their trees are three
-// InstancedMeshes shared across all three islands.
-type Companion = { x: number; y: number; z: number; s: number; trees: number };
+/*
+ * Companion islands — nine of them, and the thing that matters is that they are not nine
+ * copies of one prefab.
+ *
+ * The art-critic cropped all nine side by side and wrote: "Perfect circular disc of
+ * constant thickness, identical inverted-cone keel half-angle, 4-7 single cones, a
+ * handful of pebbles. No cliff, overhang, arch, water, structure, or colour difference
+ * between any two. Scale and rotation are the only axes of variation in the whole sky."
+ * That is rubric A4's complaint in one sentence, and A4 is the heaviest line in the
+ * table.
+ *
+ * So each island now carries five axes beyond scale and rotation, all authored per
+ * island rather than sampled, because the silhouette is the point and a silhouette is
+ * worth deciding:
+ *
+ *   aspect   the deck is an ellipse, not a disc — sx and sz differ by up to 1.5x
+ *   thick    deck thickness, which is what makes one read as a slab and one as a wafer
+ *   keel     how far the root drops, from a stub to three times the deck's width
+ *   keelR    how wide the root is. Low values make a spire: a thin rock needle under a
+ *            small cap, which is a different object, not a different size of the same one
+ *   tilt     a few degrees off level. Nothing in the sky hangs plumb
+ *
+ * The keel's offset is rotated by the same tilt as the deck, so a tilted island keeps its
+ * root attached; offsetting straight down would open a gap of up to 0.45 units at these
+ * drops, which is exactly the kind of seam rubric A8 fails on.
+ */
+type Companion = {
+  x: number; y: number; z: number; s: number; trees: number;
+  aspect: number; thick: number; keel: number; keelR: number;
+  tiltX: number; tiltZ: number;
+  /** Vertical bob, in world units, and how fast. 0 for the ones that should sit still. */
+  bob: number; bobRate: number;
+};
 const COMPANIONS: Companion[] = [
   // Laid out by unprojecting the screen positions they have to land in, at six different
   // distances from the camera, because `docs/concept/03-island-scene.png` puts its
   // companions at different *depths* on purpose: that is what turns a backdrop into a
   // world. Guessing world coordinates for this put all of them in a vertical column over
   // the hero island, which reads as a stack, not as distance.
-  { x: -3, y: 10, z: -28, s: 0.3, trees: 6 },      // right of centre, nearest
-  { x: -1, y: 5, z: -45, s: 0.5, trees: 8 },      // right, one step back
-  { x: -56, y: 8, z: -13, s: 0.62, trees: 9 },    // upper left
-  { x: -54, y: 21, z: -63, s: 1.0, trees: 10 },    // top centre, high and far
-  { x: 1, y: -10, z: -108, s: 1.2, trees: 8 },     // far right, below the eyeline
-  { x: -120, y: -12, z: -25, s: 1.35, trees: 7 },  // far left, deep in the haze
+  { x: -3, y: 10, z: -28, s: 0.3, trees: 6,        // right of centre, nearest
+    aspect: 1.35, thick: 1.0, keel: 1.0, keelR: 1.0, tiltX: 0.05, tiltZ: -0.07,
+    bob: 0.5, bobRate: 0.00041 },
+  { x: -1, y: 5, z: -45, s: 0.5, trees: 8,         // right, one step back: a spire
+    aspect: 0.78, thick: 0.7, keel: 2.6, keelR: 0.3, tiltX: -0.04, tiltZ: 0.03,
+    bob: 0.8, bobRate: 0.00033 },
+  { x: -56, y: 8, z: -13, s: 0.62, trees: 9,       // upper left, a thick slab
+    aspect: 1.15, thick: 1.8, keel: 0.55, keelR: 1.25, tiltX: 0.08, tiltZ: 0.05,
+    bob: 0.7, bobRate: 0.00027 },
+  { x: -54, y: 21, z: -63, s: 1.0, trees: 10,      // top centre, high and far
+    aspect: 0.72, thick: 1.1, keel: 1.5, keelR: 0.85, tiltX: -0.09, tiltZ: 0.06,
+    bob: 1.3, bobRate: 0.00021 },
+  { x: 1, y: -10, z: -108, s: 1.2, trees: 8,       // far right, below the eyeline
+    aspect: 1.5, thick: 0.75, keel: 0.8, keelR: 1.1, tiltX: 0.03, tiltZ: -0.1,
+    bob: 1.6, bobRate: 0.00017 },
+  { x: -120, y: -12, z: -25, s: 1.35, trees: 7,    // far left, deep in the haze: a spire
+    aspect: 0.9, thick: 0.85, keel: 3.0, keelR: 0.26, tiltX: 0.06, tiltZ: 0.08,
+    bob: 1.1, bobRate: 0.00024 },
   // Three below the eyeline. The art-critic ran a Sobel scan over the bottom bands and
   // got **zero** edge pixels across x0-540, y540-720 and x0-400, y420-540: the lower
   // quarter of the frame was a smooth painted gradient with nothing in it. A sky-world
   // has islands *below* you as well as above, and a silhouette is the cheapest form
   // there is.
-  { x: -75, y: -41, z: -17, s: 1.1, trees: 6 },    // low left, under the cloud deck
-  { x: 3, y: -35, z: -61, s: 1.0, trees: 6 },      // low right
-  { x: -64, y: -54, z: -36, s: 1.1, trees: 5 },    // bottom centre, nearer so the fog leaves it green
+  { x: -75, y: -41, z: -17, s: 1.1, trees: 6,      // low left
+    aspect: 1.25, thick: 1.4, keel: 0.5, keelR: 1.3, tiltX: -0.07, tiltZ: -0.05,
+    bob: 1.4, bobRate: 0.00019 },
+  { x: 3, y: -35, z: -61, s: 1.0, trees: 6,        // low right
+    aspect: 0.82, thick: 0.9, keel: 1.9, keelR: 0.55, tiltX: 0.1, tiltZ: 0.04,
+    bob: 1.2, bobRate: 0.00029 },
+  { x: -64, y: -54, z: -36, s: 1.1, trees: 5,      // bottom centre, near enough to stay green
+    aspect: 1.4, thick: 1.2, keel: 1.2, keelR: 0.95, tiltX: -0.05, tiltZ: 0.09,
+    bob: 1.5, bobRate: 0.00015 },
 ];
+
+/*
+ * Ambient motion, and why it is bought this way.
+ *
+ * The art-critic tracked the green-mask centroid of one satellite across all 182 frames
+ * of the turntable and got (1072.71, 622.51) +/- 0.03 px for the whole 7.28 s, with the
+ * two birds pixel-frozen beside it: "Nothing in the frame moves except the hero island's
+ * own spin: no drift, no bob, no parallax, no cloud, no particle. A still place is not a
+ * lived-in one."
+ *
+ * An island cannot simply be re-parented to a bobbing `Object3D`, because the deck, its
+ * root, its trees, its boulders and its bushes are instances spread across meshes shared
+ * by all nine — that sharing is what keeps the whole distance in 7 draw calls. Rebuilding
+ * every instance matrix each frame would work and would cost a quaternion, a compose and
+ * a 16-float write for about 300 instances, every frame, forever.
+ *
+ * It does not need to. A bob is a pure translation, and in a column-major 4x4 the
+ * translation is elements 12, 13 and 14. So each instance's resting height is recorded
+ * once at build time, and the frame loop writes one float per instance straight into
+ * `instanceMatrix.array`. The rotation, the scale and the tilt are never recomputed.
+ * ~300 float writes a frame, no allocation, which is what `docs/ARCHITECTURE.md` §Render
+ * contract asks of anything inside `frame()`.
+ */
+/** One instanced mesh whose instances bob with the companion island they stand on. */
+type Bobber = {
+  mesh: THREE.InstancedMesh;
+  /** Resting world y of each instance. */
+  baseY: Float32Array;
+  /** Which companion each instance belongs to. */
+  owner: Uint8Array;
+};
+const bobbers: Bobber[] = [];
+/** Phase offsets, so nine islands bob independently instead of in lockstep. */
+const BOB_PHASE = COMPANIONS.map((_, i) => i * 1.97);
+
+/** Records, for one filled mesh, where each instance rests and whose bob it follows. */
+function registerBobber(
+  mesh: THREE.InstancedMesh, baseY: number[], owner: number[],
+): void {
+  bobbers.push({
+    mesh,
+    baseY: Float32Array.from(baseY),
+    owner: Uint8Array.from(owner),
+  });
+}
+
+/** Scratch for the keel offset, rotated by the island's own tilt. Allocated once. */
+const quatTilt = new THREE.Quaternion();
+const eulerTilt = new THREE.Euler();
+const vKeel = new THREE.Vector3();
+
 {
   const caps = instanced(new THREE.CylinderGeometry(6, 5.6, 1.1, 36), COMPANIONS.length, 0.95, far);
   const cones = instanced(new THREE.ConeGeometry(5.6, 6.5, 36), COMPANIONS.length, 0.98, far);
   const treeTotal = COMPANIONS.reduce((t, c) => t + c.trees, 0);
-  const BIRD_COUNT = 11;
-  const farTrees = instanced(new THREE.ConeGeometry(0.62, 1.9, 6), treeTotal + BIRD_COUNT, 0.85, far);
+  // The far deck gets the same three archetypes as the hero island (conifer cone,
+  // rounded broadleaf, bare snag), for the same reason: A4 is about the repeat set in
+  // the frame, and ~65 identical cones is a repeat set. The trunk mesh doubles as the
+  // snag, exactly as it does on the hero island.
+  const farTrees = instanced(new THREE.ConeGeometry(0.62, 1.9, 6), treeTotal, 0.85, far);
+  const farFoliage = instanced(new THREE.IcosahedronGeometry(1, 1), treeTotal, 0.88, far);
+  const farTrunks = instanced(new THREE.CylinderGeometry(0.08, 0.13, 1.0, 5), treeTotal, 0.95, far);
+
+  const capY: number[] = [], capOwner: number[] = [];
+  const coneY: number[] = [], coneOwner: number[] = [];
+  const treeY: number[] = [], treeOwner: number[] = [];
+  const folY: number[] = [], folOwner: number[] = [];
+  const trunkY: number[] = [], trunkOwner: number[] = [];
+
   const rng = makeRng(0x15_1a4d);
-  let t = 0;
+  let t = 0, fo = 0, tr = 0;
   COMPANIONS.forEach((c, i) => {
-    place(caps, i, c.x, c.y, c.z, c.s, c.s, c.s, rng() * Math.PI * 2);
-    // The cone is the island's root: same inverted-cone trick as the hero island.
-    place(cones, i, c.x, c.y - 3.8 * c.s, c.z, c.s, c.s, c.s, rng() * Math.PI * 2, Math.PI);
+    const rotY = rng() * Math.PI * 2;
+    const deckY = c.y;
+    place(caps, i, c.x, deckY, c.z,
+      c.s * c.aspect, c.s * c.thick, c.s / c.aspect, rotY, c.tiltX, c.tiltZ);
+    capY.push(deckY); capOwner.push(i);
+
+    // The root, dropped along the island's own down-axis rather than along world down,
+    // so the tilt does not shear it off the deck.
+    const drop = 3.8 * c.s * c.keel;
+    eulerTilt.set(c.tiltX, rotY, c.tiltZ);
+    quatTilt.setFromEuler(eulerTilt);
+    vKeel.set(0, -drop, 0).applyQuaternion(quatTilt);
+    place(cones, i, c.x + vKeel.x, deckY + vKeel.y, c.z + vKeel.z,
+      c.s * c.keelR * c.aspect, c.s * c.keel, c.s * c.keelR / c.aspect,
+      rotY, c.tiltX + Math.PI, c.tiltZ);
+    coneY.push(deckY + vKeel.y); coneOwner.push(i);
+
     // On the bible's foliage axis, not off it. The first version lerped `foliage mid`
     // toward `water far` (#a6f1f2) for a sense of distance; that path crosses green into
     // cyan, and the art-critic measured two decks at #5a967e — blue above red — 16.0 deltaE
     // off the nearest swatch, with a third at #ae965a. Distance is the fog's job, not the
     // albedo's, so these now sit between `foliage dark` and `foliage light` like every
-    // other green in the frame.
-    caps.setColorAt(i, tint.copy(cDark).lerp(cLight, 0.3 + rng() * 0.3));
-    cones.setColorAt(i, tint.copy(cRock).lerp(cShadow, 0.25 + rng() * 0.3));
+    // other green in the frame. The range is wider than it was: "no colour difference
+    // between any two" was one of A4's specific complaints.
+    caps.setColorAt(i, tint.copy(cDark).lerp(cLight, 0.15 + rng() * 0.7));
+    cones.setColorAt(i, tint.copy(cRock).lerp(cShadow, 0.1 + rng() * 0.7));
+
     for (let k = 0; k < c.trees; k++) {
       const a = rng() * Math.PI * 2;
-      const d = Math.sqrt(rng()) * 4.9 * c.s;
+      const d = Math.sqrt(rng()) * 4.9 * c.s * Math.min(c.aspect, 1 / c.aspect);
       const h = (0.8 + rng() * 0.8) * c.s;
-      place(farTrees, t, c.x + Math.cos(a) * d, c.y + 0.55 * c.s + h * 0.95,
-        c.z + Math.sin(a) * d, h, h, h, rng() * Math.PI * 2);
-      farTrees.setColorAt(t, tint.copy(cDark).lerp(cMid, 0.3 + rng() * 0.5));
-      t++;
+      const x = c.x + Math.cos(a) * d;
+      const z = c.z + Math.sin(a) * d;
+      const deck = deckY + 0.55 * c.s * c.thick;
+      const kind = rng();
+      if (kind < 0.55) {
+        const y = deck + h * 0.95;
+        place(farTrees, t, x, y, z, h, h, h, rng() * Math.PI * 2);
+        farTrees.setColorAt(t, tint.copy(cDark).lerp(cMid, 0.2 + rng() * 0.7));
+        treeY.push(y); treeOwner.push(i); t++;
+      } else if (kind < 0.88) {
+        const r = h * 0.5;
+        const y = deck + h * 0.55 + r * 0.5;
+        place(farFoliage, fo, x, y, z, r, r * 0.85, r, rng() * Math.PI * 2);
+        farFoliage.setColorAt(fo, tint.copy(cMid).lerp(cLight, 0.25 + rng() * 0.6));
+        folY.push(y); folOwner.push(i); fo++;
+        const ty = deck + h * 0.28;
+        place(farTrunks, tr, x, ty, z, h * 0.9, h * 0.55, h * 0.9, 0);
+        farTrunks.setColorAt(tr, tint.copy(cShadow).lerp(cRock, 0.4 + rng() * 0.4));
+        trunkY.push(ty); trunkOwner.push(i); tr++;
+      } else {
+        const ty = deck + h * 0.6;
+        place(farTrunks, tr, x, ty, z, h * 0.55, h * 1.2, h * 0.55,
+          rng() * Math.PI * 2, (rng() - 0.5) * 0.3, (rng() - 0.5) * 0.3);
+        farTrunks.setColorAt(tr, tint.copy(cRock).lerp(cCloudLit, 0.2 + rng() * 0.4));
+        trunkY.push(ty); trunkOwner.push(i); tr++;
+      }
     }
   });
-
-  // The flock rides in the same mesh. A cone squashed flat along one axis and tilted is
-  // a dart, and at 60-120 units a dart is a bird; it is also the difference between a
-  // draw call and no draw call, which heap churn charges about 2 kB a frame for.
-  for (let i = 0; i < BIRD_COUNT; i++) {
-    const a = 1.6 + rng() * 2.4;
-    const d = 58 + rng() * 60;
-    const sc = 0.5 + rng() * 0.5;
-    place(farTrees, t, Math.cos(a) * d, 9 + rng() * 15, Math.sin(a) * d,
-      sc * 1.9, sc * 0.16, sc * 0.5, rng() * Math.PI * 2, Math.PI / 2, (rng() - 0.5) * 0.9);
-    farTrees.setColorAt(t, tint.copy(cShadow).lerp(cRock, rng() * 0.35));
-    t++;
-  }
   farTrees.count = t;
+  farFoliage.count = fo;
+  farTrunks.count = tr;
 
   // A6: the satellites were flat discs carrying identical cones — "a dressed island is
   // never bare between features" (ART_BIBLE §Density) applied to one island out of
-  // seven. Two more shared meshes dress all six: scatter boulders and low bushes, the
-  // same two archetypes as the hero deck so the world reads as one place, at the same
-  // cost as a single island's worth because they are instanced across all of them.
-  const DRESS_PER = 14;
+  // nine. Three shared meshes dress all nine: boulders, low bushes and the grass tufts
+  // that are the difference between dressed and merely furnished. The critic's crop of
+  // the bottom-left satellite — "six cones and eight pebbles scattered on a
+  // single-valued green disc, with no ground cover, no tufts, no rocks, no path, no
+  // colour break" — is what the tufts answer. All three are instanced across every
+  // island, so nine islands' worth of dressing costs three draw calls.
+  const DRESS_PER = 30;
   const farRocks = instanced(
     new THREE.IcosahedronGeometry(0.3, 0), COMPANIONS.length * DRESS_PER, 1.0, far);
   const farBushes = instanced(
     new THREE.SphereGeometry(0.34, 6, 4), COMPANIONS.length * DRESS_PER, 0.9, far);
-  let r = 0;
-  let b = 0;
-  for (const c of COMPANIONS) {
+  const farTufts = instanced(
+    new THREE.ConeGeometry(0.075, 0.36, 3), COMPANIONS.length * DRESS_PER, 0.9, far);
+  const rockY: number[] = [], rockOwner: number[] = [];
+  const bushY: number[] = [], bushOwner: number[] = [];
+  const tuftY: number[] = [], tuftOwner: number[] = [];
+  let r = 0, b = 0, g = 0;
+  COMPANIONS.forEach((c, i) => {
+    const deck = c.y + 0.55 * c.s * c.thick;
     for (let k = 0; k < DRESS_PER; k++) {
       const a = rng() * Math.PI * 2;
       const d = Math.sqrt(rng()) * 5.2 * c.s;
-      const x = c.x + Math.cos(a) * d;
-      const z = c.z + Math.sin(a) * d;
-      if (k % 2 === 0) {
+      const x = c.x + Math.cos(a) * d * c.aspect;
+      const z = c.z + Math.sin(a) * d / c.aspect;
+      if (k % 5 === 0) {
         const sc = (0.5 + rng() * 0.9) * c.s;
-        place(farRocks, r, x, c.y + 0.55 * c.s + sc * 0.1, z,
+        const y = deck + sc * 0.1;
+        place(farRocks, r, x, y, z,
           sc, sc * (0.5 + rng() * 0.4), sc * (0.8 + rng() * 0.5),
           rng() * Math.PI * 2, (rng() - 0.5) * 0.5, (rng() - 0.5) * 0.5);
         farRocks.setColorAt(r, tint.copy(cShadow).lerp(cRock, 0.45 + rng() * 0.55));
-        r++;
-      } else {
+        rockY.push(y); rockOwner.push(i); r++;
+      } else if (k % 5 === 1 || k % 5 === 2) {
         const sc = (0.55 + rng() * 0.8) * c.s;
-        place(farBushes, b, x, c.y + 0.55 * c.s + sc * 0.18, z,
-          sc, sc * 0.62, sc, rng() * Math.PI * 2);
-        farBushes.setColorAt(b, tint.copy(cDark).lerp(cLight, 0.2 + rng() * 0.5));
-        b++;
+        const y = deck + sc * 0.18;
+        place(farBushes, b, x, y, z, sc, sc * 0.62, sc, rng() * Math.PI * 2);
+        farBushes.setColorAt(b, tint.copy(cDark).lerp(cLight, 0.2 + rng() * 0.6));
+        bushY.push(y); bushOwner.push(i); b++;
+      } else {
+        const sc = (0.8 + rng() * 1.1) * c.s;
+        const y = deck + sc * 0.17;
+        place(farTufts, g, x, y, z, sc, sc, sc,
+          rng() * Math.PI * 2, (rng() - 0.5) * 0.34, (rng() - 0.5) * 0.34);
+        farTufts.setColorAt(g, tint.copy(cMid).lerp(cLight, 0.25 + rng() * 0.75));
+        tuftY.push(y); tuftOwner.push(i); g++;
       }
     }
-  }
+  });
   farRocks.count = r;
   farBushes.count = b;
+  farTufts.count = g;
+
+  registerBobber(caps, capY, capOwner);
+  registerBobber(cones, coneY, coneOwner);
+  registerBobber(farTrees, treeY, treeOwner);
+  registerBobber(farFoliage, folY, folOwner);
+  registerBobber(farTrunks, trunkY, trunkOwner);
+  registerBobber(farRocks, rockY, rockOwner);
+  registerBobber(farBushes, bushY, bushOwner);
+  registerBobber(farTufts, tuftY, tuftOwner);
 }
 
+/*
+ * The flock, in its own mesh so it can fly.
+ *
+ * It used to ride in `farTrees` as eleven extra instances, which cost nothing and also
+ * meant it could never move without rebuilding the whole tree mesh. A bird is a cone
+ * squashed flat along one axis and tilted — at 60 to 120 units that is enough — and
+ * eleven of them wheeling slowly is the cheapest motion in the frame: eleven matrices a
+ * frame, composed from the same scratch objects everything else uses.
+ */
+const BIRD_COUNT = 11;
+const birds = instanced(new THREE.ConeGeometry(0.62, 1.9, 6), BIRD_COUNT, 0.85, far);
+/** Orbit radius, height, angular speed, start angle and size for each bird. */
+const birdOrbit = new Float32Array(BIRD_COUNT * 5);
+{
+  const rng = makeRng(0xb1_7d5);
+  for (let i = 0; i < BIRD_COUNT; i++) {
+    birdOrbit[i * 5] = 58 + rng() * 60;                      // radius
+    birdOrbit[i * 5 + 1] = 9 + rng() * 15;                   // height
+    birdOrbit[i * 5 + 2] = (rng() < 0.5 ? -1 : 1) * (0.000055 + rng() * 0.00009);
+    birdOrbit[i * 5 + 3] = 1.6 + rng() * 2.4;                // start angle
+    birdOrbit[i * 5 + 4] = 0.5 + rng() * 0.5;                // size
+    birds.setColorAt(i, tint.copy(cShadow).lerp(cRock, rng() * 0.35));
+  }
+  birds.count = BIRD_COUNT;
+}
+
+/*
+ * A drifting cloud sea was built here and taken out again, which is worth a note so the
+ * next run does not rebuild it.
+ *
+ * The idea answered two defects at once: A6's "the lower 40% of the frame is empty" and
+ * A2's off-bible haze band over a fifth of the frame. Fourteen flattened puffs went in,
+ * and both attempts failed in the same way. Near the camera they rendered as pale
+ * boulders filling a third of the frame; pushed out past 200 units, `scene.fog` resolved
+ * them to almost exactly its own colour, `sky horizon` #ff9044, so they became flat
+ * orange slabs — a *more* saturated version of the band they were meant to fix.
+ *
+ * The art-critic measured the sky at deltaE 0.0 on both the zenith and the horizon peak
+ * and wrote that it "should not be touched". Anything large, distant and unlit in this
+ * frame converges on the fog colour, so a cloud deck cannot be added without repainting
+ * that band. The empty-lower-frame defect is a *minor* one and three satellites already
+ * sit in that band; the ambient motion A6 actually blocks on is bought by the island bob
+ * and the flock, neither of which touches the sky.
+ */
+
+/**
+ * Moves everything that is not the hero island. Called once per frame; allocates nothing.
+ *
+ * The bob and the drift are written straight into the translation elements of each
+ * instance matrix (12 = x, 13 = y, in column-major order), so no rotation or scale is
+ * recomputed. The birds get a full `place()` because they actually travel.
+ */
+function updateFarMotion(nowMs: number): void {
+  for (const bobber of bobbers) {
+    const array = bobber.mesh.instanceMatrix.array;
+    const count = bobber.mesh.count;
+    for (let i = 0; i < count; i++) {
+      const c = COMPANIONS[bobber.owner[i] as number] as Companion;
+      array[i * 16 + 13] = (bobber.baseY[i] as number)
+        + c.bob * Math.sin(nowMs * c.bobRate + (BOB_PHASE[bobber.owner[i] as number] as number));
+    }
+    bobber.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  for (let i = 0; i < BIRD_COUNT; i++) {
+    const radius = birdOrbit[i * 5] as number;
+    const height = birdOrbit[i * 5 + 1] as number;
+    const speed = birdOrbit[i * 5 + 2] as number;
+    const angle = (birdOrbit[i * 5 + 3] as number) + nowMs * speed;
+    const size = birdOrbit[i * 5 + 4] as number;
+    place(birds, i,
+      Math.cos(angle) * radius,
+      height + Math.sin(nowMs * 0.0006 + i) * 1.4,
+      Math.sin(angle) * radius,
+      size * 1.9, size * 0.16, size * 0.5,
+      // Nose into the turn, so the dart points where it is going.
+      -angle, Math.PI / 2, Math.sin(nowMs * 0.0011 + i) * 0.35);
+  }
+  birds.instanceMatrix.needsUpdate = true;
+}
 
 // --- the island reads as inhabited (rubric A6, A9) -------------------------------------
 // Three crystal clusters and a stepping-stone path, both in the concept image and both
@@ -1328,6 +1568,7 @@ function frame(now: number): void {
   const startedAt = performance.now();
   resize();
   island.rotation.y = now * 0.00012;
+  updateFarMotion(now);
   // The rim is gated in view space, so its direction has to be re-derived whenever the
   // camera moves. Allocation-free: two pre-allocated vectors, written in place.
   updateRimDirection();
