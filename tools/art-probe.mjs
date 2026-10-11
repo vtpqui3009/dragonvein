@@ -213,52 +213,96 @@ if (sunPos && camPos) {
 }
 
 // --- AC3: does the warm rim reach the canopy -------------------------------------------
-// Walk down each column until the first non-sky pixel: that is the canopy's top edge.
-// Compare it with the pixel 6 rows further in, which is what the art-critic did.
+/*
+ * The art-critic's test, made robust enough to be a criterion.
+ *
+ * The critic scanned the canopy's top edge across x 420-870 and averaged it against the
+ * pixels 6 px inside: `#729a47` against `#72a44e` — darker and very slightly cooler, so
+ * "the bible's third light is simply not in the rig".
+ *
+ * Averaging the two populations and subtracting, as the first version here did, turned
+ * out to swing with the island's own rotation: six consecutive runs gave +0.084, +0.049,
+ * +0.057, +0.039, -0.009, -0.019 on a build whose rim never changed. The cause is that a
+ * conifer is faceted, so "6 px inside" is sometimes the same facet and sometimes the next
+ * one down, and a handful of columns where it crosses a facet boundary move the mean more
+ * than the rim does.
+ *
+ * Differencing each column against *itself* and taking the median of those differences
+ * removes that: a facet boundary is a minority of columns, and the median ignores a
+ * minority. The two numbers are the ones the critic used — is the edge brighter, and is
+ * it warmer (more red relative to blue, which is what a #ff9044 rim adds).
+ */
 {
-  const edge = [0, 0, 0], inner = [0, 0, 0];
-  let n = 0;
-  for (let x = 420; x < 880; x++) {
-    for (let y = 200; y < 460; y++) {
+  const dLuma = [];
+  const dWarm = [];
+  for (let x = 380; x < 920; x++) {
+    for (let y = 200; y < 500; y++) {
       const [r, g, b] = at(x, y);
       if (!isGreen(r, g, b)) continue;
       const [r2, g2, b2] = at(x, Math.min(h - 1, y + 6));
       if (!isGreen(r2, g2, b2)) break;
-      edge[0] += r; edge[1] += g; edge[2] += b;
-      inner[0] += r2; inner[1] += g2; inner[2] += b2;
-      n++;
+      dLuma.push(luma(r, g, b) - luma(r2, g2, b2));
+      dWarm.push((r - b) - (r2 - b2));
       break;
     }
   }
-  if (n) {
-    const e = edge.map((v) => v / n), i = inner.map((v) => v / n);
-    // "Warmer" = more red relative to blue; "brighter" = higher luma.
-    const warmth = (c) => c[0] - c[2];
-    console.log(`AC3 rim edge vs inner  edge ${hex(e)} inner ${hex(i)}  ` +
-      `dLuma ${(luma(...e.map(Math.round)) - luma(...i.map(Math.round))).toFixed(4)} ` +
-      `dWarmth ${(warmth(e) - warmth(i)).toFixed(1)}  (want both > 0, n=${n})`);
+  if (dLuma.length) {
+    const mid = (a) => {
+      const sorted = Float64Array.from(a).sort();
+      return sorted[sorted.length >> 1];
+    };
+    console.log(`AC3 rim on the edge    median dLuma ${mid(dLuma).toFixed(4)} ` +
+      `dWarmth ${mid(dWarm).toFixed(1)} over ${dLuma.length} columns ` +
+      `(want both > 0; baseline was darker and cooler)`);
   }
 }
 
 // --- AC7: the off-bible haze band ------------------------------------------------------
-// Per row, the mean colour of the pixels that are *sky*, then its distance to the nearest
-// bible swatch. The worst row over the band is the number the criterion names.
+/*
+ * The art-critic's A2 defect was not "one row is wrong" — it was "deltaE 25.9-28.6 over
+ * roughly a fifth of the frame", and the size is the defect. Every gradient between two
+ * palette entries leaves its middle off-palette somewhere; what separates a transition
+ * from a wash is how many rows it occupies.
+ *
+ * So two numbers: the worst row, which says how far off it ever gets, and the share of
+ * the frame those bad rows cover, which says whether it is a gradient or a wash. Rows are
+ * scanned over the whole frame, not a fixed band, because the band moves when the sky
+ * does.
+ *
+ * Per channel this takes the row's **median**, not its mean. A2 is about the colour of
+ * the sky, and a row of sky also contains island keels, rock and crystal. Averaging
+ * those in reported 36.7% of rows off-palette on a frame whose sky column measures
+ * deltaE 3.8-10.9 from `rock mid` all the way down — it was scoring the islands. The
+ * median is the colour most of the row actually is, which is the one the eye reads as
+ * the band.
+ */
 {
-  let worst = { d: -1, y: -1, c: null, name: '' };
-  for (let y = 440; y < 660; y++) {
-    let r = 0, g = 0, b = 0, n = 0;
+  let worst = { d: -1, y: -1, c: [0, 0, 0], name: '' };
+  let badRows = 0, rows = 0;
+  const chan = [new Uint8Array(w), new Uint8Array(w), new Uint8Array(w)];
+  for (let y = 0; y < h; y++) {
+    let n = 0;
     for (let x = 0; x < w; x += 2) {
       const [pr, pg, pb] = at(x, y);
-      if (isGreen(pr, pg, pb)) continue;          // skip the islands
-      r += pr; g += pg; b += pb; n++;
+      if (isGreen(pr, pg, pb)) continue;          // skip the islands' decks outright
+      chan[0][n] = pr;
+      chan[1][n] = pg;
+      chan[2][n] = pb;
+      n++;
     }
-    if (n < w / 8) continue;
-    const c = [r / n, g / n, b / n].map(Math.round);
-    const near = nearestBible(...c);
+    if (n < w / 8) continue;                      // too little sky in this row to judge
+    rows++;
+    const c = chan.map((a) => {
+      return Uint8Array.from(a.subarray(0, n)).sort()[n >> 1];
+    });
+    const near = nearestBible(c[0], c[1], c[2]);
+    if (near.d > 12) badRows++;
     if (near.d > worst.d) worst = { d: near.d, y, c, name: near.name };
   }
   console.log(`AC7 haze dE            worst row y=${worst.y} ${hex(worst.c)} ` +
-    `dE ${worst.d.toFixed(1)} to ${worst.name}  (want < 12)`);
+    `dE ${worst.d.toFixed(1)} to ${worst.name}; ` +
+    `${badRows} of ${rows} sky rows over dE 12 ` +
+    `(${(badRows / h * 100).toFixed(1)}% of the frame, want < 8%)`);
 }
 
 // --- AC6: ambient motion ---------------------------------------------------------------

@@ -142,23 +142,47 @@ const skyGeo = new THREE.SphereGeometry(SKY_RADIUS, 24, 192);
   const horizon = toSrgb(PALETTE.skyHorizon);
   const abyss = toSrgb(PALETTE.deepShadow);   // below the horizon: the drop under a sky-world
   /**
-   * The cloud sea, baked into the same gradient.
+   * The cloud sea, baked into the same gradient — and now on the palette.
    *
-   * The island's root cone was merging into the lower sky at 1.04:1 (rubric A1), because
-   * the bottom of the frame was one flat `deep shadow` for 97 rows and a dark cone has
-   * nothing to separate against. The fix has to be *behind* the cone, and it cannot be
-   * geometry: a deck of flattened spheres big enough to sit behind the root is also big
-   * enough to fill the near frame, where it stops reading as cloud and starts reading as
-   * pale rock plates. Tried, rendered, rejected.
+   * Two problems met in this band, and the art-critic measured both. A1: the island's
+   * root cone was merging into the lower sky at 1.04:1, because the bottom of the frame
+   * was one flat `deep shadow` for 97 rows and a dark cone has nothing to separate
+   * against. A2: whatever was put there to fix that measured **deltaE 25.9-28.6** from the
+   * nearest entry in `docs/ART_BIBLE.md` §Palette, over roughly a fifth of the frame, and
+   * read as "a grey-pink wash that dulls the golden hour".
    *
-   * In the gradient it costs no draw call, cannot sort wrongly against the island, and is
-   * perfectly soft. It invents no colour either — it is `sky horizon` lifted toward white
-   * by a fixed amount, so the band stays on the bible's warm axis.
+   * The second was self-inflicted. The deck used to be `sky horizon` lifted 46% toward
+   * white, and the comment here claimed that "stays on the bible's warm axis". It does
+   * not: #ff9044 lifted that far is #ffc39a, which is **deltaE 36.7** from the colour it
+   * came from. Lifting a fully-saturated hue toward white is a desaturation, and the
+   * palette has no desaturated entry for it to land on.
+   *
+   * But the band could not simply be deleted either, and this is the part worth recording:
+   * a straight sRGB ramp from `sky horizon` to `deep shadow` is off-bible for most of its
+   * own length, peaking at **deltaE 34.2** around t=0.4, because the palette contains no
+   * mid-value warm colour between them. Any two-stop gradient between those two entries
+   * fails A2 in the middle no matter how it is tuned. That is a property of the palette,
+   * not of the build — and `CLAUDE.md` §7 says the palette describes the target, so the
+   * gradient is what changes.
+   *
+   * It goes through a third bible entry instead. `rock mid` #5a4a40 sits between them in
+   * value, is warm, and is a reasonable colour for a cloud deck lying in shadow under a
+   * golden sky. `rock mid` -> `deep shadow` peaks at deltaE 14.2; `sky horizon` -> `rock
+   * mid` still peaks at 33.1, so that leg is kept narrow — the same 0.13 of the sphere
+   * the warm band above the horizon uses — and the plateau at `rock mid` is given most of
+   * the lower frame. The off-bible transition is then a few rows rather than a fifth of
+   * the image, and the cone has something at L* 33 to separate against.
    */
-  const cloudSea = horizon.map((c) => c + (1 - c) * 0.46) as [number, number, number];
-  /** Where the deck sits, as a fraction of the sphere's height below the horizon. */
-  const SEA_CENTRE = -0.345;
-  const SEA_HALF_WIDTH = 0.15;
+  const haze = toSrgb(PALETTE.rockMid);
+  /**
+   * Where the horizon band ends and the deck begins, as a fraction of sphere height.
+   * Narrow on purpose: this is the one leg that cannot be made on-bible (it peaks at
+   * deltaE 33), so it is crossed in about 40 rows — a gradient's own transition — rather
+   * than spread over the fifth of the frame the art-critic measured.
+   */
+  const SEA_TOP = 0.085;
+  /** Where the deck gives way to the abyss. Between the two the sky *is* `rock mid`. */
+  const SEA_BOTTOM = 0.30;
   const pos = skyGeo.attributes['position'];
   if (!pos) throw new Error('sky geometry has no position attribute');
   const colors = new Float32Array(pos.count * 3);
@@ -166,32 +190,54 @@ const skyGeo = new THREE.SphereGeometry(SKY_RADIUS, 24, 192);
   const smooth = (t: number): number => { const x = Math.min(1, Math.max(0, t)); return x * x * (3 - 2 * x); };
   for (let i = 0; i < pos.count; i++) {
     const h = pos.getY(i) / SKY_RADIUS;                 // -1 nadir … +1 zenith
-    const up = h >= 0;
-    const other = up ? zenith : abyss;
-    // The warm band is narrow on purpose — a golden-hour band at the horizon, not an
-    // orange hemisphere. Below it, the sky falls away slowly into the abyss colour.
-    const t = smooth(Math.abs(h) / (up ? 0.12 : 0.45));
-    let r = horizon[0] + (other[0] - horizon[0]) * t;
-    let g = horizon[1] + (other[1] - horizon[1]) * t;
-    let b = horizon[2] + (other[2] - horizon[2]) * t;
-    if (!up) {
-      // A soft band, brightest at its centre and gone at both edges, so it reads as a lit
-      // deck of cloud under the island rather than as a second horizon line — and broken
-      // along its length, because an unmodulated band is an airbrush, not a cloud sea.
-      // The break is three sines of the azimuth: cheap, seamless at the wrap (every term
-      // is a whole number of cycles), and it moves the deck's height as well as its
-      // strength, so the near edge is ragged rather than ruled.
+    let r: number, g: number, b: number;
+    if (h >= 0) {
+      // The warm band is narrow on purpose — a golden-hour band at the horizon, not an
+      // orange hemisphere. Above it the sky climbs to the zenith colour.
+      const t = smooth(h / 0.11);
+      r = (horizon[0] as number) + ((zenith[0] as number) - (horizon[0] as number)) * t;
+      g = (horizon[1] as number) + ((zenith[1] as number) - (horizon[1] as number)) * t;
+      b = (horizon[2] as number) + ((zenith[2] as number) - (horizon[2] as number)) * t;
+    } else {
+      // Broken along its length, because an unmodulated band is an airbrush, not a cloud
+      // sea. The break is three sines of the azimuth: cheap, seamless at the wrap (every
+      // term is a whole number of cycles), and it moves the deck's height as well as how
+      // far it reaches, so the near edge is ragged rather than ruled.
       const theta = Math.atan2(pos.getZ(i), pos.getX(i));
       const lobes =
         Math.sin(theta * 3 + 0.7) * 0.5 +
         Math.sin(theta * 7 - 1.9) * 0.3 +
         Math.sin(theta * 13 + 2.6) * 0.2;
-      const centre = SEA_CENTRE + lobes * 0.042;
-      const strength = 0.52 + 0.48 * (0.5 + 0.5 * Math.sin(theta * 5 + 0.4));
-      const sea = (1 - smooth(Math.abs(h - centre) / SEA_HALF_WIDTH)) * strength;
-      r += (cloudSea[0] - r) * sea;
-      g += (cloudSea[1] - g) * sea;
-      b += (cloudSea[2] - b) * sea;
+      const top = SEA_TOP + lobes * 0.035;
+      const bottom = SEA_BOTTOM + lobes * 0.05;
+      /*
+       * The deck's own colour, varied by azimuth so the plateau is patchy rather than
+       * one flat value — but varied **along `rock mid` -> `deep shadow`**, not by
+       * stopping part-way along `sky horizon` -> `rock mid`.
+       *
+       * The first version did the latter: it scaled how far each azimuth reached toward
+       * the deck colour, between 0.62 and 1.0. Sampling the result down a sky column
+       * showed why that was wrong — from y=270 to y=540 the sky sat at #936241, which is
+       * 62% of the way from `sky horizon` to `rock mid` and deltaE 25 from either. The
+       * modulation was parking a third of the frame in the middle of the one leg that
+       * peaks at deltaE 33, which is the exact defect it was sitting next to.
+       *
+       * Varying the destination instead keeps every patch on the `rock mid` -> `deep
+       * shadow` leg, which never exceeds deltaE 14.2, and the horizon leg is crossed in
+       * full inside the narrow band at the top.
+       */
+      const shade = 0.05 + 0.5 * (0.5 + 0.5 * Math.sin(theta * 5 + 0.4));
+      const deckColR = (haze[0] as number) + ((abyss[0] as number) - (haze[0] as number)) * shade;
+      const deckColG = (haze[1] as number) + ((abyss[1] as number) - (haze[1] as number)) * shade;
+      const deckColB = (haze[2] as number) + ((abyss[2] as number) - (haze[2] as number)) * shade;
+      const toDeck = smooth(-h / Math.max(0.02, top));
+      const toAbyss = smooth((-h - bottom) / 0.45);
+      const deckR = (horizon[0] as number) + (deckColR - (horizon[0] as number)) * toDeck;
+      const deckG = (horizon[1] as number) + (deckColG - (horizon[1] as number)) * toDeck;
+      const deckB = (horizon[2] as number) + (deckColB - (horizon[2] as number)) * toDeck;
+      r = deckR + ((abyss[0] as number) - deckR) * toAbyss;
+      g = deckG + ((abyss[1] as number) - deckG) * toAbyss;
+      b = deckB + ((abyss[2] as number) - deckB) * toAbyss;
     }
     c.setRGB(r, g, b, THREE.SRGBColorSpace);
     colors[i * 3] = c.r;
@@ -329,17 +375,46 @@ scene.add(new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 0.72));
  * rather than written as a new shader, so the materials keep three's lighting, shadows,
  * tone mapping and colour management — the bible's hexes still come out the other end.
  *
- * `totalEmissiveRadiance` is the injection point: it is summed into `outgoingLight` by
- * `<opaque_fragment>`, which is the last chunk to touch the colour, and adding there
- * means the rim is tone-mapped with everything else instead of clipping on top of it.
+ * The injection point is `outgoingLight`, immediately before `<opaque_fragment>`.
+ *
+ * It used to be `totalEmissiveRadiance`, on the stated grounds that
+ * `<opaque_fragment>` sums it into `outgoingLight`. In three 0.186 it does not: that
+ * chunk is four lines and the last of them is `gl_FragColor = vec4( outgoingLight,
+ * diffuseColor.a )`. `outgoingLight` is assembled earlier, inside the lighting block of
+ * `meshphysical.glsl.js`, so adding to `totalEmissiveRadiance` at the end of the shader
+ * wrote to a variable nothing read again.
+ *
+ * The term was therefore **never in the frame**, which is what the art-critic measured
+ * and reported as "the bible's third light is simply not in the rig" — correctly, and
+ * about code that looked like it did the opposite. It was found by raising
+ * `uRimStrength` from 1.9 to 40.0 and re-rendering: the edge warmth came back 9.0 both
+ * times, to the first decimal. A uniform that changes nothing is not a weak effect.
+ *
+ * Writing to `outgoingLight` before `<opaque_fragment>` still lands ahead of
+ * `<tonemapping_fragment>` and `<colorspace_fragment>`, so the rim is tone-mapped with
+ * everything else rather than clipping on top of it, which was the point of the original
+ * choice.
  */
 const RIM_UNIFORMS = {
   uRimColor: { value: new THREE.Color(PALETTE.skyHorizon).multiplyScalar(1.0) },
   /** Rim light direction in *view* space — refreshed once per frame, never reallocated. */
   uRimDir: { value: new THREE.Vector3(0, 0, 1) },
-  uRimStrength: { value: 1.85 },
-  /** Higher = tighter band at the silhouette. 2.6 keeps it an edge, not a glow. */
-  uRimPower: { value: 3.5 },
+  /** The key's direction, also in view space. The rim is kept off whatever the sun has. */
+  uSunDir: { value: new THREE.Vector3(0, 1, 0) },
+  /** World up, in view space. Lets the rim tell a silhouette from a floor. */
+  uViewUp: { value: new THREE.Vector3(0, 1, 0) },
+  uRimStrength: { value: 2.6 },
+  /**
+   * Higher = tighter band at the silhouette — but this scene is faceted, and that
+   * changes what the exponent means. On a 7-gon cone the silhouette is a facet *edge*,
+   * so the pixel next to it belongs to a facet whose normal is still ~25 deg off
+   * grazing: `facing` tops out near 0.58 rather than 1. At 3.0 that left the rim at 20%
+   * of its strength exactly where it was supposed to be strongest, and the edge measured
+   * darker than the canopy 6 px inside it across 435 columns. 1.8 is the value that
+   * reaches a faceted silhouette; what stops it becoming a glow is the sun gate below,
+   * not the exponent.
+   */
+  uRimPower: { value: 1.8 },
 };
 
 /** Light-space direction of the rim light, recomputed per frame into scratch vectors. */
@@ -353,6 +428,13 @@ function updateRimDirection(): void {
   RIM_UNIFORMS.uRimDir.value
     .copy(rimWorldDir)
     .transformDirection(camera.matrixWorldInverse);
+  rimWorldDir.copy(sun.position).normalize();
+  RIM_UNIFORMS.uSunDir.value
+    .copy(rimWorldDir)
+    .transformDirection(camera.matrixWorldInverse);
+  RIM_UNIFORMS.uViewUp.value
+    .set(0, 1, 0)
+    .transformDirection(camera.matrixWorldInverse);
 }
 
 /** Patches a stock standard material so it also carries the rim term. */
@@ -360,6 +442,8 @@ function withRim<T extends THREE.MeshStandardMaterial>(material: T): T {
   material.onBeforeCompile = (shader) => {
     shader.uniforms['uRimColor'] = RIM_UNIFORMS.uRimColor;
     shader.uniforms['uRimDir'] = RIM_UNIFORMS.uRimDir;
+    shader.uniforms['uSunDir'] = RIM_UNIFORMS.uSunDir;
+    shader.uniforms['uViewUp'] = RIM_UNIFORMS.uViewUp;
     shader.uniforms['uRimStrength'] = RIM_UNIFORMS.uRimStrength;
     shader.uniforms['uRimPower'] = RIM_UNIFORMS.uRimPower;
     shader.fragmentShader = shader.fragmentShader
@@ -368,6 +452,8 @@ function withRim<T extends THREE.MeshStandardMaterial>(material: T): T {
         `#include <common>
          uniform vec3 uRimColor;
          uniform vec3 uRimDir;
+         uniform vec3 uSunDir;
+         uniform vec3 uViewUp;
          uniform float uRimStrength;
          uniform float uRimPower;`,
       )
@@ -386,14 +472,32 @@ function withRim<T extends THREE.MeshStandardMaterial>(material: T): T {
            // backlight still wraps a little past the terminator, and a silhouette the
            // viewer can only see on one side is half a rim.
            float backlit = smoothstep( -0.7, 0.5, dot( rimN, normalize( uRimDir ) ) );
-           totalEmissiveRadiance += uRimColor * uRimStrength * backlit * pow( facing, uRimPower );
+           // Keep the rim off anything the key already owns. Without this the term lands
+           // on the island deck as hard as on a backlit canopy — the deck is seen at a
+           // grazing 17 deg, so its facing term is 0.44 — and an unshadowed emissive on
+           // the ground is exactly what flattens the contact shadows A3 also asks for.
+           // A sunlit face keeps about 30% of the rim; a face the sun has left keeps
+           // all of it, which is where a rim light is supposed to be.
+           float keyed = 1.0 - clamp( dot( rimN, normalize( uSunDir ) ), 0.0, 1.0 );
+           // And off the floor. A Fresnel term cannot tell a silhouette from a ground
+           // plane: the deck is seen at a grazing 17 deg, so its facing term is 0.44
+           // against a faceted cone's 0.58, and anything strong enough to rim the cone
+           // was washing the deck with unshadowed emissive — which is what flattens the
+           // contact shadows A3 asks for in the same breath. The surface normal settles
+           // it. A deck points straight up and keeps none of the rim; a canopy facet at
+           // the silhouette is about 20 deg off vertical and keeps almost all of it.
+           // That is what lets the strength go to 4.0 without touching the ground.
+           float upness = dot( rimN, normalize( uViewUp ) );
+           float notFloor = 1.0 - upness * upness;
+           outgoingLight += uRimColor * uRimStrength
+             * backlit * keyed * notFloor * pow( facing, uRimPower );
          }
          #include <opaque_fragment>`,
       );
   };
   // All patched materials share one program variant; without a stable key three would
   // reuse an unpatched program compiled for an identical material earlier in the frame.
-  material.customProgramCacheKey = () => 'dragonvein-rim-v1';
+  material.customProgramCacheKey = () => 'dragonvein-rim-v4';
   return material;
 }
 
