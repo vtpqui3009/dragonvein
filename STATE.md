@@ -5,6 +5,34 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 
 ---
 
+## 2026-10-11 — run 5 — M0e: HUD readable at 360 px, context-loss line visible, no stale-frame hole
+
+**Step**: `M0e` — the first step in reading order in `docs/ROADMAP.md` that is not `DONE`.
+M0f is not in scope and will not be touched.
+
+**Step 0 passed**: `d68723f` pushed to `main` with Bash git before any other work. The
+checkout arrived on `main`, already level with `origin/main`; `git reset --hard` was again
+refused by the permission layer and was unnecessary.
+
+**Ownership**: `index.html`, `src/main.ts` and `tools/playtest.mjs` — all `integrator` per
+`docs/ARCHITECTURE.md` §Ownership. One owner, sequential, no fan-out.
+
+### Acceptance criteria
+
+All asserted by `npm run gate:smoke` (it fails if any does not hold) and logged to
+`artifacts/playtest.log`.
+
+| # | criterion | instrument |
+|---|---|---|
+| AC1 | At 360×640 and 320×480 the whole HUD is inside the viewport: `#hud` and every child have `getBoundingClientRect().right ≤ innerWidth`, and no readout is clipped. Baseline: `right = 527.6` at 360 px. | `gate:smoke`, shot `06-hud-360.png` |
+| AC2 | With the context held lost at 360×640, `#hud-status` is shown, non-empty, and entirely inside the viewport. | `gate:smoke`, shot `07-context-lost-360.png` |
+| AC3 | Between `webglcontextrestored` and the first frame drawn through the restored context, `__dragonveinStats()` returns `null` for `drawCalls`, `triangles`, `frameMs` and `cpuFrameMs`, and after that frame returns numbers again (`drawCalls > 0`). Baseline: it returns `0`/`0` and the pre-loss `cpuFrameMs`. | `gate:smoke` probe inside the restore event |
+| AC4 | At 1280×720 the HUD is still one row (height unchanged), so `01-wide.png` — the frame the art-critic scores — is not altered by this step. | `gate:smoke` logs `#hud` height |
+| AC5 | `npm run gates` exits 0; p95 ≤ 16.6 ms, draws ≤ 180, unchanged budgets. | `npm run gates` |
+| AC6 | art, perf, gameplay critics scored on a frozen tree. The gameplay-critic is expected to stay capped by G6 until M0f; that is recorded, not stretched. | `FINDINGS.md` |
+
+---
+
 ## 2026-10-11 — decisions — M0f approved, and A2 was asking the wrong question
 
 Run 2026-10-11 closed M0d (art 8.3, perf 8.7, gameplay 6.9) and raised two items. Both are
@@ -847,4 +875,3 @@ removes the dependency on proxy-injected credentials.
 the placeholder island.
 
 **Scores**: not applicable — no milestone claimed.
-- run started 2026-10-11T13:41:14Z
