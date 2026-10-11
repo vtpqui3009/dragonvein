@@ -58,7 +58,8 @@ cannot rise without input existing, because §When each rubric line goes live pu
 (mouse and touch) live from M0** and no step in M0a–M0e delivers any. That is a defect in
 this table, not in the build — M0f above is the proposed fix and is waiting on the owner.
 The full reasoning, and the gameplay-critic's own words on why a smoke test of input that
-nothing listens to proves nothing, are in `STATE.md` 2026-10-11.
+nothing listens to proves nothing, are in `docs/archive/STATE-2026-10.md` run 4
+§Roadmap defect.
 
 ## M1 — Asset pipeline
 

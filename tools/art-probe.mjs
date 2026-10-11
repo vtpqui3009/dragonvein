@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Prints the numbers `STATE.md`'s M0d acceptance criteria are written against.
+ * Prints the numbers M0d's acceptance criteria are written against (now in
+ * `docs/archive/STATE-2026-10.md`, run 4).
  *
  * This is an instrument, not a gate. It never exits non-zero on a measurement and it is
  * not in the `gates` chain, because a build must not be able to pass by making its own
