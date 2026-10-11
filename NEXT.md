@@ -48,9 +48,9 @@ Take M1a. It is the first asset step, and the contract's first workstream.
   generator rather than picking luckier seeds (`ops/build-prompt.md`).
 - `asset-builder` owns `assetgen/`. Wiring into `check:assets` (`tools/`) is the
   integrator's. That makes two owners, so run them sequentially, not in parallel.
-- Setup: `pip install bpy`, the GL libraries in `assetgen/README.md`, and
-  `export LIBGL_ALWAYS_SOFTWARE=1`. Cycles renders on CPU at roughly 25–100 s per frame,
-  so budget for the turntable.
+- Setup: load the `asset-env` skill. `pip install bpy` took about a minute, and the GL
+  libraries were already present except `libegl1`, which was not needed. Cycles on CPU:
+  0.8 s for a small still, 25–100 s for a review frame. Budget for the turntable.
 - **This step may be too big for one run.** If it is, `CLAUDE.md` §4b.4 says to propose
   the split in `STATE.md` and take the half that fits, for example generator + LODs +
   variant sheet first, then turntable + manifest + check.
@@ -98,6 +98,17 @@ Take M1a. It is the first asset step, and the contract's first workstream.
 
 ## Tools worth knowing about before you start
 
+- **Skills** in `.claude/skills/`: `asset-env` (headless Blender, verified: bpy 5.2.2
+  imports, Cycles renders, `.glb` export is byte-identical across processes for a plain
+  mesh), `critic-round` (freeze, perf alone, prompt template, FINDINGS format) and
+  `run-closeout` (the end-of-run order). Load the one you need. Their text is not in every
+  prompt.
+- **Owner's evidence page**: `node tools/evidence-page.mjs`, republished every run to
+  https://claude.ai/artifact/Pgkt22EifnK5hUzmXqssoj (see `run-closeout`). Its "Needs you"
+  box is §Open items below, verbatim.
+- **History is archived**: runs 0–4 and closed critic rounds are in `docs/archive/`.
+  `STATE.md` and `FINDINGS.md` hold only what a run needs now.
+
 - `node tools/art-probe.mjs [shot.png]` prints the numbers this run's acceptance criteria
   are written against: key-to-camera angle, what the shadow pass contributes, rim at the
   canopy edge, off-palette sky rows, and ambient motion. It gates nothing — it is a
@@ -116,7 +127,7 @@ Take M1a. It is the first asset step, and the contract's first workstream.
 git log --oneline -8
 grep -E '^\| M0' docs/ROADMAP.md                 # step status
 sed -n '1,60p' STATE.md                          # newest journal entry
-grep -E '^SCORE_MACHINE' FINDINGS.md | tail -6   # latest critic scores
+grep -hE '^SCORE_MACHINE' FINDINGS.md docs/archive/FINDINGS-*.md | head -6   # latest scores first
 npm ci && npm run gates                          # the ground truth
 node tools/art-probe.mjs                         # the art numbers
 ```

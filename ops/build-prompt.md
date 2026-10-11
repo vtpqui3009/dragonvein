@@ -33,7 +33,8 @@ Read `/home/user/dragonvein/NEXT.md` first — one screen, says what to do now. 
 `CLAUDE.md`, which is the contract and is obeyed literally.
 
 - `npm ci`. For asset work also: `pip install bpy`, the headless GL libraries listed in
-  `assetgen/README.md`, then `export LIBGL_ALWAYS_SOFTWARE=1`.
+  `assetgen/README.md`, then `export LIBGL_ALWAYS_SOFTWARE=1`. The `asset-env` skill
+  (`.claude/skills/asset-env/`) has the verified details, including `.glb` reproducibility.
 - Take the **first step in reading order** in `docs/ROADMAP.md` that is not `DONE`. Steps
   are lettered inside a phase and one step is one run. Work only on that one. Do not skip
   ahead, and do not take a second because the first went quickly — a run that ends early
@@ -44,7 +45,8 @@ Read `/home/user/dragonvein/NEXT.md` first — one screen, says what to do now. 
 - `npm run gates` must exit 0. Never weaken a test, a type, a lint rule or a budget to get
   green. If a gate measures the wrong thing, fix the gate in its own commit and say so.
 - Spawn `art-critic`, `perf-critic` and `gameplay-critic` in fresh context, artefacts only.
-  **Freeze the tree while they score.** Score against `docs/RUBRIC.md`.
+  **Freeze the tree while they score.** Score against `docs/RUBRIC.md`. The `critic-round`
+  skill has the procedure, the prompt template and the `FINDINGS.md` format.
 - Ship at ≥ 8.0 from all three with gates green. Below that, write defects to `FINDINGS.md`,
   fix, re-gate, re-criticise, up to 3 cycles, then commit what is green and leave the
   milestone `IN_PROGRESS`. Never stretch a score to close a milestone.
@@ -70,6 +72,7 @@ at most three consecutive. Never retry in a tight loop.
 ## Finish
 
 **Rewrite `NEXT.md`** — this is not optional and comes before anything else at the end of a
-run. Then update `STATE.md` with what shipped, the three scores, and open blockers. Commit,
+run. The `run-closeout` skill has the full order: NEXT.md, STATE.md, archive rotation, the
+owner's evidence page (`node tools/evidence-page.mjs`, republished to the same URL), push. Then update `STATE.md` with what shipped, the three scores, and open blockers. Commit,
 push to `main`, no pull request. Then `send_message` your parent at most 5 lines: milestone,
 three scores, next step, whether Step 0's push worked.
