@@ -10,7 +10,9 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-11** · at commit `953f156`
+Last updated: **2026-10-11** · at commit `953f156`, the last commit of run 4 that
+changed code. The close-out commit that wrote this file follows it, so `git log -1`
+being one or two docs commits ahead of that stamp is expected and not staleness.
 
 ---
 
