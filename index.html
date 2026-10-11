@@ -7,7 +7,10 @@
     <style>
       html,body{margin:0;height:100%;background:#070d14;overflow:hidden;
         font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#dbe9f2}
-      #c{display:block;width:100%;height:100%}
+      /* touch-action:none hands every touch to the orbit (src/main.ts) — without it the
+         browser takes a pinch as a page zoom and a drag as a pull-to-refresh. */
+      #c{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+      #c:active{cursor:grabbing}
       #boot{position:fixed;inset:0;display:grid;place-content:center;gap:12px;
         text-align:center;pointer-events:none;transition:opacity .5s}
       #boot h1{margin:0;font-size:clamp(28px,6vw,56px);letter-spacing:.22em;font-weight:800}

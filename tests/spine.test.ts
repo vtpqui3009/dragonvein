@@ -268,3 +268,31 @@ describe('budgets are not quietly relaxed', () => {
     expect(gate).toContain('--disable-frame-rate-limit');
   });
 });
+
+describe('the camera answers the pointer (M0f, rubric G6)', () => {
+  const main = read('src/main.ts');
+  const html = read('index.html');
+
+  it('publishes __dragonveinCamera for gate:smoke', () => {
+    expect(main).toMatch(/globalThis\.__dragonveinCamera\s*=/);
+  });
+
+  it('listens through pointer events, so mouse and touch share one path', () => {
+    for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'wheel']) {
+      expect(main).toContain(`canvas.addEventListener('${ev}'`);
+    }
+  });
+
+  it('keeps a pinch from zooming the page', () => {
+    // Measured before M0f: a two-finger pinch on a hasTouch context took
+    // visualViewport.scale to 5 and left the game zoomed in at a corner.
+    expect(html).toMatch(/#c\{[^}]*touch-action:none/);
+  });
+
+  it('clamps every axis of the orbit', () => {
+    for (const k of ['azimuthMinDeg', 'azimuthMaxDeg', 'pitchMinDeg', 'pitchMaxDeg',
+      'distanceMin', 'distanceMax']) {
+      expect(main).toContain(k);
+    }
+  });
+});

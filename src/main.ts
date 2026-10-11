@@ -11,7 +11,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
  * plus a warm rim, visible contact shadows, and enough scatter that the ground is never
  * bare. Every repeated prop is an `InstancedMesh` — one draw call per prop type.
  *
- * Deliberately NOT here (milestone M6): orbit camera, day/night, bloom, quality tiers.
+ * Deliberately NOT here (milestone M6): the full camera system (follow, inertia, keys),
+ * day/night, bloom, quality tiers. M0f's minimal drag/wheel/pinch orbit is here.
  */
 
 /** Injected by Vite's `define` from tools/site-config.mjs. */
@@ -124,6 +125,139 @@ const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 600);
 // satisfies both and still fits the whole island, root included.
 camera.position.set(12.7, 7.0, 15.5);
 camera.lookAt(0, 2.0, 0);
+
+// --- orbit: the camera answers the pointer (M0f) ---------------------------------------
+/*
+ * Drag to orbit, wheel or pinch to zoom, around the fixed target above. Pointer events
+ * carry mouse, pen and touch alike, so there is one code path, and `touch-action: none`
+ * on the canvas (index.html) stops the browser from taking a pinch as a page zoom.
+ *
+ * The default pose is *derived* from the framing above rather than retyped, and nothing
+ * is written to the camera until an input arrives, so with no input the frame is exactly
+ * the one M0d was scored on.
+ *
+ * The clamps keep every reachable frame one the art bible was tuned for, and each was
+ * found by rendering the limit, not by reasoning about it (STATE.md run 6):
+ *   - pitch 6-22 deg. The vertical FOV is 50 deg, so above ~25 deg the horizon leaves the
+ *     frame and with it the whole sky gradient; at 48 the shot was a top-down disc on
+ *     deep shadow. Below 6 the deck edge hides the ground and its contact shadows.
+ *   - distance 15-32. At 11 the deck overflowed a 640x360 frame; at 38 the hero is a
+ *     thumbnail.
+ *   - azimuth -15 to 105 deg, i.e. the default 39 deg +-~60. The satellites and spires
+ *     are composed around this side of the hero (see the far-island table); past ~110
+ *     deg they run out and the hero hangs in empty sky. M0f is "the camera answers the
+ *     pointer", not "the world is finished on every side" — widening this arc is for
+ *     whichever step dresses the far side.
+ *
+ * Event handlers may allocate, because they run per input event, not per frame. The
+ * per-frame half (`applyOrbit`) writes in place and only runs on a frame after a change.
+ */
+const ORBIT_TARGET = new THREE.Vector3(0, 2.0, 0);
+const ORBIT_LIMITS = {
+  azimuthMinDeg: -15, azimuthMaxDeg: 105,
+  pitchMinDeg: 6, pitchMaxDeg: 22, distanceMin: 15, distanceMax: 32,
+} as const;
+/**
+ * Radians of orbit per CSS pixel of drag: 160 px is ~37 deg, so the 120 deg arc is about a
+ * thumb's width of travel on a phone. At 0.0065 the first gate run showed a 160 px swipe
+ * slamming from the default pose straight into the azimuth limit.
+ */
+const ORBIT_RAD_PER_PX = 0.004;
+/** Distance multiplier per wheel `deltaY` pixel (120 per notch, so one notch is ~11%). */
+const ZOOM_PER_WHEEL_PX = 0.0009;
+
+const orbitOffset = new THREE.Vector3().subVectors(camera.position, ORBIT_TARGET);
+const orbit = {
+  distance: orbitOffset.length(),
+  azimuth: Math.atan2(orbitOffset.x, orbitOffset.z),
+  pitch: Math.asin(orbitOffset.y / orbitOffset.length()),
+  dirty: false,
+};
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+function setOrbit(azimuth: number, pitch: number, distance: number): void {
+  orbit.azimuth = clamp(azimuth,
+    THREE.MathUtils.degToRad(ORBIT_LIMITS.azimuthMinDeg),
+    THREE.MathUtils.degToRad(ORBIT_LIMITS.azimuthMaxDeg));
+  orbit.pitch = clamp(pitch,
+    THREE.MathUtils.degToRad(ORBIT_LIMITS.pitchMinDeg),
+    THREE.MathUtils.degToRad(ORBIT_LIMITS.pitchMaxDeg));
+  orbit.distance = clamp(distance, ORBIT_LIMITS.distanceMin, ORBIT_LIMITS.distanceMax);
+  orbit.dirty = true;
+}
+
+/** Per frame. No-op unless an input moved the orbit since the last frame. */
+function applyOrbit(): void {
+  if (!orbit.dirty) return;
+  orbit.dirty = false;
+  const flat = Math.cos(orbit.pitch) * orbit.distance;
+  camera.position.set(
+    ORBIT_TARGET.x + Math.sin(orbit.azimuth) * flat,
+    ORBIT_TARGET.y + Math.sin(orbit.pitch) * orbit.distance,
+    ORBIT_TARGET.z + Math.cos(orbit.azimuth) * flat,
+  );
+  camera.lookAt(ORBIT_TARGET);
+  // The rim light is re-derived from `matrixWorldInverse` before render; refresh it now
+  // so the first frame after a move is not lit from the previous pose.
+  camera.updateMatrixWorld();
+}
+
+/** Up to two live pointers: one orbits, two pinch. A third is ignored. */
+const pointers = new Map<number, { x: number; y: number }>();
+let pinchSpan = 0;
+
+function pointerSpan(): number {
+  const [a, b] = [...pointers.values()];
+  return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  if (pointers.size >= 2) return;
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  canvas.setPointerCapture(e.pointerId);
+  pinchSpan = pointerSpan();
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  const p = pointers.get(e.pointerId);
+  if (!p) return;
+  const dx = e.clientX - p.x;
+  const dy = e.clientY - p.y;
+  p.x = e.clientX;
+  p.y = e.clientY;
+  if (pointers.size === 1) {
+    // Drag right to swing the camera left around the island, as in every orbit viewer:
+    // the world appears to follow the finger.
+    setOrbit(orbit.azimuth - dx * ORBIT_RAD_PER_PX,
+      orbit.pitch + dy * ORBIT_RAD_PER_PX, orbit.distance);
+  } else {
+    const span = pointerSpan();
+    if (pinchSpan > 0 && span > 0) {
+      // Fingers apart = closer. Ratio, not difference, so the gesture feels the same at
+      // every distance.
+      setOrbit(orbit.azimuth, orbit.pitch, orbit.distance * (pinchSpan / span));
+    }
+    pinchSpan = span;
+  }
+});
+
+function endPointer(e: PointerEvent): void {
+  pointers.delete(e.pointerId);
+  pinchSpan = pointerSpan();
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+
+canvas.addEventListener('wheel', (e) => {
+  // The page has nothing to scroll; without this the wheel would do nothing visible.
+  e.preventDefault();
+  // deltaMode 1 is lines (Firefox), so scale it to pixels.
+  const px = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY;
+  setOrbit(orbit.azimuth, orbit.pitch, orbit.distance * Math.exp(px * ZOOM_PER_WHEEL_PX));
+}, { passive: false });
 
 // --- deterministic scatter -------------------------------------------------------------
 // mulberry32. Seeded so the scatter is identical in every build: two screenshots taken
@@ -1777,6 +1911,7 @@ function frame(now: number): void {
 
   const startedAt = performance.now();
   resize();
+  applyOrbit();
   island.rotation.y = now * 0.00012;
   updateFarMotion(now);
   // The rim is gated in view space, so its direction has to be re-derived whenever the
@@ -1898,6 +2033,14 @@ interface FrameCostReport {
 
 // The gates read these. Keep the shapes stable even as the renderer is replaced.
 declare global {
+  var __dragonveinCamera: (() => {
+    azimuthDeg: number; pitchDeg: number; distance: number;
+    limits: {
+      readonly azimuthMinDeg: number; readonly azimuthMaxDeg: number;
+      readonly pitchMinDeg: number; readonly pitchMaxDeg: number;
+      readonly distanceMin: number; readonly distanceMax: number;
+    };
+  }) | undefined;
   var __dragonveinStats: (() => {
     /** null while the WebGL context is lost: there is no frame to report. */
     drawCalls: number | null; triangles: number | null;
@@ -1950,6 +2093,14 @@ globalThis.__dragonveinStats = () => (framesSinceRestore === 0 && !contextLost ?
   cpuFrameMs: contextLost ? null : lastCpuMs,
   /** So a reader that gets nulls can tell "dead" from "not started". */
   contextLost,
+});
+
+/** Read by `gate:smoke` to prove the camera answers input (rubric G6). Degrees for logs. */
+globalThis.__dragonveinCamera = () => ({
+  azimuthDeg: THREE.MathUtils.radToDeg(orbit.azimuth),
+  pitchDeg: THREE.MathUtils.radToDeg(orbit.pitch),
+  distance: orbit.distance,
+  limits: ORBIT_LIMITS,
 });
 
 globalThis.__dragonveinPerf = {

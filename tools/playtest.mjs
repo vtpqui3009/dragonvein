@@ -17,6 +17,10 @@
  *    07-context-lost-360.png   the same, with the context held lost: the status line shown
  *    08-hud-320.png            the HUD at 320×480, the narrowest width checked
  *
+ *  And for rubric G6 (M0f), proof that the camera answers input:
+ *    09-orbit-mouse.png        the 1280×720 page after a mouse drag right, a drag down and a wheel step
+ *    10-orbit-touch.png        a hasTouch context after a one-finger drag and a pinch-out
+ *
  *  And one motion artefact, `artifacts/turntables/m0-island.webm`: rubric A5 asks whether
  *  anything pops in a scene whose whole definition of done is that it *rotates*, and
  *  three stills are weak evidence for that. The critic should be able to watch it.
@@ -41,6 +45,13 @@ const PHONES = [
   { name: '360', viewport: { width: 360, height: 640 }, shot: '06-hud-360.png' },
   { name: '320', viewport: { width: 320, height: 480 }, shot: '08-hud-320.png' },
 ];
+/** The M0e framing, which `src/main.ts` derives the orbit's starting pose from. */
+const DEFAULT_POSE = { azimuthDeg: 39.33, pitchDeg: 14.01, distance: 20.65 };
+const POSE_EPSILON = 0.05;
+const readPose = () => globalThis.__dragonveinCamera?.() ?? null;
+const poseText = (c) => c
+  ? `az ${c.azimuthDeg.toFixed(2)}° pitch ${c.pitchDeg.toFixed(2)}° dist ${c.distance.toFixed(2)}`
+  : 'absent';
 const HELD_LOSS_MS = 1_200;           // long enough for the first restore attempts to no-op
 
 /**
@@ -134,6 +145,15 @@ try {
   say(`shot: ${SHOTS}/01-wide.png  (t+${Date.now() - loadedAt}ms)`);
   // M0e made the HUD wrap. At desktop width it must not: 01-wide is the frame the
   // art-critic scores, and a second HUD row would change it.
+  // M0f: no input has happened, so the camera must still be at the framing M0d was scored
+  // on. If the orbit drifted the pose by itself, 01-wide would no longer be that frame.
+  const widePose = await page.evaluate(readPose);
+  say(`camera @01-wide: ${poseText(widePose)}`);
+  if (!widePose || Math.abs(widePose.azimuthDeg - DEFAULT_POSE.azimuthDeg) > POSE_EPSILON
+    || Math.abs(widePose.pitchDeg - DEFAULT_POSE.pitchDeg) > POSE_EPSILON
+    || Math.abs(widePose.distance - DEFAULT_POSE.distance) > POSE_EPSILON) {
+    errors.push(`camera is not at the default framing before any input: ${JSON.stringify(widePose)}`);
+  }
   const desktopHud = await page.evaluate(measureHud);
   say(`hud @1280: ${JSON.stringify(desktopHud)}`);
   if (desktopHud?.rows !== 1 || desktopHud.clipped.length) {
@@ -232,45 +252,85 @@ try {
     }
   }
 
-  // --- input reaches the canvas (rubric G6) --------------------------------------------
+  // --- the camera answers the mouse (rubric G6, M0f) -----------------------------------
   /*
-   * M0 has nothing to click. That is not the same as "input is untested", and the
-   * gameplay-critic was right to separate them: it scored G6 at 0.8/1.6 with the note
-   * "The playtest log has no pointer or touch input at all... I cannot show either input
-   * path works or fails. This is unverified, not broken."
-   *
-   * So this drill does not invent an interaction. It establishes the one thing that *is*
-   * true at M0 and can be checked: pointer and touch events reach the canvas, no handler
-   * throws on them, and the frame loop is still running afterwards. When a real input
-   * loop lands the assertions get stronger; until then the log says what was tried and
-   * what happened, instead of being silent and leaving a critic to guess.
-   *
-   * Mouse runs on the live page. Touch needs a context created with `hasTouch`, so it
-   * runs after the main page is closed — three concurrent SwiftShader contexts starve
-   * each other, which is the same reason the turntable is recorded alone (below).
+   * Until M0f this drill could only show that input did not crash anything; the
+   * gameplay-critic held G6 at 0.5-0.8 because "nothing listens to it". Now each gesture
+   * has to *move the camera* by a stated amount, read from `__dragonveinCamera()`. The
+   * island auto-rotates, so the frame always changes, which is why the pose is read
+   * rather than the pixels.
    */
-  const framesBeforeInput = await page.evaluate(
-    () => globalThis.__dragonveinPerf?.read().framesRendered ?? 0);
   const errorsBeforeInput = errors.length;
   const box = await page.locator('#c').boundingBox();
   if (!box) {
     errors.push('input: the canvas has no bounding box, so no pointer event can reach it');
   } else {
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40);
-    await page.mouse.up();
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    const drag = async (dx, dy) => {
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.mouse.move(cx + dx, cy + dy, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+    };
+    const p0 = await page.evaluate(readPose);
+    await drag(160, 0);
+    const p1 = await page.evaluate(readPose);
+    await drag(0, 50);
+    const p2 = await page.evaluate(readPose);
+    await page.mouse.move(cx, cy);
     await page.mouse.wheel(0, 120);
-    await page.waitForTimeout(600);
-    const framesAfterInput = await page.evaluate(
+    await page.waitForTimeout(300);
+    const p3 = await page.evaluate(readPose);
+    const framesBefore = await page.evaluate(
       () => globalThis.__dragonveinPerf?.read().framesRendered ?? 0);
-    const newErrors = errors.length - errorsBeforeInput;
-    say(`input: mouse move/drag/wheel over the canvas — ${newErrors} new page error(s), ` +
-      `frames ${framesBeforeInput} -> ${framesAfterInput} ` +
-      `(${framesAfterInput > framesBeforeInput ? 'loop still running' : 'LOOP STALLED'})`);
-    if (framesAfterInput <= framesBeforeInput) {
-      errors.push('the frame loop stopped advancing after pointer input');
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: `${SHOTS}/09-orbit-mouse.png` });
+    const framesAfter = await page.evaluate(
+      () => globalThis.__dragonveinPerf?.read().framesRendered ?? 0);
+    say(`input: mouse drag 160px right   ${poseText(p0)} -> ${poseText(p1)}`);
+    say(`input: mouse drag 50px down     -> ${poseText(p2)}`);
+    say(`input: mouse wheel +120 (down)  -> ${poseText(p3)}`);
+    say(`shot: ${SHOTS}/09-orbit-mouse.png  (rubric G6, M0f AC1)`);
+    if (!p0 || !p1 || Math.abs(p1.azimuthDeg - p0.azimuthDeg) < 10) {
+      errors.push(`G6: a 160 px mouse drag moved the azimuth < 10°: ${poseText(p0)} -> ${poseText(p1)}`);
     }
+    if (!p1 || !p2 || Math.abs(p2.pitchDeg - p1.pitchDeg) < 1) {
+      errors.push(`G6: a vertical mouse drag did not change the pitch: ${poseText(p1)} -> ${poseText(p2)}`);
+    }
+    if (!p2 || !p3 || !(p3.distance > p2.distance)) {
+      errors.push(`G6: wheel down did not move the camera away: ${poseText(p2)} -> ${poseText(p3)}`);
+    }
+    if (framesAfter <= framesBefore) errors.push('the frame loop stopped advancing after mouse input');
+
+    // AC4: clamps under abuse. A drag far past every limit, then a wheel flood each way.
+    await drag(4000, 2000);
+    const hi = await page.evaluate(readPose);
+    await drag(-8000, -4000);
+    const lo = await page.evaluate(readPose);
+    await page.mouse.move(cx, cy);
+    for (let i = 0; i < 25; i++) await page.mouse.wheel(0, -400);
+    await page.waitForTimeout(300);
+    const near = await page.evaluate(readPose);
+    for (let i = 0; i < 25; i++) await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(300);
+    const far = await page.evaluate(readPose);
+    say(`input: clamps — extreme drag ${poseText(hi)} / ${poseText(lo)}; ` +
+      `wheel flood ${poseText(near)} / ${poseText(far)}`);
+    const L = hi?.limits;
+    const inside = (c) => c && L
+      && c.azimuthDeg >= L.azimuthMinDeg - 1e-6 && c.azimuthDeg <= L.azimuthMaxDeg + 1e-6
+      && c.pitchDeg >= L.pitchMinDeg - 1e-6 && c.pitchDeg <= L.pitchMaxDeg + 1e-6
+      && c.distance >= L.distanceMin - 1e-6 && c.distance <= L.distanceMax + 1e-6;
+    if (![hi, lo, near, far].every(inside) || L.pitchMinDeg <= 0) {
+      errors.push(`G6: the orbit left its limits under extreme input: ${JSON.stringify({ hi, lo, near, far })}`);
+    }
+    if (near && far && !(near.distance === L?.distanceMin && far.distance === L?.distanceMax)) {
+      errors.push(`G6: a wheel flood did not reach the distance limits: ${poseText(near)} / ${poseText(far)}`);
+    }
+    const newErrors = errors.length - errorsBeforeInput;
+    say(`input: mouse drill — ${newErrors} new error(s)`);
   }
   await flush();
 
@@ -284,8 +344,15 @@ try {
   await page.close();
 
   // The touch half of G6, now that the main page has let go of its context.
+  /*
+   * Playwright's `touchscreen` can only tap, and a tap is not a gesture this game has. So
+   * the drag and the pinch go through CDP `Input.dispatchTouchEvent`, which is what a
+   * real finger produces, and Chromium turns into the pointer events the orbit reads.
+   */
   {
-    const touchContext = await browser.newContext({ viewport: VIEW, hasTouch: true });
+    const touchContext = await browser.newContext({
+      viewport: VIEW, hasTouch: true, isMobile: true,
+    });
     const touchPage = await touchContext.newPage();
     const touchErrors = [];
     touchPage.on('pageerror', (e) => touchErrors.push(String(e)));
@@ -295,17 +362,49 @@ try {
         () => (globalThis.__dragonveinStats?.().drawCalls ?? 0) > 0,
         undefined, { timeout: 30_000 },
       );
-      const before = await touchPage.evaluate(
+      const cdp = await touchContext.newCDPSession(touchPage);
+      const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', {
+        type, touchPoints: points.map(([x, y], id) => ({ x, y, id })),
+      });
+      const cx = VIEW.width / 2;
+      const cy = VIEW.height / 2;
+      const steps = 10;
+
+      const t0 = await touchPage.evaluate(readPose);
+      const framesBefore = await touchPage.evaluate(
         () => globalThis.__dragonveinPerf?.read().framesRendered ?? 0);
-      await touchPage.touchscreen.tap(VIEW.width / 2, VIEW.height / 2);
-      await touchPage.touchscreen.tap(VIEW.width / 2 + 80, VIEW.height / 2 + 50);
+      await touch('touchStart', [[cx, cy]]);
+      for (let i = 1; i <= steps; i++) await touch('touchMove', [[cx - 16 * i, cy]]);
+      await touch('touchEnd', []);
+      await touchPage.waitForTimeout(300);
+      const t1 = await touchPage.evaluate(readPose);
+
+      // Pinch-out: two fingers from 60 px apart to 300 px apart, about the centre.
+      await touch('touchStart', [[cx - 30, cy], [cx + 30, cy]]);
+      for (let i = 1; i <= steps; i++) {
+        await touch('touchMove', [[cx - 30 - 12 * i, cy], [cx + 30 + 12 * i, cy]]);
+      }
+      await touch('touchEnd', []);
       await touchPage.waitForTimeout(600);
-      const after = await touchPage.evaluate(
+      const t2 = await touchPage.evaluate(readPose);
+      const scale = await touchPage.evaluate(() => window.visualViewport?.scale ?? 1);
+      await touchPage.screenshot({ path: `${SHOTS}/10-orbit-touch.png` });
+      const framesAfter = await touchPage.evaluate(
         () => globalThis.__dragonveinPerf?.read().framesRendered ?? 0);
-      say(`input: touch tap x2 on a hasTouch context — ${touchErrors.length} page ` +
-        `error(s), frames ${before} -> ${after} ` +
-        `(${after > before ? 'loop still running' : 'LOOP STALLED'})`);
-      if (after <= before) errors.push('the frame loop stopped advancing after touch input');
+
+      say(`input: touch drag 160px left    ${poseText(t0)} -> ${poseText(t1)}`);
+      say(`input: touch pinch-out 60->300px -> ${poseText(t2)}; page zoom ${scale}`);
+      say(`input: touch — ${touchErrors.length} page error(s), frames ${framesBefore} -> ` +
+        `${framesAfter} (${framesAfter > framesBefore ? 'loop still running' : 'LOOP STALLED'})`);
+      say(`shot: ${SHOTS}/10-orbit-touch.png  (rubric G6, M0f AC3)`);
+      if (!t0 || !t1 || Math.abs(t1.azimuthDeg - t0.azimuthDeg) < 10) {
+        errors.push(`G6: a one-finger drag moved the azimuth < 10°: ${poseText(t0)} -> ${poseText(t1)}`);
+      }
+      if (!t1 || !t2 || !(t2.distance < t1.distance - 1)) {
+        errors.push(`G6: a pinch-out did not bring the camera closer: ${poseText(t1)} -> ${poseText(t2)}`);
+      }
+      if (scale !== 1) errors.push(`G6: the pinch zoomed the page (visualViewport.scale ${scale})`);
+      if (framesAfter <= framesBefore) errors.push('the frame loop stopped advancing after touch input');
       for (const e of touchErrors) errors.push(`touch: ${e}`);
     } catch (e) {
       errors.push(`touch drill failed: ${e instanceof Error ? e.message : String(e)}`);
