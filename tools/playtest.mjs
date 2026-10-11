@@ -185,6 +185,48 @@ try {
     }
   }
 
+  // --- input reaches the canvas (rubric G6) --------------------------------------------
+  /*
+   * M0 has nothing to click. That is not the same as "input is untested", and the
+   * gameplay-critic was right to separate them: it scored G6 at 0.8/1.6 with the note
+   * "The playtest log has no pointer or touch input at all... I cannot show either input
+   * path works or fails. This is unverified, not broken."
+   *
+   * So this drill does not invent an interaction. It establishes the one thing that *is*
+   * true at M0 and can be checked: pointer and touch events reach the canvas, no handler
+   * throws on them, and the frame loop is still running afterwards. When a real input
+   * loop lands the assertions get stronger; until then the log says what was tried and
+   * what happened, instead of being silent and leaving a critic to guess.
+   *
+   * Mouse runs on the live page. Touch needs a context created with `hasTouch`, so it
+   * runs after the main page is closed — three concurrent SwiftShader contexts starve
+   * each other, which is the same reason the turntable is recorded alone (below).
+   */
+  const framesBeforeInput = await page.evaluate(
+    () => globalThis.__dragonveinPerf?.read().framesRendered ?? 0);
+  const errorsBeforeInput = errors.length;
+  const box = await page.locator('#c').boundingBox();
+  if (!box) {
+    errors.push('input: the canvas has no bounding box, so no pointer event can reach it');
+  } else {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40);
+    await page.mouse.up();
+    await page.mouse.wheel(0, 120);
+    await page.waitForTimeout(600);
+    const framesAfterInput = await page.evaluate(
+      () => globalThis.__dragonveinPerf?.read().framesRendered ?? 0);
+    const newErrors = errors.length - errorsBeforeInput;
+    say(`input: mouse move/drag/wheel over the canvas — ${newErrors} new page error(s), ` +
+      `frames ${framesBeforeInput} -> ${framesAfterInput} ` +
+      `(${framesAfterInput > framesBeforeInput ? 'loop still running' : 'LOOP STALLED'})`);
+    if (framesAfterInput <= framesBeforeInput) {
+      errors.push('the frame loop stopped advancing after pointer input');
+    }
+  }
+  await flush();
+
   // --- the motion artefact (rubric A5) -------------------------------------------------
   // Recorded **after the main page is closed**, with nothing else holding a WebGL
   // context. The first version opened the recording page beside the live one and
@@ -193,6 +235,39 @@ try {
   // each other, and that made AC1 — `npm run gates` exits 0 — a coin flip. A gate that
   // fails at random is worse than no gate.
   await page.close();
+
+  // The touch half of G6, now that the main page has let go of its context.
+  {
+    const touchContext = await browser.newContext({ viewport: VIEW, hasTouch: true });
+    const touchPage = await touchContext.newPage();
+    const touchErrors = [];
+    touchPage.on('pageerror', (e) => touchErrors.push(String(e)));
+    try {
+      await touchPage.goto(preview.url, { waitUntil: 'load', timeout: 30_000 });
+      await touchPage.waitForFunction(
+        () => (globalThis.__dragonveinStats?.().drawCalls ?? 0) > 0,
+        undefined, { timeout: 30_000 },
+      );
+      const before = await touchPage.evaluate(
+        () => globalThis.__dragonveinPerf?.read().framesRendered ?? 0);
+      await touchPage.touchscreen.tap(VIEW.width / 2, VIEW.height / 2);
+      await touchPage.touchscreen.tap(VIEW.width / 2 + 80, VIEW.height / 2 + 50);
+      await touchPage.waitForTimeout(600);
+      const after = await touchPage.evaluate(
+        () => globalThis.__dragonveinPerf?.read().framesRendered ?? 0);
+      say(`input: touch tap x2 on a hasTouch context — ${touchErrors.length} page ` +
+        `error(s), frames ${before} -> ${after} ` +
+        `(${after > before ? 'loop still running' : 'LOOP STALLED'})`);
+      if (after <= before) errors.push('the frame loop stopped advancing after touch input');
+      for (const e of touchErrors) errors.push(`touch: ${e}`);
+    } catch (e) {
+      errors.push(`touch drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await touchContext.close();
+    }
+  }
+  await flush();
+
   // Nothing stale survives a failure: a left-over .webm from an earlier build sitting
   // next to a log that says the gate failed is a critic scoring the wrong artefact.
   await rm(TURNTABLE, { force: true });
