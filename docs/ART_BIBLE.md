@@ -16,6 +16,7 @@ low-poly, not photoreal. The reference feel is a hand-painted diorama lit by a r
 |---|---|---|
 | sky zenith | `#0a1c4f` | top of the gradient |
 | sky horizon | `#ff9044` | golden hour band |
+| dusk | `#844e32` | the warm mid-stop between horizon and shadow — sky ramps, fog, island undersides |
 | deep shadow | `#1a1420` | underside of islands, crevices |
 | rock mid | `#5a4a40` | cliffs |
 | foliage dark | `#1e4a21` | canopy underside |
@@ -24,6 +25,11 @@ low-poly, not photoreal. The reference feel is a hand-painted diorama lit by a r
 | water | `#2d92ba` → `#a6f1f2` | depth gradient |
 | UI surface | `rgba(11,36,48,0.82)` | glass panels |
 | UI accent | `#ffd479` | highlights, currency |
+
+`dusk` exists because `sky horizon` and `deep shadow` are 48 ΔE apart and nothing sat
+between them, so every ramp joining them left the palette in its own middle. Runs routed
+through `rock mid` instead, which worked numerically and was wrong semantically — a cliff
+colour has no business in a sky. Use `dusk` for that leg.
 
 Dragon colour comes from genes, not from this table — but saturation stays inside
 0.35–1.00 and value inside 0.28–0.92 so no dragon is pure white or pure black and every

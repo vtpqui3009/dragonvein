@@ -31,7 +31,7 @@ meaning what they said.
 | M0c | `gate:perf` measures frame **cost**, reproducibly, with the Potato tier and heap churn recorded | DONE |
 | M0d | the placeholder frame meets `docs/ART_BIBLE.md` — contact shadows land, all three lights reach the frame, prefab variety reads, no bare ground, no off-bible haze. art-critic ≥ 8.0 | DONE |
 | **M0e** | **HUD readable at 360 px; the context-loss line visible; `__dragonveinStats()` has no stale-frame hole** | **TODO** |
-| M0f | *proposed, not yet approved* — the camera answers the pointer, so rubric G6 has a subject at M0. See `STATE.md` 2026-10-11 | TODO |
+| M0f | the camera answers the pointer — drag to orbit, wheel/pinch to zoom — under both a mouse and a `hasTouch` context, so rubric G6 has a subject at M0 | TODO |
 
 M0a–M0c were delivered and verified inside the M0 runs — gates and CI are green, the
 sighting is in `STATE.md`. They were never scored as separate steps, because this split did

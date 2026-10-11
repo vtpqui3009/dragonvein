@@ -42,7 +42,7 @@ diff narrative, and may not edit code.
 | # | line | max | fails if |
 |---|---|---|---|
 | A1 | Silhouette reads at 25% zoom | 1.2 | shapes merge |
-| A2 | Palette inside `ART_BIBLE.md` within ΔE 12 | 1.0 | off-bible hues |
+| A2 | **Surfaces** inside `ART_BIBLE.md` within ΔE 12; **gradients** judged on their stops, monotonicity and banding | 1.0 | an off-bible surface, or a ramp that bands, reverses, or ends off-palette |
 | A3 | Lighting has direction: key, fill, contact shadow | 1.2 | flat or shadowless |
 | A4 | **Variant sheets show real variation** | 1.6 | 8 seeds read as one object — `blocking` |
 | A5 | Nothing pops, teleports or interpenetrates | 1.2 | any pop — `blocking` |
@@ -67,6 +67,29 @@ is still a dead world.
 
 Every perf number is cited from `artifacts/perf.json`. A perf-critic that cites nothing
 scores nothing.
+
+### A2 applies to surfaces, not to the inside of a gradient
+
+A gradient passes through colours between its stops. That is what a gradient is. Scoring
+the midpoint of a ramp against the palette therefore measures the definition of
+interpolation, not the quality of the art, and no amount of correct work can satisfy it.
+
+Measured, so this is not an opinion. `sky horizon` #ff9044 and `deep shadow` #1a1420 are
+48 ΔE apart. A direct ramp peaks at ΔE 47 from the nearest palette entry. Adding stops
+helps less than it looks: one intermediate entry only reaches 23.7, two reach 15.7, three
+reach 12.2, and **four** are needed before the midpoint clears ΔE 12. That would make five
+of fourteen palette entries exist solely to let one gradient pass one test — the palette
+serving the rubric rather than the art.
+
+So A2 scores **surfaces**: a rock, a leaf, a panel, a dragon's scales. For a **gradient** it
+asks three things instead, all of which are real defects when they fail:
+
+- both endpoints are palette entries
+- the ramp is monotonic in value — no reversal the eye reads as a seam
+- no banding at the tier's bit depth
+
+A gradient whose stops are on-palette and whose ramp is clean passes A2 whatever its
+midpoint measures. One that ends on a colour nobody chose does not.
 
 ### P1, and why it is not simply "16.6 ms"
 

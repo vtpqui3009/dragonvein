@@ -5,6 +5,66 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 
 ---
 
+## 2026-10-11 — decisions — M0f approved, and A2 was asking the wrong question
+
+Run 2026-10-11 closed M0d (art 8.3, perf 8.7, gameplay 6.9) and raised two items. Both are
+defects in documents written at project setup, not in the build.
+
+### 1. G6 had no subject at M0 — **M0f approved**
+
+`docs/ROADMAP.md` made G6 "mouse and touch" live from M0, and no M0 step delivered input.
+The gameplay-critic was therefore capped below the bar by a line nothing could satisfy —
+the third instance of this pattern, after P1 and the no-subject rule. M0f is now approved
+and worded in the roadmap: drag to orbit, wheel or pinch to zoom, asserted under both a
+mouse and a `hasTouch` context.
+
+The run proposed it and did not take it, because one step is one run. That was right.
+
+### 2. The palette gap — measured, and the conclusion is the opposite of the proposal
+
+The run asked whether `ART_BIBLE.md` wants a dusk entry, expecting that one would take A2
+"to near zero". Measured before deciding, in CIELAB:
+
+| ramp from `sky horizon` #ff9044 to `deep shadow` #1a1420 | peak ΔE from the nearest entry |
+|---|---|
+| direct | 47.1 |
+| via `rock mid` (what shipped) | 33.9 |
+| + 1 purpose-chosen stop | 23.7 |
+| + 2 stops | 15.7 |
+| + 3 stops | 12.2 |
+| + 4 stops | **10.3** — the first that clears A2 |
+
+So one entry does not fix it. **Four** do, which would leave five of fourteen palette
+entries existing only to let one gradient pass one test. That is the palette serving the
+rubric instead of the art, and it is the wrong trade.
+
+The real defect is A2. A gradient passes through colours between its stops — that is what a
+gradient is. Scoring a ramp's midpoint against the palette measures the definition of
+interpolation, not the quality of the frame, and no correct work can satisfy it.
+
+**A2 now scores surfaces** — a rock, a leaf, a panel, a dragon's scales — within ΔE 12.
+For a **gradient** it asks three things that are real defects when they fail: both endpoints
+are palette entries, the ramp is monotonic in value, and it does not band at the tier's bit
+depth. `docs/RUBRIC.md` §A2 carries the measurement.
+
+A `dusk` entry `#844e32` was added anyway, for a different reason. Routing a sky through
+`rock mid` worked numerically and was wrong semantically — a cliff colour has no business in
+a sky. `dusk` is named for the job it does.
+
+### The pattern, now three for three
+
+P1 asked for a number no available machine could measure. The no-subject rule let lines
+score zero for things that did not exist. G6 went live at a milestone that delivered no
+input. A2 scored interpolation as if it were art direction. Each cost a run or more to
+discover, and each was written at setup by someone — me — who had not yet watched the
+rubric meet a real build.
+
+Worth saying plainly for whoever reads this later: when a critic cannot reach the bar with
+any amount of correct work, suspect the instrument before the builder. Four times now, the
+instrument was wrong.
+
+---
+
 ## 2026-10-11 — run 4 — M0d DONE: the placeholder frame meets the art bible (M0 IN_PROGRESS)
 
 **Step**: `M0d` — the first step in reading order in `docs/ROADMAP.md` that is not `DONE`.
