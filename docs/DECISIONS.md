@@ -91,3 +91,25 @@ second subscription.
 Not evaluated here: Max or API billing. Both are legitimate and both would remove the
 ceiling, but they are the owner's spending decision, not a technical one, and this project
 should be cheap to run before it is given a larger budget.
+
+### Follow-up, 2026-10-11 — the Sonnet pin holds, with one thing to watch
+
+Seven critic reports across four scoring rounds, the first full run under the pin.
+
+**No evidence for reverting.** Not one defect arrived without a pointer. Every major the
+art-critic raised was real and reproducible from the coordinates it gave, including two the
+run had introduced and not noticed: a keel cone standing outside the deck it hangs from,
+and an island reading ΔE 27.7 off the palette because `scene.fog` is `sky horizon` and that
+island sits below the horizon. The gameplay-critic took apart an instrument this run had
+added specifically to answer its previous complaint, and was right to — "the assertion
+could not have failed for any reason related to input". A critic that catches the thing you
+built to satisfy it is doing the job the pin was meant to pay less for.
+
+**One thing to watch, not to act on.** The gameplay-critic scored 8.2 → 7.1 → 6.9 across
+three rounds on a gameplay surface that did not change. That looks like drift, but reading
+the reports it is not: cycle 1 admitted it "did not view the other shots, the webm or the
+extracted frames", and the later reports are better evidenced than the earlier ones. The
+movement is the early scores being generous. No action.
+
+If a fourth scoring of an unchanged surface lands outside 6.5–7.5, that is the evidence
+this entry asked for and the pin should be reconsidered then.

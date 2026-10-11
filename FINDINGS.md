@@ -1962,3 +1962,433 @@ pass.
   `docs/concept/03-island-scene.png`, and the hero island beats the concept on density.
 
 SCORE_MACHINE: 6.1
+
+---
+
+# Run 2026-10-11 — M0d, the placeholder frame meets the art bible
+
+Four scoring rounds on frozen trees. The art-critic is M0d's own bar (>= 8.0); perf and
+gameplay are scored because `CLAUDE.md` §3.5 asks for all three every run.
+
+| cycle | commit | art | perf | gameplay |
+|---|---|---|---|---|
+| baseline (run 3) | `2d1ff42` | 6.1 | 6.1 | 8.2 |
+| 1 | `024ebd6` | 7.98 | 8.5 | 7.1 |
+| 2 | `42d0cd8` | 8.3 | — | 6.9 |
+| 3 | `4a944fc` | 8.2 | 8.7 | — |
+| **4 (final)** | **`953f156`** | **8.3** | **8.7** | **6.9** |
+
+The perf and gameplay scores carried forward where the cycle did not change their subject,
+and each report below says which commit it was taken at. No critic raised a blocking defect
+in any round.
+
+Every one of these reports was returned by a critic that declined to write it into this
+file itself, because the brief froze the tree while it scored. They are pasted verbatim in
+substance by the run, which is a worse arrangement than the critic appending its own and is
+noted here so the next run can decide whether to relax the freeze for `FINDINGS.md` alone.
+
+## perf-critic — M0d the placeholder frame meets the art bible — run 2026-10-11 (cycle 1)
+
+SCORE: 8.5 / 10
+
+Scored at `024ebd6` on a frozen tree, alone on the container — a previous cycle found that
+scoring in parallel with other agents moved the timings. `artifacts/perf.json` was not
+re-generated; the critic read the one written by the `npm run gates` run that preceded the
+commit, and reported that it did not re-run `gate:perf` and edited no files.
+
+7.0 of 8.2 available points. P3 scored `n/a`: there is no runtime dragon builder, and
+`docs/ROADMAP.md` makes that line live at M3c.
+
+### Per-line breakdown
+
+| # | line | awarded | measurement |
+|---|---|---|---|
+| P1 | Frame budget, continuous half | **1.15** / 1.25 | Window closed on target: `status` complete, `sampleCount.cpuFrameMs` 382, `mainThreadTailEnforced` true, `rasteriserCap.verified` true. Enforced main-thread half in budget: `cpuFrameMs.p95` 1.4 ms vs 3.5 (p50 0.8). The 16.6 ms line is advisory on this renderer — `frameCostMs.p95` 421.559 ms, `softwareRenderer` true, `frameBudgetEnforced` false — and per `docs/RUBRIC.md` §P1 that is not a failure. |
+| P1 | Frame budget, real-hardware half | **0.85** / 1.25 | One row in `STATE.md`, 2026-10-10, commit `c429d4a`, grade `sighting`, ~60 FPS. A sighting is acceptable up to M15. Thin: no GPU model, ~1365×610 viewport, and it predates this run's scene growth. |
+| P2 | Draw calls | **1.8** / 1.8 | `drawCalls` 27 vs 180. |
+| P3 | Bred-dragon mesh time | **n/a** | No `src/assets/`; live at M3c, which is TODO. |
+| P4 | Heap churn | **1.4** / 1.5 | `heap.bytesPerFrame` 34012 vs 40960, 17% headroom. `heap.netGrowthKB` −2245, so churn rather than a leak, with `sawtoothAmplitudeKB` 3706. `cpuFrameMs.max` 3.8 ms and `gc.pauseMsMeasured` false, so this run's per-frame instance-matrix update shows no main-thread cost. 0.1 off for thin headroom. |
+| P5 | Bundle and boot | **1.2** / 1.2 | `bundle.gzipBytes` 143843 vs 1 400 000; `bootMs` 260.9 vs 2500. |
+| P6 | Potato tier holds 30 fps @720p | **0.6** / 1.2 | Enforced parts pass: `potato.cpuFrameMs.p95` 1.0 ms, `potato.drawCalls` 19, `settingsVerified` true. The 30 fps claim is not demonstrated — `potato.frameCostMs.p95` 212.096 ms vs 33.3, advisory on SwiftShader. Half credit. |
+
+**Total 7.0 / 8.2 = 8.54 → SCORE 8.5 / 10.** No blocking defects.
+
+### Defects
+
+- [major] **P1 — the real-GPU log is stale against the current scene.** The only row
+  (`STATE.md` line 361) is at `c429d4a`; this build is `024ebd6` with draw calls 21 → 27,
+  triangles 29420 → 36180 and a per-frame matrix update added. Fix: a human sighting or
+  verification on this commit, recording GPU model and a 1080p viewport.
+- [major] **P6 — Potato's 30 fps is unverified on any real GPU.**
+  `potato.frameCostMs.p95` 212.096, `potato.frameBudgetEnforced` false; the smoke overlay
+  read `FPS 8` (`artifacts/playtest.log` line 14, SwiftShader). No Potato real-hardware
+  row exists in `STATE.md`.
+- [minor] **P4 — heap headroom is small and the scene is growing.**
+  `heap.bytesPerFrame` 34012 vs 40960. `docs/PERF_BUDGET.md`'s cost model (~4 kB fixed plus
+  ~1.8 kB a draw) predicts ~52 kB at 27 draws, so the model overestimates — but the next
+  prop type could still trip the gate. Do not raise the budget; cut the work. Named
+  options: one `InstancedMesh` per prop type, fold the ambient-motion meshes into existing
+  ones, split the pooled depth material so `getParameters` stops flipping the instancing
+  flag.
+- [minor] **P4 — the ambient-motion update stays on the main thread.** `cpuFrameMs.max`
+  3.8 ms against a p95 budget of 3.5 ms. Within budget now. Moving the motion into the
+  vertex shader (`docs/PERF_BUDGET.md` §Techniques) would remove the per-frame matrix
+  upload; failing that, update only the dirty instance range.
+- [info] **Reproducibility not independently confirmed** — one run observed, no re-run.
+  Confirm with `npm run gate:perf` with nothing else on the box.
+
+### What is good
+
+Every enforced hardware-independent budget passes with margin: draws 27/180, triangles
+36180/900000, bundle 143 843 B, boot 260.9 ms, cpu p95 1.4 ms. The rasteriser cap is
+verified (53 threads re-read, 0 wrong), so the cpu p95 is a real signal rather than a
+number taken off a contended box. Context loss and restore worked, with 0 page errors.
+
+SCORE_MACHINE: 8.5
+
+---
+
+## art-critic — M0d the placeholder frame meets the art bible — run 2026-10-11 (cycle 1)
+
+SCORE: 7.98 / 10
+
+Scored at `024ebd6` on a frozen tree, artefacts only. The critic was asked not to read
+`src/`, `STATE.md` or the git log, and reported deriving its crops and difference maps
+outside the repository. 6.7 of 8.4 available points. No blocking defect.
+
+A4 scored `n/a` and its 1.6 points dropped: `artifacts/variants/` does not exist and no
+variant generator ships at M0. The critic noted explicitly that this is not a dispensation
+for a bad sheet — the line becomes live when a generator ships, and it is the heaviest in
+the table there.
+
+### Per-line breakdown
+
+| # | line | awarded | measurement |
+|---|---|---|---|
+| A1 | Silhouette at 25% | **1.0** / 1.2 | In `02-silhouette.png` the hero island and all eight satellites separate cleanly from the sky, and the distinct keel shapes — spike, wedge, disc — read at that size. Hero canopy tops are crisp against the dark mid-sky. Deduction: no edge antialiasing, stair-stepped apexes at native size; satellite trees are only a few pixels tall. |
+| A2 | Palette within ΔE 12 | **0.6** / 1.0 | Zenith `#0a1c4f` and horizon peak `#ff9044` match the bible exactly. The sky below the band is the failure: sampled at x=20, y 240 `#6e503e`, y 300 `#53453d`, y 420 `#53443c`, y 540 `#4e403a`, y 660 `#3f3332`. "This flat brown-grey covers roughly half the frame, from y≈250 to the bottom. It is nowhere near `#1a1420` deep shadow, nor any other bible hue. It reads as mud, not dusk." |
+| A3 | Key, fill, contact shadow | **0.9** / 1.2 | A real shadow pass now exists: `01-wide` minus `05-potato` leaves 46 416 px above a diff of 30 on the hero island (x400–880, y300–640), and the diff map shows contact shadows under bushes and rocks and trunk shadows on the grass. Key visible as orange-lit facet edges; rim glow on the keel's right edge. Deduction: 3864 px of hero canopy and ground (x410–870, y300–560) crushed below `#0a0a0a` — bush undersides and conifer shade faces read as flat black blocks. |
+| A4 | Variant sheets | **n/a** | `ls artifacts/variants` fails; no generator at M0. |
+| A5 | Nothing pops/interpenetrates | **1.0** / 1.2 | Nothing pops across the extracted turntable frames; `01-wide`, `03-late` and the satellites keep identical geometry. Minors: a crystal shard inside a tree trunk at `01-wide` x520–560 / y370–420, crystals among tufts and rocks at `03-late` x640–700 / y420–460; and the HUD reads FPS 8, so the turntable steps rather than showing smooth motion. |
+| A6 | Density — a lived-in place | **1.1** / 1.4 | The hero island is densely dressed — two tree families, bushes in two sizes, rocks, tufts, crystals, a paved path, standing stones, no bare ground — and all eight satellites now carry trees, scatter and visible keels, each reading as a different island. Deductions: satellite scatter is a few px each against the hero's carpet; several satellites read as diagrams; **the lower half of the frame is empty brown sky with no cloud, haze, distant silhouette or particle**; only two to four bird specks, barely visible. |
+| A7 | HUD ≥ 4.5:1 at 1280×720 | **0.9** / 1.0 | The panel is the bible's UI surface with the accent colour for the title; off-white and gold on dark teal is well over 4.5:1. The critic eyeballed rather than re-measured, and did not re-check the boot splash the previous cycle called 1.4–1.8:1 — the 0.1 deduction is explicitly "unverified". |
+| A8 | No z-fighting, seams, magenta | **0.8** / 0.8 | None seen in the five shots, the potato frame or the diff map. (The magenta in the critic's own `diff.png` is its diff colouring, not the render.) |
+| A9 | Matches concept intent | **0.4** / 0.6 | Floating islands, conical keel, conifer scatter, boulders and white crystals match the concept's intent. Misses: no dragon, so the focal subject is absent (expected at M0); the concept's soft rounded plateau is a faceted disc here. The palette difference from the concept's pastel peach-lilac is bible-consistent and was not penalised. |
+
+**Total 6.7 / 8.4 → SCORE 7.98 / 10.**
+
+### Defects
+
+- [major] **A2 — the lower sky is a flat brown-grey.** `01-wide.png`, all pixels below
+  y≈250 not covered by islands: `#4e403a` to `#53453d`. Reproduce with PIL
+  `getpixel((20, y))` for y in 300, 420, 540. Proposed fix: carry the gradient from the
+  horizon peak down toward `#1a1420` instead of flattening to brown.
+- [major] **A6 — the lower half of the frame is an empty dusk void.** `01-wide.png`
+  x0–400 / y330–720 and x880–1280 / y450–720, around eight sparse satellites. The
+  satellites at x180–280 / y550–630 and x360–500 / y630–690 carry a handful of 1–3 px
+  props each. Wants atmosphere — cloud banks or haze, distant islands, particles.
+- [minor] **A3 — the fill does not reach the shadow side.** 3864 px below `#0a0a0a` on
+  bush undersides and conifer shade faces; they read as holes rather than shade.
+- [minor] **A5 — scatter interpenetration.** `01-wide.png` x520–560 / y370–420, crystal
+  through a tree trunk; `03-late.png` x640–700 / y420–460. "Placement has no radius gate."
+- [minor] **A1 — no edge antialiasing.** Tree and canopy apexes terrace at native
+  resolution; no MSAA or FXAA.
+- [minor] **A9 — no creature or focal subject in any shot.** Expected at M0, but the
+  concept's hero is the dragon.
+
+### What is good
+
+The sky zenith and horizon peak are exact bible values. The cast shadow pass gives real
+directional contact shadows on the island. The hero island's density is the strongest part
+of the frame — mixed flora, rocks, path and standing stones with no bare ground, clearly
+beating the concept's sparseness. Eight distinct satellite shapes and keels give a
+readable, varied silhouette at 25%. The warm rim and key on facet edges separate the
+island from the dark keel. No render artefacts anywhere in the five shots or the potato
+frame.
+
+SCORE_MACHINE: 7.98
+
+---
+
+## gameplay-critic — M0d the placeholder frame meets the art bible — run 2026-10-11 (cycle 1)
+
+SCORE: 7.1 / 10
+
+Scored at `024ebd6`. Nothing re-run, no files edited. **The critic reported reading only
+`artifacts/playtest.log`, `03-late.png` and `04-context-restored.png`, plus `STATE.md` and
+`docs/RUBRIC.md` — it did not view the other shots, the webm or the extracted frames.**
+That is recorded here because it bears on how much weight the score carries.
+
+Lines dropped as `n/a` per `docs/ROADMAP.md` §When each rubric line goes live: G2 (live
+M9b, no breeding), G4 and G5 (live M8a, no save). The log tags the context-loss drill
+"gameplay rubric G5"; the critic treated it as evidence of robustness but did not score G5
+from it. Live lines are G1, G3 and G6, denominator 5.2.
+
+| # | line | awarded | evidence |
+|---|---|---|---|
+| G1 | The milestone's loop completes | **2.0** / 2.2 | M0's loop is boot, render, run, survive. `playtest.log` lines 4–19: boot OK, 0 page errors, 27 draws, 36 180 tris, potato tier loads, context restored (`restoreAttempts` 1, `restoredCount` 1) and the scene re-rendered. 0.2 off because the log never shows ambient motion being checked — `STATE.md` AC6 relies on `art-probe` — and because the milestone is still `IN_PROGRESS` with M0e untouched. |
+| G3 | Feedback within 100 ms | **0.9** / 1.4 | "There is no player action to give feedback on." The only live element is the HUD overlay; it re-rendered after the context restore but reads FPS 8 in both shots, so it is not a trustworthy cue. No input-to-response latency is measured anywhere. |
+| G6 | Mouse and touch | **0.8** / 1.6 | "The playtest log has no pointer or touch input at all, and no touch viewport run... I cannot show either input path works or fails. **This is unverified, not broken.**" |
+
+### Defects
+
+- [major] **G6/G3 — no input is exercised.** `grep -iE "click\|pointer\|touch"
+  artifacts/playtest.log` returns nothing.
+- [minor] **G3 — the FPS readout disagrees with the measured frame time.** HUD shows
+  "FPS 8" in `03-late.png` and `04-context-restored.png` (log line 14) while the
+  end-of-recording stats show `frameMs` 16.7 (line 17). Either way the overlay cannot be
+  used as feedback.
+- [minor] **G1 — context restore appears to change the scene.** `04-context-restored.png`
+  lays the hero island's trees, crystals and path out differently from `03-late.png`. The
+  critic noted part of that is camera and time drift and that it may be benign, and that it
+  should be settled by a determinism or hash check rather than by eye. (It is: the island
+  rotates, so two shots taken seconds apart are at different rotations by construction.)
+
+SCORE_MACHINE: 7.1
+
+---
+
+## art-critic — M0d — run 2026-10-11 (rework cycle 2, frozen tree `42d0cd8`)
+
+SCORE: 8.3 / 10 — 7.00 of 8.40 available. A4 `n/a`. **Clears M0d's bar of ≥ 8.0.**
+
+| # | line | awarded | measurement |
+|---|---|---|---|
+| A1 | Silhouette at 25% | **1.1** / 1.2 | In `02-silhouette.png` the hero island, all eight satellites and the new lower-band islands separate cleanly from the sky. Deductions: the flock is not visible at all at 25%, and the bottom-centre sliver at x700, y715 is a stray fragment. |
+| A2 | Palette within ΔE 12 | **0.85** / 1.0 | Zenith `#0a1c4f` and horizon `#fc8f44`, both ΔE ≈ 0. The lower gradient reads `#54453d` at y 300, `#2d2429` at y 540 and **`#1a1420` — exactly `deep shadow` — from y 660 down**; the band at y 260–400 is within ΔE ~2 of `rock mid`. Hero foliage mean `#437637` against `foliage mid`, ~ΔE 8. Remaining: the lower-left and bottom-right islands read saturated olive and golden-ochre, off-bible for foliage. |
+| A3 | Key, fill, contact shadow | **1.0** / 1.2 | Key, fill and rim all visible on the hero island; contact shadows under bushes and trees are real (01-wide minus 05-potato drops the hero ground's mean green 126 → 118). Crushed black inside the hero ellipse is **476 px of 60 863 (0.78%)**, and the *potato* frame has more (669) than the shadowed one — so what crush remains is dark trunks and rocks, not the shadow pass. "The hemisphere-light fix works: the floor between trunks now reads as shade, not holes. **Fixed.**" Deduction: the satellites show no cast shadows and look flat-lit. |
+| A4 | Variant sheets | **n/a** | No `artifacts/variants/` and no generator before M1a. Satellites vary in keel shape and tint, but that is not a variant sheet. |
+| A5 | Nothing pops/interpenetrates | **0.8** / 1.2 | Nothing popped between the 00–04 shots. Marked down for the ring artefact and the remaining crystal overlaps below. |
+| A6 | Density | **1.0** / 1.4 | Hero island beats the concept image for density. The lower band now carries four islands plus a sliver and "the sky below the horizon is no longer an empty gradient". Deductions: the flock is ~6–7 marks of roughly 4×14 px, reading as specks; satellites carry only 3–10 tiny props each. |
+| A7 | HUD ≥ 4.5:1 | **0.95** / 1.0 | Same legible HUD, no scene bleed. **The boot-splash contrast defect carried since run 2 is gone from `00-boot.png`.** |
+| A8 | No z-fighting, seams, magenta | **0.8** / 0.8 | None, at 8×. |
+| A9 | Concept intent | **0.5** / 0.6 | Island, keel, conifers, boulders and crystals match. The dusk palette is deliberately darker than the pastel concept; no dragon, which M0 does not require. |
+
+### Defects
+
+- [major] **A5/A3 — a "Saturn ring" around two islands.** `01-wide.png` x145–320 / y545–620
+  and x1000–1100 / y650–700: "a flat brown ellipse about 175×70 px sits behind and through
+  the island cap". Present in `05-potato.png` too, so not the shadow pass — geometry.
+  Reproduce: crop `01-wide.png` at (120,520)–(520,720). **Fixed in cycle 3** (`4a944fc`):
+  two causes, `keelR` above 1.0 and an Euler flip that negated the root's yaw and roll.
+- [major] **A6 — the flock is too small to register.** Marks at ~x440/y135, x590/y178,
+  x930/y15, x937/y78, each ~4×14 px, "dark ovals with no wings or silhouette".
+  **Addressed in cycle 3** — sized up while keeping the dart proportion.
+- [minor] **A5 — crystals still pass through trunks.** `01-wide.png` x440–560 / y395–460;
+  `03-late.png` x575–630 / y440–480. **Partly fixed** already: no crystal-on-crystal piles
+  remain. Reservation widened again in cycle 3.
+- [minor] **A6 — satellites are sparsely dressed.** ~8 props at x360–505 / y630–700, ~6 at
+  x880–970. **Addressed in cycle 3** (30 → 38 props an island).
+- [minor] **A2 — two islands read olive-yellow.** x180–285 / y545–630 and x990–1160 /
+  y585–660. **Addressed in cycle 3** (tint range pulled in).
+- [minor] **A1 — the bottom-centre island is clipped** to a rim fragment at x690–770 /
+  y705–720. **Addressed in cycle 3.**
+- [minor] **A3 — satellites carry no cast or contact shadow.** Not addressed: the shadow
+  camera is ±9 world units around the origin and the satellites are 17–132 units out.
+  Reaching them needs a second cascade, which `docs/ARCHITECTURE.md` already specifies
+  ("cascaded, 2 cascades") and which is not this step's subject. Carried to `NEXT.md`.
+
+### What is good
+
+The sky is the bible's gradient exactly at both ends and the new lower dusk ramp lands on
+`deep shadow` with no banding. The hero island is dense and varied — stone path, crystals
+and tree mix all read at a glance. The hemisphere fill rescued the forest interior: shade
+reads as shade. Contact shadows under bushes and trunks are present and soft. The HUD is
+clean and the boot-splash defect is gone. The scene survives context loss with identical
+geometry. Satellites vary in shape and keel type — needle, wedge, disc and cone, in warm
+and cool tints.
+
+SCORE_MACHINE: 8.3
+
+---
+
+## gameplay-critic — M0d — run 2026-10-11 (rework cycle 2, frozen tree `42d0cd8`)
+
+SCORE: 6.9 / 10 — 3.6 of the 5.2 points that have a subject.
+
+Nothing re-run; existing artefacts only; no files edited. Viewed `00-boot.png`,
+`01-wide.png`, `04-context-restored.png`, `05-potato.png`, `frames/f0100.png`,
+`tools/playtest.mjs` lines 188–266, and a grep of `src/` for input handlers. Over the 7 s
+recording the birds and satellite islands move and the hero island's props shift; the HUD
+stays legible at FPS 4–7 under SwiftShader; `04-context-restored.png` shows the same scene
+as `01-wide.png`, so the context-loss recovery is visible and not merely logged.
+
+`n/a` lines, each before its live milestone in `docs/ROADMAP.md`: G2 (M9b, no breeding),
+G4 and G5 (M8a, no save). No blocking defect, so no 5.9 cap.
+
+| # | line | awarded | evidence |
+|---|---|---|---|
+| G1 | Loop completes | **1.9** / 2.2 | `playtest.log`: `boot: OK`, 0 page errors, context loss restored (`restoreAttempts` 1, `restoredCount` 1, `framesSkippedWhileLost` 2), overlay afterwards still `DRAWS 27 TRIS 40056`. "The loop completes, but nothing in it is player-driven." 0.3 held back for that. |
+| G3 | Feedback within 100 ms | **0.9** / 1.4 | No player actions to respond to. The only reactive behaviours are the HUD counters and the context-loss recovery, and recovery was observed after a fixed 4000 ms wait, so no response time is measured. "Pointer events produce no visible response, because nothing is listening. This is unverified, not broken." |
+| G6 | Mouse and touch | **0.8** / 1.6 | See below. Unchanged from cycle 1 despite the new drill. |
+
+### On the input drill added this run — the critic is right
+
+This run added a pointer and touch drill to `gate:smoke` precisely to answer cycle 1's G6
+complaint. The critic accepted what it proves and then took it apart, correctly:
+
+> "`grep addEventListener` in `src/` and `index.html` finds only `webglcontextlost` and
+> `webglcontextrestored`. There is no pointer, touch, wheel or OrbitControls handler
+> anywhere. The events land on a canvas that nothing listens to, so '0 errors and the loop
+> is alive' is nearly guaranteed. **The assertion could not have failed for any reason
+> related to input.** It is a smoke test of the page's idleness, not of input handling."
+
+That is the same class of mistake this run found twice in the renderer — a thing that
+looks like it checks something and checks nothing — and it was made here while fixing
+those. The drill is kept because "the events reach the canvas and the loop survives" is
+true and worth logging, but it is not evidence for G6 and the log should not be read as if
+it were.
+
+What the critic says would lift G6 and G3 to 1.3 or more: one real, deliberately minimal
+interaction asserted in the gate — a drag or touch-drag that changes camera yaw, or a tap
+that shows a visible marker — with (1) state or pixels differing beyond a threshold within
+~100 ms of the event, via the same pointer-events path for mouse and touch, which also
+gives G3 a number; (2) the same assertion passing under both the mouse context and the
+`hasTouch` context; (3) `touch-action: none` on the canvas.
+
+**Not built this run.** That is a new interaction, not a defect in M0d's subject, and
+`CLAUDE.md` §3.1 and the run contract both say one step is one run. It is written up as a
+roadmap defect in `STATE.md` with a proposed step, per §4b.4.
+
+### Defects
+
+- [major] **G6 — there is no input handler for the drill to exercise.**
+  `grep -rn addEventListener src/` returns only the two WebGL context events
+  (`src/main.ts:1641, 1660`). `tools/playtest.mjs:188–266` cannot fail on input behaviour.
+  Reproduce: `npm run gate:smoke`, then read the two `input:` lines in
+  `artifacts/playtest.log` — both pass with no handler present.
+- [minor] **G3 — no response time is measured for any action.** Context-loss recovery was
+  observed only after a fixed 4000 ms wait (`playtest.log:13`), so there is no evidence
+  that recovery or the HUD updates within 100 ms.
+- [minor] **G6 — no `touch-action` rule on the canvas.**
+  `grep touch-action src/ index.html` returns nothing, so a touch drag on a phone may
+  scroll or zoom the page.
+- [info] Under SwiftShader the HUD reads FPS 4–7 and the loop advanced 8 frames in 600 ms,
+  which makes the "loop still running" assertion coarse. That number belongs to P1 and P6.
+
+SCORE_MACHINE: 6.9
+
+---
+
+## perf-critic — M0d — run 2026-10-11 (rework cycle 3, frozen tree `4a944fc`)
+
+SCORE: 8.7 / 10 — 7.1 of the 8.2 points that apply. P3 `n/a`. Previous cycle 8.5.
+
+The critic did **not** trust the shipped `artifacts/perf.json`: it was written 94 s before
+HEAD was committed, and HEAD touched `src/main.ts`. It re-ran `npm run build` and
+`npm run gate:perf` once, exit 0, keeping the original as `perf.before.json`. Every verdict
+reproduced and the numbers moved within noise. Both sets are cited below as
+shipped / re-run.
+
+| # | line | awarded | number |
+|---|---|---|---|
+| P1 | Frame budget | **2.0** / 2.5 | `cpuFrameMs.p95` 1.2 / 1.3 ms vs 3.5, enforced (`mainThreadTailEnforced` true, cap verified). `frameCostMs.p95` 415.8 / 404.5 ms vs 16.6, advisory (`softwareRenderer` true). `drawCalls` 27 and `triangles` 42 268 inside 180 and 900 000. |
+| P2 | Draw calls | **1.8** / 1.8 | 27, unchanged by the scene growth. |
+| P3 | Bred-dragon mesh time | **n/a** | `gate:meshgen` prints SKIP — the runtime dragon builder is M3. |
+| P4 | Heap churn | **1.2** / 1.5 | `heap.bytesPerFrame` 34 944 / 35 152 vs 40 960. `netGrowthKB` −2706 / −2492, `sawtoothAmplitudeKB` 3763, 19 scavenges. |
+| P5 | Bundle and boot | **1.2** / 1.2 | `bundle.gzipBytes` 143 993 vs 1 400 000; `bootMs` 270.1 / 268.2 vs 2500. |
+| P6 | Potato tier | **0.9** / 1.2 | `potato.cpuFrameMs.p95` 1.0 ms, `drawCalls` 19, `triangles` 35 048, `settingsVerified` true. `potato.frameCostMs.p95` 210.4 / 215.5 ms vs 33.3, advisory. |
+
+No blocking defects.
+
+### P1 loses 0.5, and it is the human half
+
+The measurement exists, reproduces and is held to budget. The real-GPU half is thin: the
+only row is a `sighting` at `c429d4a` on 2026-10-10, "~60 FPS sustained (ceiling only)", at
+roughly 1365×610 rather than 1080p — and the scene has grown since, 21 → 27 draws and
+36 180 → 42 268 triangles. Allowed up to M15, but stale.
+
+### Has the heap concern got worse?
+
+"Slightly worse on headroom, not on trend."
+
+- `bytesPerFrame` was 34 080 at 21 draws and is 34 944 / 35 152 at 27 — **+2.5–3.1% for
+  +29% draws and +17% triangles**. The `docs/PERF_BUDGET.md` cost model (~1.8 kB a draw)
+  predicted ~+11 kB; the actual rise was under 1 kB, so the model overestimates for
+  instanced growth. "Instancing is working."
+- Headroom 6880 B (16.8%) → 6016 / 5808 B (14.7% / 14.2%).
+- **The leak worry from the previous cycle is fixed.** `netGrowthKB` was +1062 (~7 kB/s)
+  and could not be shown flat; it is now −2706 / −2492, with `maxKB` 7331 and `minKB` 3568
+  — a clean 19-cycle sawtooth with the floor stable at 3.6–4.2 MB.
+- Remaining: the budget is ~85% consumed, so another 6–8 draws or one new per-frame
+  allocation would likely trip it. Forward risk, not a defect.
+
+### Defects
+
+- [minor] **P1/P6 — the real-GPU row is stale.** `STATE.md` line 361 is a sighting for
+  `c429d4a` only, at ~1365×610. A fresh sighting or verification at the current commit at
+  1080p is outstanding, plus a Potato-tier row to back P6's 30 fps. This is the human step
+  in `docs/PERF_BUDGET.md` §Real-GPU verification.
+- [minor] **P4 — 14.2% heap headroom.** `artifacts/perf.json` `heap` block. Remedy: merge
+  or instance anything new, and consider splitting the pooled depth material to avoid the
+  double `getParameters` call. **Never a larger budget.**
+- [minor] **Instrument — `perf.json` predated HEAD by 94 s** and HEAD touched `src/main.ts`.
+  Re-run `gate:perf` after the final commit so the artefact matches the commit it is filed
+  under. (Acted on: the ordering is now called out in `NEXT.md`.)
+
+SCORE_MACHINE: 8.7
+
+---
+
+## art-critic — M0d — run 2026-10-11 (rework cycle 4, frozen tree `953f156`) — FINAL
+
+SCORE: 8.3 / 10 — 6.95 of 8.4 available. A4 `n/a`. Cycle 3 was 8.2; the rise is A2 +0.1
+and A6 +0.1. **M0d's bar is art-critic ≥ 8.0, so this closes the step.**
+
+### Re-measure of the cycle-3 defects
+
+1. **Golden-yellow and olive island tops — FIXED.** Re-sampled over the lit pixels of each
+   island top: (475,565) now 112,140,56; (435,655) 99,134,52; (230,585) 112,149,60;
+   (740,645) 108,144,59. "The old golden 167,145,62 and the olive reading are gone. All
+   four tops now read as grass." Residue: the lit side wall of the slab islands is still
+   tan-gold, e.g. (270,600) = 218,173,87 — "sunlit turf edge, not a wrong material", but
+   off-bible; carried as a minor.
+2. **Rim fragment clipped at the frame edge — FIXED.** A complete slab with a cone beneath;
+   the pixel at (740,712) is deep-shadow 26,20,32.
+3. **Any island reading as the wrong material — MOSTLY FIXED.** No top reads as
+   non-foliage. The lit slab sides "look like sand or cheese rather than earth or rock" —
+   cosmetic, counted as one minor.
+4. **Flock as dark slivers — STILL STANDING.** (430,142) samples 5,6,14; (625,181) and
+   (907,70) similar. "Single flat near-black strokes with no wing silhouette."
+5. **Satellites with no cast or contact shadow — STILL STANDING**, as expected; it needs a
+   second cascade.
+
+| # | line | awarded | measurement |
+|---|---|---|---|
+| A1 | Silhouette at 25% | **1.0** / 1.2 | Main island and satellites separate cleanly in `02-silhouette.png`. The flock is lost at that size and the two lower-left satellites touch in screen space. |
+| A2 | Palette within ΔE 12 | **0.7** / 1.0 | Sky gradient, deep-shadow undersides and foliage hexes match. Satellite tops sit slightly yellow of `foliage mid`; the lit slab sides at 218,173,87 are not in the bible. |
+| A3 | Key, fill, contact shadow | **0.9** / 1.2 | Key, sunset rim and dark underside all clear; the main island has shadows. Satellites have none and their tops are flat-lit. |
+| A4 | Variant sheets | **n/a** | No `artifacts/variants/`, no generator at M0. The satellites vary in silhouette — cone, spike, slab, disc — but that is not a variant sheet. **Once a generator exists this line is live and can block.** |
+| A5 | Nothing pops/interpenetrates | **1.0** / 1.2 | 01, 03 and 04 consistent with a moving scene, no teleport. In `04-context-restored.png` the islands at (480,590) and (430,640) overlap heavily on screen — judged depth ordering, not intersection, so not blocking, but crowded. |
+| A6 | Density | **1.1** / 1.4 | The main island is dense — conifers, round trees, crystals, rocks, a path, a pillar — and `03-late.png` shows it overgrown. Satellites are populated but thin. The flock is not alive. The sky is empty apart from islands. |
+| A7 | HUD ≥ 4.5:1 | **1.0** / 1.0 | Full marks. Cream and gold on a dark translucent panel, well over 4.5:1. |
+| A8 | No z-fighting, seams, magenta | **0.8** / 0.8 | None found. |
+| A9 | Concept intent | **0.45** / 0.6 | Floating-island composition at golden hour and the crystal spikes match. The concept's soft rounded cartoon and its dragon are absent; this scene is moodier and darker. |
+
+### Defects carried forward
+
+- [major] **A6/A1 — the flock reads as debris.** `01-wide.png` at (410–450,125–160),
+  (615–635,170–190), (895–915,45–95), and the same in `03-late.png` and
+  `04-context-restored.png`. Sample (430,142) = 5,6,14: a near-black single-colour sliver
+  with no wing silhouette. Sized twice this run, once too small and once too large; size is
+  not the problem, **shape and colour are**. Either give it a silhouette or drop it.
+- [minor] **A3 — satellites carry no cast or contact shadow**, e.g. (180–285,545–625) and
+  (360–505,630–690). Needs the second cascade `docs/ARCHITECTURE.md` §Render contract
+  already specifies.
+- [minor] **A2 — the lit side wall of the slab islands is tan-gold**, 218,173,87 at
+  (180–285,590–625). Off-bible; "reads as sand or cheese".
+- [minor] **A5/A6 — two satellites overlap on screen** in `04-context-restored.png`
+  (430–520,570–660), the small one hidden. Reads as a crowded stack, not distinct places.
+
+### What is good
+
+"The main island has a clear key light, a deep-shadow underbelly, a warm sunset rim and
+tonal depth." The sky gradient matches the bible hexes and the crystals read as a focal
+accent. The satellite tops are now foliage-coloured, the cycle-3 golden and olive tops are
+gone, and the clipped rim fragment is resolved. Satellite shapes vary — spike, slab, cone,
+disc — and give the frame depth. The HUD is clear.
+
+SCORE_MACHINE: 8.3
+
+---
+

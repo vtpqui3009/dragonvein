@@ -5,7 +5,7 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 
 ---
 
-## 2026-10-11 — run 4 — M0d: the placeholder frame meets the art bible (IN_PROGRESS)
+## 2026-10-11 — run 4 — M0d DONE: the placeholder frame meets the art bible (M0 IN_PROGRESS)
 
 **Step**: `M0d` — the first step in reading order in `docs/ROADMAP.md` that is not `DONE`.
 M0a–M0c are `DONE`. M0e is **not** in scope this run and was not touched.
@@ -57,6 +57,221 @@ otherwise.
 AC1–AC3 are `docs/ART_BIBLE.md` §Lighting. AC4 is rubric A4. AC5–AC6 are §Density and rubric
 A6. AC7 is §Palette and rubric A2. M0e's two items (HUD at 360 px, the `__dragonveinStats()`
 stale-frame hole) are deliberately left open: they are the next step, not this one.
+
+
+### Scores
+
+| cycle | commit | art | perf | gameplay |
+|---|---|---|---|---|
+| baseline (run 3) | `2d1ff42` | 6.1 | 6.1 | 8.2 |
+| 1 | `024ebd6` | 7.98 | 8.5 | 7.1 |
+| 2 | `42d0cd8` | 8.3 | — | 6.9 |
+| 3 | `4a944fc` | 8.2 | 8.7 | — |
+| **4 (final)** | **`953f156`** | **8.3** | **8.7** | **6.9** |
+
+**M0d is `DONE`**: its stated bar in `docs/ROADMAP.md` is art-critic >= 8.0 and all five of
+its named conditions, and both hold at `953f156`. No critic raised a blocking defect in any
+of the four rounds.
+
+**M0 stays `IN_PROGRESS`**: M0e is untouched by design, and the gameplay-critic's 6.9
+cannot rise without a step that does not exist — see the roadmap defect below. `CLAUDE.md`
+§3.6 wants all three >= 8.0 before a milestone closes, so the milestone waits.
+
+### Acceptance criteria, resolved
+
+Measured with `node tools/art-probe.mjs` at `953f156` unless stated.
+
+| # | criterion | result |
+|---|---|---|
+| AC1 | Key >= 60 deg off the camera axis | **PASS** — 83.7 deg (sun az 310, camera az 50.7). Was 29.2. |
+| AC2 | Contact shadows measurable on open ground | **PASS** — the shadow pass darkens 40.8% of the deck to 0.430x its unshadowed brightness. Measured by subtracting `05-potato.png`, not from one frame; the single-frame version of this criterion was wrong and was replaced, see below. |
+| AC3 | The warm rim reaches the canopy, warmer *and* brighter | **PASS** — median dLuma +0.005, dWarmth +15.0 across 402 columns. Was -0.027 and +9. The margin on luma is thin and the next run should not read it as comfortable. |
+| AC4 | More than one tree and island archetype; islands differ by more than scale and rotation | **PASS** — three tree archetypes; thirteen islands on five axes (deck aspect, deck thickness, keel drop, keel width, tilt), two of them spires. Art-critic cycle 4: "Satellite shapes vary (spike, slab, cone, disc) and give the frame depth." |
+| AC5 | No satellite bare between features | **PASS** — 38 props an island including ground cover. Art-critic: "populated... though thin", carried as a minor. |
+| AC6 | Something other than the hero island moves | **PASS** — the satellite centroid travels 6.57 x 3.04 px over 184 frames. Was +/- 0.03 px. |
+| AC7 | Worst off-bible sky band below dE 12 over < 8% of the frame | **PARTIAL** — the band the critic measured at dE 25.9-28.6 now reads dE 1.9-8.8 and reaches `deep shadow` exactly (dE 0.0) below y 660. 124 of 720 rows (17.2%) still exceed dE 12, nearly all in two ~30-row transitions. **The 8% target is unreachable with this palette** and that is arithmetic, not a build defect — see the finding below. |
+| AC8 | Gates exit 0 with the budget unchanged | **PASS** — cpu p95 1.2 ms vs 3.5, 27 draws vs 180, 42 268 tris, heap 34 124 B/frame vs 40 960, 40 tests. No budget was touched. |
+| AC9 | All three critics >= 8.0 | **FAIL on one** — art 8.3, perf 8.7, gameplay 6.9. |
+
+### What shipped
+
+Six commits, each pushed as it went green, in the order they were found rather than the
+order they were planned — three of the five defect groups turned out to have a different
+cause than the defect text suggested.
+
+**`a160668` — the key light was in the wrong place.** The art-critic's headline defect was
+"the scene has no contact shadows anywhere", and every obvious reading of that was wrong:
+`renderer.shadowMap.enabled` was on, `sun.castShadow` was on, every scatter mesh set
+`castShadow`, and 7 of 21 draw calls were the shadow pass. The shadows could not be *seen*
+because the sun sat at azimuth 21.4° against a camera at 50.7° — 29° off the camera axis,
+so every shadow lay behind the object casting it. The comment on that line claimed the
+opposite and had never been measured.
+
+Moving the key sideways was not enough either, and the differential is what showed it:
+render the same frame with the shadow map off and subtract, and at azimuth 340° all 48 199
+changed pixels were on a *prop*. The camera sees only the near half of the deck, and with
+the sun on the near side too, everything up-sun of the ground in shot is empty air past the
+rim. The key went to azimuth 310° at 45° of elevation — 83.7° off the camera axis — and
+three other things had to move with it: ambient down so shadows have somewhere to fall
+(hemisphere 1.05 → 0.72), `normalBias` 0.042 → 0.018 (that is 2.4 texels of peter-panning,
+and the gap it opens is at the base of each object, the only place a *contact* shadow
+exists), and the island thinned from 44 trees at up to 0.70 of its own radius to 24 at
+0.22–0.41, because at 17° of camera elevation a 4-unit tree hides every bit of ground
+within 16 units behind it — the entire island.
+
+Elevation was the half that nearly got missed. At 25° the shadows were 2.1× the caster's
+height and **77% of the glade was in shadow**, which reads exactly as flat as 0% does.
+
+**`a50f02e` — three tree archetypes.** Conifer, broadleaf, bare snag, shuffled with the
+seeded rng so they scatter rather than band. One extra draw call: the trunk mesh is shared
+by all three, so only the foliage blob is new.
+
+**`8782f11` — nine islands that are not one prefab, and a sky that moves.** Five axes
+beyond scale and rotation (deck aspect, deck thickness, keel drop, keel width, tilt), two
+of them spires. Dressing 14 → 30 props an island, with the grass tufts that are the
+difference between dressed and merely furnished. And ambient motion: each island bobs on
+its own phase. That could not be bought by re-parenting — a deck, its root and all its
+dressing are instances spread across meshes shared by all nine — but a bob is a pure
+translation, and in a column-major 4×4 the translation is elements 12–14, so the frame loop
+writes one float per instance straight into `instanceMatrix.array`. ~300 float writes a
+frame, nothing allocated, 0.1 ms of a 3.5 ms budget.
+
+**`024ebd6` — the warm rim had never been in a frame, and the haze was self-inflicted.**
+Both were a comment asserting something nothing had checked. `withRim()` injected into
+`totalEmissiveRadiance` "because `<opaque_fragment>` sums it into `outgoingLight`" — in
+three 0.186 that chunk is four lines and the last is `gl_FragColor = vec4( outgoingLight,
+diffuseColor.a )`. `outgoingLight` is assembled earlier. The patch wrote to a variable
+nothing read again, so the bible's third light had never appeared in a single frame this
+project has rendered, while the shader compiled and the uniforms bound.
+
+**The test that found it is the one worth keeping: raise the uniform to 40.0 and
+re-render.** Edge warmth came back 9.0 both times, to the first decimal. A uniform that
+changes nothing is not a weak effect.
+
+The haze band was the same shape of error. The cloud deck was `sky horizon` lifted 46%
+toward white under a comment claiming that "stays on the bible's warm axis"; #ff9044 lifted
+that far is #ffc39a, ΔE 36.7 from where it started.
+
+**`6db4633` and `4a944fc` — two rework cycles.** The lower sky became a band over a
+darkening abyss rather than a brown field, four more islands went into the empty lower
+frame, and the flock grew. Then cycle 2's own report found a "Saturn ring" around two
+islands — the keel's rim standing outside the deck it hangs from — which had two causes and
+is worth recording because the second is not obvious: `keelR` above 1.0 (the cap's lower
+radius and the cone's base radius are both 5.6), and orienting the root by adding π to the
+placement Euler's X component. That is not the cap's orientation plus a flip: in XYZ order
+Rx(π) does not commute with the rotations to its right, so the root came out with the
+*opposite* yaw and roll to its own deck.
+
+### Instruments added
+
+- **`tools/art-probe.mjs`** — prints the numbers the criteria above are written against.
+  It gates nothing and is not in the `gates` chain, on purpose: a build must not be able to
+  pass by making its own marking scheme agree with it.
+- **`artifacts/shots/05-potato.png`** — the same frame with `?tier=potato`, whose only
+  effect on the image at this device pixel ratio is that the shadow map is off. 01-wide
+  minus 05-potato is exactly the shadow pass. This exists because **three single-frame
+  tests for "are there contact shadows" were tried and all three lied**: counting dark
+  grass scored 26% on a frame the critic had called shadowless, and an Otsu split of the
+  grass returned the same 0.23 ratio whether the shadow map was on or off. On a dressed
+  island most dark green pixels are bushes. It is also the first artefact rubric P6 has had.
+- **A pointer and touch drill in `gate:smoke`** — and the gameplay-critic was right that it
+  proves less than it looks. See the roadmap defect below.
+
+### Roadmap defect — G6 is live at M0 and no M0 step delivers it
+
+`docs/ROADMAP.md` §When each rubric line goes live puts **G1, G3 and G6 live from M0**, and
+G6 is "mouse and touch". M0a–M0e between them deliver gates, CI, deploy, an honest perf
+instrument, the art pass and the HUD at phone width. **None of them delivers input.** So
+the milestone is held to a line no step in it can satisfy, and the gameplay-critic has now
+scored it twice at 0.8/1.6 for the same reason both times.
+
+This run tried to answer it inside M0d by making `gate:smoke` exercise pointer and touch.
+The critic accepted what that proves and then took it apart, correctly:
+
+> "There is no pointer, touch, wheel or OrbitControls handler anywhere. The events land on
+> a canvas that nothing listens to, so '0 errors and the loop is alive' is nearly
+> guaranteed. **The assertion could not have failed for any reason related to input.** It
+> is a smoke test of the page's idleness, not of input handling."
+
+That is the same class of error this run found twice in the renderer — something that looks
+like it checks a thing and checks nothing — committed while fixing those. The drill stays,
+because "the events reach the canvas and the loop survives" is true and worth logging, but
+`FINDINGS.md` records that it is not evidence for G6.
+
+**Proposed step, not taken this run** (`CLAUDE.md` §4b.4 — a step too big for one run is a
+roadmap defect, say so and propose the split):
+
+> **M0f — the camera answers the pointer.** One deliberately minimal interaction: drag and
+> touch-drag change camera yaw, the wheel changes distance, `touch-action: none` on the
+> canvas. `gate:smoke` asserts that state or pixels change beyond a threshold within 100 ms
+> of the event, through the same pointer-events path for mouse and touch, and that the same
+> assertion passes under both a mouse context and a `hasTouch` context. That gives G6 its
+> subject and G3 its first measured number.
+
+It was not taken because the run contract is explicit that one step is one run, and because
+an input system is a new feature rather than a defect in M0d's subject. Sequence it before
+or after M0e as the owner prefers; it does not depend on M0e.
+
+### Rubric/bible finding for the owner — the palette has a gap
+
+`docs/ART_BIBLE.md` §Palette has no mid-value warm entry between `sky horizon` #ff9044 and
+`deep shadow` #1a1420, which are 34 ΔE apart. A straight ramp between them is therefore
+off-palette for most of its own length, peaking at **ΔE 34.2 around t=0.4**. That is
+arithmetic, not a build defect: no two-stop gradient between those two entries can satisfy
+A2's ΔE 12 in the middle, however it is tuned.
+
+The sky now routes through a third bible entry, `rock mid` #5a4a40, whose leg down to
+`deep shadow` peaks at only 14.2. That took the band the critic measured at ΔE 25.9–28.6
+over a fifth of the frame down to ΔE 1.9–8.8, with `deep shadow` reached exactly (ΔE 0.0)
+below y 660. What remains is two ~30-row transitions at the band edges.
+
+`CLAUDE.md` §7 says the bible describes the target and a run must ask rather than edit it,
+so: **does the palette want a dusk/haze entry?** If yes, the gradient gets simpler and A2
+goes to near zero. If no, this is as good as it gets and the residual should be written
+into `docs/RUBRIC.md` A2 as expected rather than scored against every run.
+
+### Critics on Sonnet — holding, with one observation
+
+`docs/DECISIONS.md` asks that visible degradation be recorded with evidence rather than
+answered by raising them back to Opus. Across four critic runs this run: **no defect
+arrived without a pointer**, and the art-critic's two majors in cycle 2 were both real —
+the "Saturn ring" was a genuine geometry bug this run had introduced and had not noticed.
+That is a critic doing its job.
+
+One thing worth watching rather than acting on. The gameplay-critic moved 8.2 → 7.1 → 6.9
+across three scorings of a gameplay surface that did not change, and cycle 1's report
+admitted it "did not view the other shots, the webm or the frames". Cycle 2 was asked to
+look and did, and its 6.9 is better reasoned than the 7.1 — so the drift is the earlier
+scores being generous, not the later ones being harsh. No action. If a fourth scoring of an
+unchanged surface lands outside 6.5–7.5, that is the evidence `DECISIONS.md` wants.
+
+
+### What a future run should take from this
+
+Three defects this run fixed had a cause the defect text did not suggest, and two of them
+were a confident comment that nothing had ever checked. The habit worth copying is not
+"read the code carefully" — the code read correctly in both cases. It is:
+
+- **To test whether a uniform does anything, multiply it by twenty and re-render.** If
+  nothing moves, it is not wired up. That is what found a rim light that had never been in
+  a frame.
+- **To test whether a render pass does anything, render without it and subtract.** That is
+  what found shadows falling behind their own casters, after three single-frame tests for
+  the same thing had all returned comfortable numbers on a frame with no visible shadows
+  in it.
+
+The second habit is now bought cheaply for every future run: `?tier=potato` is the only
+switch that turns the shadow map off and changes nothing else about the image, and
+`gate:smoke` shoots it as `05-potato.png` every time.
+
+### Blockers
+
+- **M0 cannot close** until M0e lands and the G6 gap is resolved. Neither is M0d's.
+- **Real-GPU verification is still a `sighting`** at `c429d4a`, now two scene-growths
+  stale, at ~1365x610 rather than 1080p. Costs P1 0.5. Needs a human.
+- **The Potato tier's 30 fps has never been verified on a real GPU.** Costs P6 0.3. Same
+  human step with `?tier=potato` on the URL.
+- **The palette gap** above needs an owner decision before A2 can go higher.
 
 ---
 

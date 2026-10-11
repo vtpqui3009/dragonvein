@@ -29,12 +29,23 @@ meaning what they said.
 | M0a | `npm run gates` exits 0; CI green on `main` | DONE |
 | M0b | Pages serves the build; a human has seen it running and the sighting is logged | DONE |
 | M0c | `gate:perf` measures frame **cost**, reproducibly, with the Potato tier and heap churn recorded | DONE |
-| **M0d** | **the placeholder frame meets `docs/ART_BIBLE.md`** — contact shadows land, all three lights reach the frame, prefab variety reads, no bare ground, no off-bible haze. art-critic ≥ 8.0 | **TODO** |
-| M0e | HUD readable at 360 px; the context-loss line visible; `__dragonveinStats()` has no stale-frame hole | TODO |
+| M0d | the placeholder frame meets `docs/ART_BIBLE.md` — contact shadows land, all three lights reach the frame, prefab variety reads, no bare ground, no off-bible haze. art-critic ≥ 8.0 | DONE |
+| **M0e** | **HUD readable at 360 px; the context-loss line visible; `__dragonveinStats()` has no stale-frame hole** | **TODO** |
+| M0f | *proposed, not yet approved* — the camera answers the pointer, so rubric G6 has a subject at M0. See `STATE.md` 2026-10-11 | TODO |
 
 M0a–M0c were delivered and verified inside the M0 runs — gates and CI are green, the
 sighting is in `STATE.md`. They were never scored as separate steps, because this split did
-not exist yet; the critic bar sits on M0d and M0e, which is where the open work is.
+not exist yet.
+
+M0d closed on 2026-10-11 at `953f156`, art-critic **8.3** against its bar of ≥ 8.0, with
+perf 8.7 alongside it and no blocking defect in four scoring rounds.
+
+**M0 the milestone does not close with M0e alone.** The gameplay-critic sits at 6.9 and
+cannot rise without input existing, because §When each rubric line goes live puts **G6
+(mouse and touch) live from M0** and no step in M0a–M0e delivers any. That is a defect in
+this table, not in the build — M0f above is the proposed fix and is waiting on the owner.
+The full reasoning, and the gameplay-critic's own words on why a smoke test of input that
+nothing listens to proves nothing, are in `STATE.md` 2026-10-11.
 
 ## M1 — Asset pipeline
 
