@@ -76,9 +76,11 @@ hide behind "procedural" and ship untextured primitives.
 Each scheduled run executes exactly this:
 
 1. **Read state.** `NEXT.md` first — one screen, written by the previous run, says what to
-   do now. Then `docs/ROADMAP.md` and `STATE.md` for the milestone list and the why. Take
-   the single lowest-numbered milestone that is not `DONE`. Work only on that one. Do not
-   skip ahead. If `NEXT.md` disagrees with `STATE.md`, `STATE.md` is the record of fact and
+   do now. Then `docs/ROADMAP.md` and `STATE.md` for the step list and the why. Take the
+   **first step in reading order** that is not `DONE` — steps are lettered inside a phase,
+   and one step is one run. Work only on that one. Do not skip ahead, and do not take a
+   second step because the first went quickly: a run that ends early with budget left is a
+   signal the steps are the right size, not an invitation to spend it. If `NEXT.md` disagrees with `STATE.md`, `STATE.md` is the record of fact and
    `NEXT.md` is stale — fix it as you go.
 2. **Plan.** Write that milestone's acceptance criteria into `STATE.md` under a new run
    heading *before* writing code. Each criterion must be checkable by a command or a
@@ -130,8 +132,10 @@ that burns the allowance without landing work costs the project days, not minute
 3. **Stopping early with a clean handover beats a half-landed pass.** If the remaining
    budget cannot finish the current piece, push what is green, write the exact next step
    into `STATE.md`, and stop. The next run starts from a known place instead of guessing.
-4. **A milestone too big for one run is a roadmap defect.** Say so in `STATE.md` and
-   propose the split rather than burning two runs discovering it again.
+4. **A step too big for one run is a roadmap defect, not a failure of the run.** Say so in
+   `STATE.md`, propose the split, and take the part that does fit. `docs/ROADMAP.md`
+   §How big a step may be exists because M0 was written as four things at once and cost
+   five runs to discover it.
 
 Spending less is not the same as doing less. None of this licenses a shallower gate, a
 skipped critic, or a score nobody earned.

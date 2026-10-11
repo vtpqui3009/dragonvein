@@ -14,15 +14,19 @@ Last updated: **2026-10-11** · at commit `c1b4cce`
 
 ---
 
-## Current milestone
+## Current step
 
-**M0 — Toolchain & deploy spine** · `IN_PROGRESS`
+**M0d — the placeholder frame meets `docs/ART_BIBLE.md`** · `TODO`
+
+`docs/ROADMAP.md` was split into run-sized steps on 2026-10-11. M0a–M0c (gates, CI, deploy,
+honest perf instrument) are `DONE`. M0d is the art pass, and it is the only thing holding
+M0 open. M0e (HUD at phone width, context-loss honesty) follows it.
 
 Gates pass (`npm run gates` exits 0). CI, Pages and Assets are all green. The deployed
 page has been seen running by a human: 60 FPS, 21 draws, 32568 tris on the owner's machine.
 
-**M0 is held open by one thing: the art-critic at 6.1.** The instrument problems that used
-to block it are fixed — they were defects in `docs/RUBRIC.md`, not in the build.
+**The art-critic sits at 6.1.** The instrument problems that used to block M0 are fixed —
+they were defects in `docs/RUBRIC.md`, not in the build. What is left is real art work.
 
 ## The single next action
 
