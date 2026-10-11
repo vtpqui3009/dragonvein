@@ -34,9 +34,10 @@ Read `/home/user/dragonvein/NEXT.md` first — one screen, says what to do now. 
 
 - `npm ci`. For asset work also: `pip install bpy`, the headless GL libraries listed in
   `assetgen/README.md`, then `export LIBGL_ALWAYS_SOFTWARE=1`.
-- Take the single lowest-numbered milestone in `docs/ROADMAP.md` that is not `DONE`. Work
-  only on that one. Do not skip ahead, and do not start a second because the first went
-  quickly.
+- Take the **first step in reading order** in `docs/ROADMAP.md` that is not `DONE`. Steps
+  are lettered inside a phase and one step is one run. Work only on that one. Do not skip
+  ahead, and do not take a second because the first went quickly — a run that ends early
+  with budget left means the steps are sized right.
 - Write its acceptance criteria into `STATE.md` before writing code.
 - Spawn builders per `docs/ARCHITECTURE.md` §Ownership: one agent per directory. Anything
   touching two directories goes to a single sequential owner, never a parallel fan-out.
