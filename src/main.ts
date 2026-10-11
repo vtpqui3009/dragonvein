@@ -94,12 +94,28 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.18;
 
 const scene = new THREE.Scene();
-// Far and faint: the island must not wash out, but distance still reads.
-// Far plane 260, up from 190. At 190 an island 150 units out was 72% horizon colour,
-// which turned a green deck tan (#ae965a) — the art-critic measured it 18.4 deltaE off the
-// nearest bible swatch. Aerial perspective should read as distance, not as a different
-// material, so the curve is stretched rather than removed.
-scene.fog = new THREE.Fog(PALETTE.skyHorizon, 60, 260);
+/*
+ * Far and faint: the island must not wash out, but distance still reads.
+ *
+ * Far plane 400, up from 260 and 190 before that, and the reason it had to move twice is
+ * worth stating because the next person will be tempted to move it back.
+ *
+ * A single `Fog` has one colour, and that colour only works where the sky behind it is
+ * the same colour. `sky horizon` #ff9044 is right for an island silhouetted against the
+ * golden band — and wrong for one below the horizon, where this run's gradient now puts
+ * `rock mid` and then `deep shadow`. A deeply-fogged island down there does not recede;
+ * it *glows*, because it is being blended toward a bright warm colour over a dark
+ * background. The art-critic found exactly that and read it as a palette defect, which it
+ * is: it measured an island top at #a5913e, deltaE 27.7 from anything in the bible, and
+ * the nearest entry it could find was `UI accent`.
+ *
+ * It is the same gap that bends the sky gradient — the palette has no mid-value warm
+ * entry — arriving by a second route. Until that is settled (see STATE.md), the fix is to
+ * keep everything in frame on the shallow part of the fog curve: at 400 the deepest island
+ * is about 25% fogged instead of 50%, which still reads as distance without changing what
+ * the thing is made of. The two deepest islands come nearer as well, in the table below.
+ */
+scene.fog = new THREE.Fog(PALETTE.skyHorizon, 60, 400);
 
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 600);
 // Framing is a compromise the geometry forces: look far enough down to see the ground
@@ -1104,13 +1120,13 @@ const COMPANIONS: Companion[] = [
   { x: 58, y: -30, z: -84, s: 0.8, trees: 4,
     aspect: 1.6, thick: 0.8, keel: 1.1, keelR: 0.7, tiltX: 0.07, tiltZ: -0.06,
     bob: 1.0, bobRate: 0.00023 },
-  { x: -28, y: -58, z: -52, s: 0.7, trees: 3,
+  { x: -28, y: -47, z: -52, s: 0.7, trees: 3,
     aspect: 0.75, thick: 1.5, keel: 2.2, keelR: 0.35, tiltX: -0.08, tiltZ: 0.07,
     bob: 1.3, bobRate: 0.00031 },
-  { x: 96, y: -16, z: -132, s: 1.3, trees: 5,
+  { x: 74, y: -16, z: -102, s: 1.15, trees: 5,
     aspect: 1.1, thick: 0.9, keel: 0.7, keelR: 0.94, tiltX: 0.04, tiltZ: 0.1,
     bob: 1.8, bobRate: 0.00013 },
-  { x: -98, y: -68, z: -70, s: 1.2, trees: 4,
+  { x: -80, y: -62, z: -56, s: 1.05, trees: 4,
     aspect: 1.3, thick: 1.1, keel: 1.6, keelR: 0.6, tiltX: 0.09, tiltZ: -0.04,
     bob: 1.6, bobRate: 0.00018 },
 ];
