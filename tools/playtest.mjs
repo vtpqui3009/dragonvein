@@ -118,6 +118,38 @@ try {
   await page.screenshot({ path: `${SHOTS}/03-late.png` });
   say(`shot: ${SHOTS}/03-late.png  (t+${Date.now() - loadedAt}ms, rubric A5)`);
 
+  // --- the same frame with the shadow pass off (rubric A3, rubric P6) -----------------
+  // `?tier=potato` is the only switch in the build that turns the shadow map off, and at
+  // deviceScaleFactor 1 — which is what this browser runs at — it is the *only* thing it
+  // changes about the image (`src/main.ts` POTATO: pixel ratio, `shadowMap.enabled`,
+  // `sun.castShadow`, and the tier label in the readout). So 01-wide minus 05-potato is
+  // exactly the contribution of the shadow pass, with nothing else moving.
+  //
+  // That differential is what `tools/art-probe.mjs` reads for A3. It exists because the
+  // in-frame tests kept lying: counting dark grass pixels scored 26% on a frame the
+  // art-critic had called shadowless, and an Otsu split of the grass returned the same
+  // 0.23 whether the shadow map was on or off, because on a dressed deck most dark green
+  // pixels are bushes. Subtracting two renders cannot be fooled that way.
+  //
+  // It is also the first artefact for rubric P6: the Potato tier had a number from
+  // `gate:perf` and no picture anyone could look at.
+  const potato = await browser.newPage({ viewport: VIEW });
+  potato.on('pageerror', (e) => errors.push(`potato: ${String(e)}`));
+  await potato.goto(`${preview.url}?tier=potato`, { waitUntil: 'load', timeout: 30_000 });
+  await potato.waitForTimeout(3000);
+  await potato.screenshot({ path: `${SHOTS}/05-potato.png` });
+  const potatoTier = await potato.evaluate(
+    () => globalThis.__dragonveinPerf?.read().tier ?? null);
+  await potato.close();
+  say(`shot: ${SHOTS}/05-potato.png  (?tier=potato — same frame, shadow pass off; ` +
+    `rubric A3 differential and rubric P6)`);
+  say(`potato tier: ${JSON.stringify(potatoTier)}`);
+  if (potatoTier?.shadows !== false) {
+    errors.push('05-potato.png was taken with shadows still on, so the A3 differential ' +
+      `is meaningless: ${JSON.stringify(potatoTier)}`);
+  }
+  await flush();
+
   const stats = await page.evaluate(() => globalThis.__dragonveinStats?.() ?? null);
   say(`stats: ${JSON.stringify(stats)}`);
   say('note: stats.frameMs is the rAF present interval and is quantised to the vsync ' +

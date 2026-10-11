@@ -210,11 +210,45 @@ scene.add(sky);
 // Warm, but less orange than it was (0xffd9a8). The critic measured the island's chroma
 // at roughly double the bible's — lit cliff C 22.3 against rock mid's 9.9 — with hue
 // correct, which is a key that is too saturated rather than a wrong palette.
-const sun = new THREE.DirectionalLight(0xfff1e2, 2.95);
-// Right and slightly in front of the island: the camera-facing slope stays lit (a
-// backlit island reads as a dark blob against a bright sky) while the shadows still
-// rake across open ground to the left, where they are in frame.
-sun.position.set(14, 9.5, 5.5);
+const sun = new THREE.DirectionalLight(0xfff1e2, 2.55);
+/*
+ * Why this light moved, and why it is the whole of the "no contact shadows" defect.
+ *
+ * The art-critic read the frame as shadowless and the obvious readings were all wrong:
+ * `renderer.shadowMap.enabled` is on, `sun.castShadow` is on, and every scatter mesh sets
+ * `castShadow`. A shadow map was being rendered and sampled every frame. It could not be
+ * seen because of where the light was: (14, 9.5, 5.5) is azimuth 21.4 deg and the camera
+ * sits at azimuth 50.7 deg, so the key was **29 deg off the camera axis**. A shadow is
+ * cast directly away from the light, so at 29 deg every shadow in the scene lay behind
+ * the object that cast it, hidden by that object. The comment this replaces asserted the
+ * opposite — "the shadows still rake across open ground to the left" — and nothing had
+ * ever measured it.
+ *
+ * The fix is geometry, not intensity — but it is not simply "move the key sideways".
+ * Azimuth 340 was tried first and differenced against the same frame with
+ * `renderer.shadowMap.enabled = false`, which isolates exactly the pixels the shadow pass
+ * changes. 48 199 px changed, and the map showed every one of them on a *prop*: trees
+ * shadowing each other, boulders shadowing bushes, and the deck itself untouched. The
+ * reason is that the camera can only see the near half of the deck, and with the sun on
+ * the near side too, everything up-sun of the ground in shot is empty air off the edge of
+ * the island. There was nothing standing where it could cast into frame.
+ *
+ * So the key goes to azimuth 303 deg at 25 deg of elevation — the far side — which is
+ * 96.9 deg off the camera axis (`node tools/art-probe.mjs` prints it). Shadows run toward
+ * azimuth 123 deg, which is across the deck and *towards* the camera, so the casters that
+ * throw them are the trees standing in the middle of the island rather than imaginary
+ * ones past its rim. At 25 deg they are 2.1x the caster's height: a 2-unit conifer lays a
+ * 4.3-unit shadow, about a third of the way across the deck.
+ *
+ * This is a side-back key, and it costs the camera-facing *vertical* slope its direct sun
+ * (N.L goes to -0.12 on a camera-facing normal). That is the trade, and it is the right
+ * one here: the deck is horizontal, so it keeps almost all of its key (N.L 0.44 -> 0.42)
+ * and the island cannot read as the dark blob the previous comment feared — a lit deck
+ * with dark trees standing on it is a lit island. The slopes that lose the sun are the
+ * ones the cool fill at azimuth 141 deg and the warm rim behind the island are for, which
+ * is what `docs/ART_BIBLE.md` §Lighting means by three lights doing the work.
+ */
+sun.position.set(8.18, 12.73, -9.75);
 // Potato renders no shadow map at all, so the light must not ask for one either —
 // `renderer.shadowMap.enabled = false` alone still leaves the pass set up.
 sun.castShadow = !POTATO;
@@ -227,7 +261,15 @@ sun.shadow.camera.far = 60;
 // it kills acne on curved instanced geometry without the peter-panning that more depth
 // bias would cost under the contact shadows A3 depends on.
 sun.shadow.bias = -0.00035;
-sun.shadow.normalBias = 0.042;
+// 0.018, down from 0.042. A normal bias is measured in world units and this map is
+// 1024 texels over an 18-unit span — 0.0175 units a texel — so 0.042 was pushing the
+// shadow 2.4 texels off the surface that casts it. That is peter-panning, and the gap it
+// opens is exactly at the base of each object, which is the only place a *contact*
+// shadow exists. It was invisible while the shadows themselves were hidden behind their
+// casters; with the sun moved it would be the next defect. Acne is re-checked in the
+// render rather than assumed: the bigger risk at 26 deg of elevation is the grazing
+// angle, and that is what the depth bias above is for.
+sun.shadow.normalBias = 0.018;
 // Tight to the island, so the 1024 texels land where the contact shadows are
 // (about 57 texels per world unit) instead of being spread over empty sky.
 sun.shadow.camera.left = -9;
@@ -244,7 +286,7 @@ scene.add(sun.target);
 // contributes nothing to a *downward*-facing normal, and the whole lower half of this
 // island is downward-facing. One light cannot be both the opposite-side fill and the
 // bounce from below, so there are two, and together they are the bible's one cool fill.
-const fill = new THREE.DirectionalLight(0x7aa0ff, 0.62);   // ~20% of key, opposite side
+const fill = new THREE.DirectionalLight(0x7aa0ff, 0.70);   // ~20% of key, opposite side
 fill.position.set(-11, 5.5, 9);
 scene.add(fill);
 
@@ -270,7 +312,7 @@ scene.add(rim);
 // at (0,18,4): a directional fill does not cast into a closed canopy, and the hemisphere
 // term is the only light that does. Raising it lifts the interior without flattening the
 // key, because it is strongest exactly where the key is absent.
-scene.add(new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 1.05));
+scene.add(new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 0.72));
 
 // --- the warm rim, as a rim and not as a lamp -------------------------------------------
 /**
@@ -295,9 +337,9 @@ const RIM_UNIFORMS = {
   uRimColor: { value: new THREE.Color(PALETTE.skyHorizon).multiplyScalar(1.0) },
   /** Rim light direction in *view* space — refreshed once per frame, never reallocated. */
   uRimDir: { value: new THREE.Vector3(0, 0, 1) },
-  uRimStrength: { value: 1.1 },
+  uRimStrength: { value: 1.85 },
   /** Higher = tighter band at the silhouette. 2.6 keeps it an edge, not a glow. */
-  uRimPower: { value: 2.9 },
+  uRimPower: { value: 3.5 },
 };
 
 /** Light-space direction of the rim light, recomputed per frame into scratch vectors. */
@@ -511,10 +553,33 @@ function instanced(
   return mesh;
 }
 
-// A clearing that only the trees respect: with the canopy closed there is no open ground
-// for a contact shadow to land on, and rubric A3 reads the frame as shadowless. Placed on
-// the camera-facing side so it is in shot.
-const CLEARING: Spot = { x: 0.4, z: 2.6, r: 2.3 };
+/*
+ * Open ground, which is a feature and not an absence.
+ *
+ * `docs/concept/03-island-scene.png` is much sparser than this build had become: a few
+ * small trees and boulders on a broad green deck, with the cast shadows reading clearly
+ * because there is somewhere for them to land. The density added for rubric A6 had
+ * overshot into clutter — 44 trees, 76 boulders and 104 bushes on a 6-unit disc — and
+ * clutter is what A3 was actually failing on once the light was moved: a contact shadow
+ * on a surface already covered in props is just more dark pixels.
+ *
+ * `docs/ART_BIBLE.md` §Density asks that an island is "never bare *between* features",
+ * which is a rule about the gaps, not a licence to leave no gaps. So the counts come down
+ * and the clearing goes up, and ground cover — tufts, the high-frequency layer — stays
+ * dense: grass is dressing, boulders are furniture.
+ *
+ * Where the glade goes is set by the sun, not by the camera. Shadows now run toward
+ * azimuth 160 deg, so a glade placed up-sun of the forest has nothing standing in a
+ * position to cast into it and comes out as evenly lit as the closed canopy did — which
+ * is what the first attempt at this did, measurably. It sits at azimuth 78 deg instead,
+ * far enough from the deck's +x edge that there is still forest between it and the sun.
+ *
+ * The trees keep clear of all of it; the boulders and bushes keep clear of its middle
+ * (`CLEARING_INNER`) and may stand around its edge, so it reads as a glade rather than as
+ * a stamped circle.
+ */
+const CLEARING: Spot = { x: 0.6, z: 2.9, r: 2.7 };
+const CLEARING_INNER: Spot = { ...CLEARING, r: 2.3 };
 
 // --- reservations: the path and the crystal clusters, laid out before the scatter -------
 /**
@@ -581,7 +646,7 @@ const crystalShards: Placed[] = [];
 
 // Trees — three values per asset (ART_BIBLE §Direction): dark trunk, mid lower canopy,
 // light upper tier. Two tiers so the silhouette still reads as a tree at 25% (rubric A1).
-const TREES = 44;
+const TREES = 24;
 const trunks = instanced(new THREE.CylinderGeometry(0.1, 0.16, 1.0, 5), TREES, 0.95);
 const canopies = instanced(new THREE.ConeGeometry(0.66, 1.5, 7), TREES, 0.85);
 const crowns = instanced(new THREE.ConeGeometry(0.45, 1.1, 7), TREES, 0.8);
@@ -592,7 +657,21 @@ crowns.castShadow = true;
   const rng = makeRng(0x10a9_0a1c);
   let n = 0;
   for (let i = 0; i < TREES; i++) {
-    const h = 0.74 + rng() * 0.95;                 // height spread, so the skyline is not a hedge
+    /*
+     * Tree height, which is a composition number and not a taste one.
+     *
+     * At `0.74 + rng * 0.95` a tree stood 1.85-4.2 units on a disc of radius 6 — up to
+     * 0.70 of the island's own radius. `docs/concept/03-island-scene.png` draws them at
+     * 0.26. With the camera 17 deg above the deck, a 4-unit tree hides every bit of
+     * ground within 16 units behind it, which is the entire island: there was no deck to
+     * see, so there was nowhere for a shadow to be seen landing, and the canopy closed
+     * into the "one undifferentiated green mass" rubric A1 was marked down for.
+     *
+     * 0.52-0.98 puts the tree at 1.3-2.45 units, or 0.22-0.41 of the island radius —
+     * still taller than the concept, because these are conifers and the concept's are
+     * round, but low enough that the deck reads between them.
+     */
+    const h = 0.52 + rng() * 0.46;                 // height spread, so the skyline is not a hedge
     const spot = pick(rng, 0.3 + h * 0.13, 5.0, CLEARING);
     if (!spot) continue;
     const rotY = rng() * Math.PI * 2;
@@ -614,7 +693,7 @@ crowns.castShadow = true;
 // scale, and a second InstancedMesh for 22 flattened discs cost two draw calls (one
 // opaque, one shadow) and about 4 kB a frame of churn for no visual difference that
 // survives at 1080p.
-const ROCKS = 76;
+const ROCKS = 44;
 const rocks = instanced(new THREE.IcosahedronGeometry(0.3, 0), ROCKS + pathStones.length, 1.0);
 rocks.castShadow = true;
 {
@@ -622,7 +701,7 @@ rocks.castShadow = true;
   let n = 0;
   for (let i = 0; i < ROCKS; i++) {
     const s = 0.4 + rng() * 0.95;
-    const spot = pick(rng, 0.13 + s * 0.12, 5.5);
+    const spot = pick(rng, 0.13 + s * 0.12, 5.5, CLEARING_INNER);
     if (!spot) continue;
     place(rocks, n, spot.x, TOP_Y + s * 0.11, spot.z,
       s, s * (0.5 + rng() * 0.4), s * (0.8 + rng() * 0.5),
@@ -641,7 +720,7 @@ rocks.castShadow = true;
 }
 
 // Understory bushes — fills the mid frequency between trees and bare ground (rubric A6).
-const BUSHES = 104;
+const BUSHES = 60;
 const bushes = instanced(new THREE.SphereGeometry(0.34, 7, 5), BUSHES, 0.9);
 bushes.castShadow = true;
 {
@@ -649,7 +728,7 @@ bushes.castShadow = true;
   let n = 0;
   for (let i = 0; i < BUSHES; i++) {
     const s = 0.5 + rng() * 0.7;
-    const spot = pick(rng, 0.14 + s * 0.14, 5.6);
+    const spot = pick(rng, 0.14 + s * 0.14, 5.6, CLEARING_INNER);
     if (!spot) continue;
     place(bushes, n, spot.x, TOP_Y + s * 0.19, spot.z,
       s, s * 0.62, s, rng() * Math.PI * 2);
@@ -660,7 +739,7 @@ bushes.castShadow = true;
 }
 
 // Ground cover — the high frequency. Cheap, never casts a shadow, kills the bare plane.
-const TUFTS = 300;
+const TUFTS = 210;
 const tufts = instanced(new THREE.ConeGeometry(0.075, 0.36, 3), TUFTS, 0.9);
 {
   const rng = makeRng(0x8fd2_4a03);

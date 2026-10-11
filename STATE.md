@@ -5,6 +5,61 @@ ship nothing — a run with no entry is indistinguishable from a run that never 
 
 ---
 
+## 2026-10-11 — run 4 — M0d: the placeholder frame meets the art bible (IN_PROGRESS)
+
+**Step**: `M0d` — the first step in reading order in `docs/ROADMAP.md` that is not `DONE`.
+M0a–M0c are `DONE`. M0e is **not** in scope this run and was not touched.
+
+**Step 0 (prove the push path) passed**: `586d25d` pushed to `main` with Bash git before any
+other work. The stale-checkout trap recurred exactly as `NEXT.md` warns: detached HEAD, local
+`main` 34 commits behind `origin/main`. `git reset --hard origin/main` was again refused by
+this session's permission layer; `git merge --ff-only origin/main` on a clean tree did it, as
+run 3 recorded. That workaround is now two for two — it belongs in `NEXT.md`, and is there.
+
+**Ownership**: every line of this step lives in `src/main.ts`, which
+`docs/ARCHITECTURE.md` §Ownership assigns to `integrator`. One file, one owner, edits applied
+sequentially — which is the arrangement §3.3 prescribes. No parallel fan-out was used.
+
+### Baseline, re-measured before any edit
+
+`NEXT.md` said run 3's art pass had "partially addressed" the defects. It had not:
+`git log --oneline 2d1ff42..HEAD` is four docs commits and nothing else, so the tree the
+art-critic scored **6.1** is byte-identical to the tree this run started from in every
+rendering file. All five defect groups were re-measured against a fresh
+`npm run gate:smoke` and all five still stand. Nothing below is rework of work already done.
+
+**Root cause found for the headline defect.** The scene is not shadowless because shadows are
+off — they are on, and every prop sets `castShadow`. They are invisible because the key light
+sits 29° off the camera axis: sun azimuth 21.4°, camera azimuth 50.7°, both measured from
+`src/main.ts` as committed. Every shadow therefore falls behind the object that casts it. The
+code comment at `src/main.ts:215` asserts the opposite ("the shadows still rake across open
+ground to the left"); the assertion was never measured. A shadow map was being rendered,
+sampled and paid for every frame, and could not be seen.
+
+### Acceptance criteria
+
+Each is checkable by `node tools/art-probe.mjs` (written this run, prints numbers, gates
+nothing) or by a named screenshot. Scored against `artifacts/shots/01-wide.png` unless said
+otherwise.
+
+| # | criterion | instrument |
+|---|---|---|
+| AC1 | Key light ≥ 60° off the camera axis, so shadows fall across the frame rather than behind their casters. | `art-probe` prints `sun-camera angle` |
+| AC2 | Contact shadows are measurable on open ground: ≥ 8% of hero-island grass pixels below 0.70 × median grass luma, in regions attached to a caster base. Baseline: the darkening that exists is caster silhouette, not cast shadow. | `art-probe` prints `shadow fraction` |
+| AC3 | The warm rim reaches the canopy: canopy top-edge pixels are **warmer and brighter** than pixels 6 px inside. Baseline `#729a47` edge vs `#72a44e` inside — darker and cooler, i.e. the third light was in the graph and not in the frame. | `art-probe` prints `rim edge vs interior` |
+| AC4 | More than one tree archetype and more than one island archetype in frame; the nine islands differ by something other than scale and rotation. | named screenshot `01-wide.png`, plus `art-probe` `archetypes` |
+| AC5 | No satellite island is bare between features — each carries ground cover, not just cones and pebbles. | named screenshot `01-wide.png` |
+| AC6 | Something other than the hero island moves. The bottom-right satellite's green-mask centroid must move > 1 px across `artifacts/turntables/m0-island.webm`; baseline ±0.03 px over 7.28 s. | `art-probe` prints `ambient motion` |
+| AC7 | No off-bible band over a fifth of the frame: the worst row-mean ΔE to the nearest `docs/ART_BIBLE.md` swatch, over rows 440–660, drops below 12. Baseline 25.9–28.6. | `art-probe` prints `haze dE` |
+| AC8 | `npm run gates` exits 0, with the frame budget unchanged: p95 ≤ 16.6 ms, draws ≤ 180. Baseline 21 draws, 32 568 tris. | `npm run gates` |
+| AC9 | art-critic ≥ 8.0, perf-critic ≥ 8.0, gameplay-critic ≥ 8.0, scored on a frozen tree. | `FINDINGS.md` |
+
+AC1–AC3 are `docs/ART_BIBLE.md` §Lighting. AC4 is rubric A4. AC5–AC6 are §Density and rubric
+A6. AC7 is §Palette and rubric A2. M0e's two items (HUD at 360 px, the `__dragonveinStats()`
+stale-frame hole) are deliberately left open: they are the next step, not this one.
+
+---
+
 ## 2026-10-10 — run 3 — M0, decision 2 implemented; rubric blocks the close (IN_PROGRESS)
 
 **Milestone**: M0, still the lowest-numbered milestone not `DONE`. Nothing else touched.
@@ -517,4 +572,3 @@ removes the dependency on proxy-injected credentials.
 the placeholder island.
 
 **Scores**: not applicable — no milestone claimed.
-- run started 2026-10-11T02:16:21Z
