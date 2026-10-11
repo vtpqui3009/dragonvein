@@ -13,6 +13,26 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-11 — tooling — archive, skills and an evidence page (owner request)
+
+Not a roadmap step. The owner asked whether a published agent workflow (Kun Chen's
+"captain" setup) applied here, then asked for every applicable part to be done. Three
+parts applied. The rest did not: parallel worktrees contradict `CLAUDE.md` §3's measured
+result, and the terminal and voice tooling serves a human at a keyboard, not a cloud run.
+
+1. **Archive** (`9b6b49a`): `STATE.md` went from 63 to 20 KB and `FINDINGS.md` from 185 to
+   6.5 KB. Runs 0–4 and the closed rounds moved whole to `docs/archive/`, with 0 lines lost.
+2. **Skills** (`027b7e0`): `asset-env`, `critic-round`, `run-closeout`. The `asset-env`
+   facts were measured in this container, not copied from the README.
+3. **Evidence page** (`027b7e0`): `node tools/evidence-page.mjs` builds one self-contained
+   page, published at https://claude.ai/artifact/Pgkt22EifnK5hUzmXqssoj and republished
+   to that URL by `run-closeout`.
+
+`npm run gates` exit 0 at `027b7e0` (cpu p95 1.7 ms, heap 34 224 B/frame). No step status
+changed, and **M1a is still next**.
+
+---
+
 ## 2026-10-11 — run 6 — M0f DONE: the camera answers the pointer (M0 IN_PROGRESS on the owner)
 
 **Step**: `M0f` — the first step in reading order in `docs/ROADMAP.md` that is not `DONE`.
