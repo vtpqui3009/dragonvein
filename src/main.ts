@@ -776,7 +776,7 @@ const crystalShards: Placed[] = [];
       // passing through a tree trunk at 01-wide x520-560 / y370-420: at 0.6 the
       // reservation was smaller than the shard, so a later sample could clear the
       // footprint and still intersect the geometry.
-      taken.push({ x, z, r: Math.max(sx, sz) * 1.15 });
+      taken.push({ x, z, r: Math.max(sx, sz) * 1.45 });
     }
   }
 }
@@ -1031,7 +1031,14 @@ const cWaterFar = new THREE.Color(0xa6f1f2);     // ART_BIBLE §Palette, water f
  *   thick    deck thickness, which is what makes one read as a slab and one as a wafer
  *   keel     how far the root drops, from a stub to three times the deck's width
  *   keelR    how wide the root is. Low values make a spire: a thin rock needle under a
- *            small cap, which is a different object, not a different size of the same one
+ *            small cap, which is a different object, not a different size of the same
+ *            one. **It must not exceed 1.0.** The cap's lower radius is 5.6 and so is
+ *            the cone's base, so at keelR 1.25 the root's rim stood outside the deck it
+ *            hangs from — the art-critic found it on two islands and described it
+ *            exactly: "a flat brown ellipse about 175x70 px sits behind and through the
+ *            island cap, like a Saturn ring". It was in the potato frame too, so not the
+ *            shadow pass. 0.26-0.98 is the usable range and still spans needle to full
+ *            cone
  *   tilt     a few degrees off level. Nothing in the sky hangs plumb
  *
  * The keel's offset is rotated by the same tilt as the deck, so a tilted island keeps its
@@ -1058,13 +1065,13 @@ const COMPANIONS: Companion[] = [
     aspect: 0.78, thick: 0.7, keel: 2.6, keelR: 0.3, tiltX: -0.04, tiltZ: 0.03,
     bob: 0.8, bobRate: 0.00033 },
   { x: -56, y: 8, z: -13, s: 0.62, trees: 9,       // upper left, a thick slab
-    aspect: 1.15, thick: 1.8, keel: 0.55, keelR: 1.25, tiltX: 0.08, tiltZ: 0.05,
+    aspect: 1.15, thick: 1.8, keel: 0.55, keelR: 0.96, tiltX: 0.08, tiltZ: 0.05,
     bob: 0.7, bobRate: 0.00027 },
   { x: -54, y: 21, z: -63, s: 1.0, trees: 10,      // top centre, high and far
     aspect: 0.72, thick: 1.1, keel: 1.5, keelR: 0.85, tiltX: -0.09, tiltZ: 0.06,
     bob: 1.3, bobRate: 0.00021 },
   { x: 1, y: -10, z: -108, s: 1.2, trees: 8,       // far right, below the eyeline
-    aspect: 1.5, thick: 0.75, keel: 0.8, keelR: 1.1, tiltX: 0.03, tiltZ: -0.1,
+    aspect: 1.5, thick: 0.75, keel: 0.8, keelR: 0.92, tiltX: 0.03, tiltZ: -0.1,
     bob: 1.6, bobRate: 0.00017 },
   { x: -120, y: -12, z: -25, s: 1.35, trees: 7,    // far left, deep in the haze: a spire
     aspect: 0.9, thick: 0.85, keel: 3.0, keelR: 0.26, tiltX: 0.06, tiltZ: 0.08,
@@ -1075,9 +1082,9 @@ const COMPANIONS: Companion[] = [
   // has islands *below* you as well as above, and a silhouette is the cheapest form
   // there is.
   { x: -75, y: -41, z: -17, s: 1.1, trees: 6,      // low left
-    aspect: 1.25, thick: 1.4, keel: 0.5, keelR: 1.3, tiltX: -0.07, tiltZ: -0.05,
+    aspect: 1.25, thick: 1.4, keel: 0.5, keelR: 0.98, tiltX: -0.07, tiltZ: -0.05,
     bob: 1.4, bobRate: 0.00019 },
-  { x: 3, y: -35, z: -61, s: 1.0, trees: 6,        // low right
+  { x: 3, y: -26, z: -61, s: 1.0, trees: 6,        // low right
     aspect: 0.82, thick: 0.9, keel: 1.9, keelR: 0.55, tiltX: 0.1, tiltZ: 0.04,
     bob: 1.2, bobRate: 0.00029 },
   { x: -64, y: -54, z: -36, s: 1.1, trees: 5,      // bottom centre, near enough to stay green
@@ -1101,7 +1108,7 @@ const COMPANIONS: Companion[] = [
     aspect: 0.75, thick: 1.5, keel: 2.2, keelR: 0.35, tiltX: -0.08, tiltZ: 0.07,
     bob: 1.3, bobRate: 0.00031 },
   { x: 96, y: -16, z: -132, s: 1.3, trees: 5,
-    aspect: 1.1, thick: 0.9, keel: 0.7, keelR: 1.2, tiltX: 0.04, tiltZ: 0.1,
+    aspect: 1.1, thick: 0.9, keel: 0.7, keelR: 0.94, tiltX: 0.04, tiltZ: 0.1,
     bob: 1.8, bobRate: 0.00013 },
   { x: -98, y: -68, z: -70, s: 1.2, trees: 4,
     aspect: 1.3, thick: 1.1, keel: 1.6, keelR: 0.6, tiltX: 0.09, tiltZ: -0.04,
@@ -1160,7 +1167,25 @@ const vKeel = new THREE.Vector3();
 
 {
   const caps = instanced(new THREE.CylinderGeometry(6, 5.6, 1.1, 36), COMPANIONS.length, 0.95, far);
-  const cones = instanced(new THREE.ConeGeometry(5.6, 6.5, 36), COMPANIONS.length, 0.98, far);
+  /*
+   * The root cone, pre-flipped in its own geometry rather than by adding PI to the
+   * placement's Euler X.
+   *
+   * `euler.set(tiltX + PI, rotY, tiltZ)` is not the cap's orientation plus a flip. In XYZ
+   * order that is Rx(tiltX)·Rx(PI)·Ry(rotY)·Rz(tiltZ), and Rx(PI) does not commute with
+   * either of the rotations to its right — it negates both of them. So the root came out
+   * with the *opposite* yaw and the opposite roll to the deck it hangs from, and at a
+   * tilt of 0.1 rad across a 2-4 unit drop that is enough lateral error for its rim to
+   * swing outside the cap. That is half of the "Saturn ring" the art-critic found; the
+   * other half was `keelR` above 1.0, fixed in the table above.
+   *
+   * Baking the flip into the geometry means the cone is placed with exactly the cap's
+   * Euler, so the two can only differ by the scale — which is what `keelR` is for, and
+   * which is now bounded. It is also what the hero island's own root does.
+   */
+  const coneGeo = new THREE.ConeGeometry(5.6, 6.5, 36);
+  coneGeo.rotateX(Math.PI);
+  const cones = instanced(coneGeo, COMPANIONS.length, 0.98, far);
   const treeTotal = COMPANIONS.reduce((t, c) => t + c.trees, 0);
   // The far deck gets the same three archetypes as the hero island (conifer cone,
   // rounded broadleaf, bare snag), for the same reason: A4 is about the repeat set in
@@ -1185,15 +1210,26 @@ const vKeel = new THREE.Vector3();
       c.s * c.aspect, c.s * c.thick, c.s / c.aspect, rotY, c.tiltX, c.tiltZ);
     capY.push(deckY); capOwner.push(i);
 
-    // The root, dropped along the island's own down-axis rather than along world down,
-    // so the tilt does not shear it off the deck.
-    const drop = 3.8 * c.s * c.keel;
+    /*
+     * The root hangs along the island's own down-axis, not world down, so a tilted deck
+     * keeps its root attached rather than shearing it off.
+     *
+     * The drop is derived from the two geometries instead of a tuned constant. The cone
+     * is 6.5 tall about its own centre, so its rim is 3.25 above that centre once
+     * flipped; the cap's underside is 0.55 below the deck plane. Dropping by
+     * `3.25*keel + 0.55*thick` therefore lands the cone's widest ring exactly on the
+     * cap's underside for every island, whatever its keel length or deck thickness. The
+     * old `3.8 * s * keel` ignored `thick` entirely and left a shallow keel (0.5) riding
+     * 0.55 units too high — its rim level with the *middle* of the cap, which is the
+     * other way that ring got out.
+     */
+    const drop = c.s * (3.25 * c.keel + 0.55 * c.thick);
     eulerTilt.set(c.tiltX, rotY, c.tiltZ);
     quatTilt.setFromEuler(eulerTilt);
     vKeel.set(0, -drop, 0).applyQuaternion(quatTilt);
     place(cones, i, c.x + vKeel.x, deckY + vKeel.y, c.z + vKeel.z,
       c.s * c.keelR * c.aspect, c.s * c.keel, c.s * c.keelR / c.aspect,
-      rotY, c.tiltX + Math.PI, c.tiltZ);
+      rotY, c.tiltX, c.tiltZ);
     coneY.push(deckY + vKeel.y); coneOwner.push(i);
 
     // On the bible's foliage axis, not off it. The first version lerped `foliage mid`
@@ -1203,7 +1239,7 @@ const vKeel = new THREE.Vector3();
     // albedo's, so these now sit between `foliage dark` and `foliage light` like every
     // other green in the frame. The range is wider than it was: "no colour difference
     // between any two" was one of A4's specific complaints.
-    caps.setColorAt(i, tint.copy(cDark).lerp(cLight, 0.15 + rng() * 0.48));
+    caps.setColorAt(i, tint.copy(cDark).lerp(cLight, 0.12 + rng() * 0.38));
     cones.setColorAt(i, tint.copy(cRock).lerp(cShadow, 0.1 + rng() * 0.7));
 
     for (let k = 0; k < c.trees; k++) {
@@ -1250,7 +1286,7 @@ const vKeel = new THREE.Vector3();
   // single-valued green disc, with no ground cover, no tufts, no rocks, no path, no
   // colour break" — is what the tufts answer. All three are instanced across every
   // island, so nine islands' worth of dressing costs three draw calls.
-  const DRESS_PER = 30;
+  const DRESS_PER = 38;
   const farRocks = instanced(
     new THREE.IcosahedronGeometry(0.3, 0), COMPANIONS.length * DRESS_PER, 1.0, far);
   const farBushes = instanced(
@@ -1326,11 +1362,11 @@ const birdOrbit = new Float32Array(BIRD_COUNT * 5);
 {
   const rng = makeRng(0xb1_7d5);
   for (let i = 0; i < BIRD_COUNT; i++) {
-    birdOrbit[i * 5] = 46 + rng() * 62;                      // radius
+    birdOrbit[i * 5] = 42 + rng() * 54;                      // radius
     birdOrbit[i * 5 + 1] = 6 + rng() * 20;                   // height
     birdOrbit[i * 5 + 2] = (rng() < 0.5 ? -1 : 1) * (0.00007 + rng() * 0.00012);
     birdOrbit[i * 5 + 3] = rng() * Math.PI * 2;              // start angle
-    birdOrbit[i * 5 + 4] = 0.55 + rng() * 0.5;               // size
+    birdOrbit[i * 5 + 4] = 1.15 + rng() * 0.9;               // size
     birds.setColorAt(i, tint.copy(cShadow).lerp(cRock, rng() * 0.35));
   }
   birds.count = BIRD_COUNT;
