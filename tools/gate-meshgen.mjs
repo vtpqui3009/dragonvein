@@ -33,13 +33,13 @@ if (!existsSync(BUILDER)) {
 
 const entry = `
 import { breed, wild } from './src/core/genome';
-import { buildDragonBody } from './${BUILDER.replace(/\.ts$/, '')}';
+import { buildDragon } from './${BUILDER.replace(/\.ts$/, '')}';
 export function genomes(recipes) {
   const out = [];
   for (const r of recipes) out.push(r.op === 'wild' ? wild(r.seed, r.element ?? undefined) : breed(out[r.a], out[r.b], r.seed));
   return out;
 }
-export { buildDragonBody };
+export { buildDragon };
 `;
 const bundled = await build({
   stdin: { contents: entry, resolveDir: process.cwd(), loader: 'ts', sourcefile: 'meshgen-entry.ts' },
@@ -54,7 +54,7 @@ const genomes = mod.genomes(recipes);
 
 const time = (gm) => {
   const t = performance.now();
-  const body = mod.buildDragonBody(gm);
+  const body = mod.buildDragon(gm);
   const ms = performance.now() - t;
   return { ms, tris: body.geometry.getIndex().count / 3, verts: body.geometry.getAttribute('position').count };
 };
@@ -69,7 +69,7 @@ mkdirSync('artifacts', { recursive: true });
 writeFileSync('artifacts/meshgen.json', `${JSON.stringify({
   budgetMs: BUDGET_MS,
   where: 'node main thread (M3c moves this to a worker on the Medium tier)',
-  stages: 'skeleton, torso, limbs (M3a)',
+  stages: 'whole dragon: body, wings, membranes, crown, spikes, tail ornament, eyes (M3b)',
   genomes: runs.length,
   coldMs: r1(cold.ms),
   medianMs: r1(median),
