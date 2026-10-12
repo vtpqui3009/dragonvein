@@ -75,6 +75,22 @@ describe('Rng matches assetgen/genome.py stream for stream', () => {
     });
   }
 
+  it('needs Math.imul: a plain * agrees on small seeds and silently diverges on large ones', () => {
+    // The trap M2a was built around, kept as a test so the edge seeds cannot be "tidied"
+    // away. Seeding multiplies two 32-bit values; with a plain `*` the product passes
+    // 2^53 once the seed is large and loses its low bits before the mask. On seeds 1, 2
+    // and 42 the two agree, so a fixture of ordinary seeds would pass a broken port.
+    // Run 9 swapped Math.imul for `*` in src/core/rng.ts: seeds 1, 2, 42 still passed and
+    // the large seeds (0 -> 0x9E3779B9, -1, 0xFFFFFFFF, ...) failed.
+    const K = [0x85ebca6b, 0xc2b2ae35];
+    const plain = (s: number, k: number) => (s * k) >>> 0;
+    const imul = (s: number, k: number) => Math.imul(s, k) >>> 0;
+    for (const s of [1, 2, 42]) for (const k of K) expect(plain(s, k)).toBe(imul(s, k));
+    for (const s of [0x9e3779b9, 0xffffffff, 123456789]) {
+      expect(K.some((k) => plain(s, k) !== imul(s, k))).toBe(true);
+    }
+  });
+
   it('refuses a seed it cannot represent exactly', () => {
     expect(() => new Rng(2 ** 53)).toThrow(RangeError);
     expect(() => new Rng(1.5)).toThrow(RangeError);
