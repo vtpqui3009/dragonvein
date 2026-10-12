@@ -120,7 +120,14 @@ const buildTimes: number[] = [];
 // The dragons are built off the main thread, as the game builds them (M3c). The worker is
 // spawned and warmed first, as the game does while idle; that one-off is `startupMs`.
 const mesher = new DragonMesher();
-const { startupMs } = await mesher.ready();
+let startupMs = NaN;
+try {
+  ({ startupMs } = await mesher.ready());
+} catch (err) {
+  // A worker that cannot load used to leave a blank grey page (gameplay critic, run 13).
+  // Say so on the page, and let the first build rethrow the same error.
+  document.getElementById('note')!.textContent = `the dragon worker failed: ${String((err as Error).message)}`;
+}
 const t0 = performance.now();
 const shown = turn ? [pick] : SHEET.map((_, i) => i);
 for (const [k, gi] of shown.entries()) {

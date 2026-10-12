@@ -35,38 +35,47 @@ export class DragonMesher {
   private nextId = 1;
   private readonly pending = new Map<number, { t0: number; resolve: (r: MeshResult) => void; reject: (e: Error) => void }>();
   private warming: Promise<{ startupMs: number; warmMs: number }> | null = null;
-  private readonly warmJobs = new Map<number, { t0: number; resolve: (r: { startupMs: number; warmMs: number }) => void }>();
+  private readonly warmJobs = new Map<number, {
+    t0: number; resolve: (r: { startupMs: number; warmMs: number }) => void; reject: (e: Error) => void;
+  }>();
+  /**
+   * Set once the worker has failed to load or crashed. From then on every request rejects
+   * at once. A dead worker answers nothing, so an awaited `ready()` or `build()` used to
+   * hang forever with no error (gameplay critic, run 13).
+   */
+  private failure: Error | null = null;
 
   constructor() {
     this.worker.onmessage = (e: MessageEvent<MeshReply | WarmReply | MeshError>) => {
-      if ('warmMs' in e.data) {
-        const w = this.warmJobs.get(e.data.id);
+      const w = this.warmJobs.get(e.data.id);
+      if (w) {
         this.warmJobs.delete(e.data.id);
-        w?.resolve({ startupMs: performance.now() - w.t0, warmMs: e.data.warmMs });
+        if ('error' in e.data) w.reject(new Error(e.data.error));
+        else if ('warmMs' in e.data) w.resolve({ startupMs: performance.now() - w.t0, warmMs: e.data.warmMs });
         return;
       }
       const job = this.pending.get(e.data.id);
       if (!job) return;
       this.pending.delete(e.data.id);
       if ('error' in e.data) { job.reject(new Error(e.data.error)); return; }
+      if (!('arrays' in e.data)) { job.reject(new Error('dragon worker: a build answered as a warm-up')); return; }
       const t1 = performance.now();
       const body = toGeometry(e.data.arrays);
       const t2 = performance.now();
       job.resolve({ body, workerMs: e.data.workerMs, roundTripMs: t2 - job.t0, assembleMs: t2 - t1 });
     };
-    this.worker.onerror = (e) => {
-      for (const job of this.pending.values()) job.reject(new Error(`dragon worker: ${e.message}`));
-      this.pending.clear();
-    };
+    this.worker.onerror = (e) => this.fail(new Error(`dragon worker failed: ${e.message || 'could not load or crashed'}`));
+    this.worker.onmessageerror = () => this.fail(new Error('dragon worker: a message could not be decoded'));
   }
 
   /** Spawn and warm the worker: one throwaway build. Idempotent; await it before a hatch. */
   ready(): Promise<{ startupMs: number; warmMs: number }> {
+    if (this.failure) return Promise.reject(this.failure);
     if (!this.warming) {
       const id = this.nextId++;
       const req: WarmRequest = { id, warm: true };
-      this.warming = new Promise((resolve) => {
-        this.warmJobs.set(id, { t0: performance.now(), resolve });
+      this.warming = new Promise((resolve, reject) => {
+        this.warmJobs.set(id, { t0: performance.now(), resolve, reject });
         this.worker.postMessage(req);
       });
     }
@@ -74,6 +83,7 @@ export class DragonMesher {
   }
 
   build(genome: Genome): Promise<MeshResult> {
+    if (this.failure) return Promise.reject(this.failure);
     const id = this.nextId++;
     const req: MeshRequest = { id, genome: genome.toJSON() };
     return new Promise((resolve, reject) => {
@@ -84,7 +94,15 @@ export class DragonMesher {
 
   dispose(): void {
     this.worker.terminate();
-    for (const job of this.pending.values()) job.reject(new Error('dragon mesher disposed'));
+    this.fail(new Error('dragon mesher disposed'));
+  }
+
+  /** Reject everything waiting, and everything asked from now on. */
+  private fail(err: Error): void {
+    this.failure ??= err;
+    for (const job of this.pending.values()) job.reject(err);
+    for (const w of this.warmJobs.values()) w.reject(err);
     this.pending.clear();
+    this.warmJobs.clear();
   }
 }

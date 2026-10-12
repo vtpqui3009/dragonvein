@@ -74,3 +74,32 @@ describe('Genome.fromJSON refuses what it should', () => {
     expect(() => Genome.fromJSON(j)).toThrow(/element/);
   });
 });
+
+describe('DragonMesher fails loudly when its worker does', () => {
+  /** A Worker that never loads: it reports an error on the next tick, as a 404 or a throw would. */
+  class DeadWorker {
+    onmessage: ((e: MessageEvent) => void) | null = null;
+    onerror: ((e: { message: string }) => void) | null = null;
+    onmessageerror: (() => void) | null = null;
+    constructor() { setTimeout(() => this.onerror?.({ message: 'failed to fetch worker script' }), 0); }
+    postMessage(): void {}
+    terminate(): void {}
+  }
+
+  it('ready() and build() reject instead of hanging, and later calls reject at once', async () => {
+    const real = globalThis.Worker;
+    (globalThis as { Worker: unknown }).Worker = DeadWorker;
+    try {
+      const { DragonMesher } = await import('../src/assets/dragon/mesher');
+      const m = new DragonMesher();
+      const warm = m.ready();
+      const built = m.build(genomes[0]!);
+      await expect(warm).rejects.toThrow(/dragon worker failed/);
+      await expect(built).rejects.toThrow(/dragon worker failed/);
+      await expect(m.build(genomes[1]!)).rejects.toThrow(/dragon worker failed/);
+      await expect(m.ready()).rejects.toThrow(/dragon worker failed/);
+    } finally {
+      (globalThis as { Worker: unknown }).Worker = real;
+    }
+  });
+});
