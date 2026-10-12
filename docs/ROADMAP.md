@@ -56,7 +56,8 @@ M1a in the meantime, per "take the first step that is not `DONE`".
 *History, kept for the record:* **M0 the milestone does not close with M0e alone.** The gameplay-critic sits at 6.9 and
 cannot rise without input existing, because §When each rubric line goes live puts **G6
 (mouse and touch) live from M0** and no step in M0a–M0e delivers any. That is a defect in
-this table, not in the build — M0f above is the proposed fix and is waiting on the owner.
+this table, not in the build — M0f above was that fix. It landed in run 6 and gameplay
+scored **8.8**, its first pass over the bar since M0d, which confirms the diagnosis.
 The full reasoning, and the gameplay-critic's own words on why a smoke test of input that
 nothing listens to proves nothing, are in `docs/archive/STATE-2026-10.md` run 4
 §Roadmap defect.

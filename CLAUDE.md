@@ -95,7 +95,11 @@ Each scheduled run executes exactly this:
    `playtest.log` — never the builder's reasoning. Each returns a score per
    `docs/RUBRIC.md` plus a defect list.
 6. **Decide.**
-   - All three ≥ 8.0 and gates green → commit, push, mark the milestone `DONE`.
+   - A **step** closes on the acceptance criteria written for it in §3.2 — the commands and
+     named screenshots — with gates green. Mark that step `DONE`.
+   - A **milestone** closes only when every step inside it is `DONE` **and** all three critics
+     scored ≥ 8.0 on the last pass. Until both hold it stays `IN_PROGRESS`, however many of
+     its steps are done. Never stretch a score to close one.
    - Any critic < 8.0 → write defects to `FINDINGS.md`, fix, re-gate, re-criticise.
      Up to 3 rework cycles per run. Still failing → commit what is green, leave the
      milestone `IN_PROGRESS`, record the blocker.

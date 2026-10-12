@@ -10,8 +10,8 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-11** · at commit `c6995c4`, the last commit of run 6 that
-changed code. The close-out commit that wrote this file follows it, so `git log -1`
+Last updated: **2026-10-12** · at commit `a654bd9`, the end of run 6, plus the dispatcher's
+§3.6 ruling commit on 2026-10-12. The last commit of run 6 that changed code was `c6995c4`. The close-out commit that wrote this file follows it, so `git log -1`
 being one or two docs commits ahead of that stamp is expected and not staleness.
 
 ---
@@ -28,7 +28,8 @@ camera now answers drag, wheel and pinch.
 **M0 the milestone stays `IN_PROGRESS`, and only the owner can close it.** Perf is held at
 7.8–7.9 by deductions no run can move: there is no real-GPU verification row, and
 SwiftShader frame cost drifts with no scene change. `CLAUDE.md` §7 also needs a human to
-have seen it running. This does not block M1a.
+have seen it running. This does not block M1a. The bar itself is no longer in question —
+see §Open items.
 
 ## The single next action
 
@@ -60,11 +61,11 @@ Take M1a. It is the first asset step, and the contract's first workstream.
 - **Closing M0** needs a real-GPU verification row (`docs/PERF_BUDGET.md` §Real-GPU
   verification, four steps, plus `?tier=potato`) and a human sighting of the current build.
   The camera now orbits, so the sighting can also confirm drag and pinch on a real phone.
-- **M0e was marked `DONE` with perf 7.9 and gameplay 6.7.** M0f was marked `DONE` with
-  perf 7.8. `STATE.md` runs 5 and 6 give the reasoning. Overrule it in `docs/ROADMAP.md`
-  if you read §3.6 per step.
-- `docs/ROADMAP.md` (the "History" paragraph under M0) still says M0f "is waiting on the
-  owner". An edit to that sentence was refused by the permission layer in run 5.
+- ~~The step-versus-milestone bar~~ — **ruled, 2026-10-12.** `CLAUDE.md` §3.6 now states it
+  outright: a **step** closes on its own acceptance criteria with gates green; a
+  **milestone** closes only when every step is `DONE` **and** all three critics are
+  ≥ 8.0. That is what runs 5 and 6 already did, so **M0e and M0f stand as `DONE`** and M0
+  stays `IN_PROGRESS`. No run needs to re-ask. The owner can still overrule the wording.
 
 ## Carried forward, minor (in `FINDINGS.md`)
 

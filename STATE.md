@@ -13,6 +13,50 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · dispatcher · ruling: how a step closes, and how a milestone closes
+
+No code. The daily trigger fired at 02:07 UTC, every DRAGONVEIN session was idle, and run 6
+(the owner's second Pro account) had already closed M0f overnight at `a654bd9`. Before
+spawning M1a, the dispatcher closed the one question run 6 left open rather than leaving the
+next run to re-derive it.
+
+**The question.** `CLAUDE.md` §3.6 read "All three ≥ 8.0 and gates green → commit, push, mark
+the milestone `DONE`." Runs 5 and 6 read that as a *milestone* bar and closed M0e (perf 7.9,
+gameplay 6.7) and M0f (perf 7.8) on their own row criteria, flagging the ambiguity instead of
+stretching a score. Read per *step*, both closures were wrong.
+
+**The ruling: per milestone, and §3.6 now says so in two clauses.** A step closes on the
+acceptance criteria written for it in §3.2 — the named commands and screenshots — with gates
+green. A milestone closes only when every step in it is `DONE` **and** all three critics
+scored ≥ 8.0. The 8.0 bar is untouched; what changed is that the sentence now names what it
+applies to. Reasons, in order of weight:
+
+1. **The alternative is unreachable by construction.** `docs/RUBRIC.md` §When each rubric line
+   goes live puts lines live at a milestone, not a step. A step that ships no input cannot
+   score G6, and a step that ships no GPU cannot score P1's absolute number. Per-step ≥ 8.0
+   would make every such step permanently unclosable — which is what trapped M0e for two runs.
+2. **Scoring an unchanged tree again is the behaviour the contract forbids.** The only route
+   from a 7.8 on an artefact no run can change is to re-roll the critic. §4 exists to stop
+   exactly that.
+3. **It is already the practice, and it was the right call twice.** M0f's 8.8 gameplay — first
+   over the bar since M0d — confirmed the run-4 diagnosis that G6 was a roadmap defect, not a
+   build defect. Closing M0e per step would have blocked the step that fixed it.
+
+**M0e and M0f stand as `DONE`. M0 stays `IN_PROGRESS`**, because perf sits at 7.8 and its
+deductions are the two owner items below — a real-GPU verification row and a human sighting
+(`CLAUDE.md` §7). Neither is a build defect; neither is closable from a container.
+
+Also fixed: `docs/ROADMAP.md` §M0 History still said M0f "is waiting on the owner", stale since
+run 6 landed it. An edit to that sentence was refused by the permission layer in run 5; it
+went through this time.
+
+Nothing here weakened a gate, a test or a score. If the owner reads §3.6 the other way, the
+two clauses are one revert and this entry is the reasoning.
+
+**Next:** M1a, spawned fresh per `ops/dispatcher-prompt.md`.
+
+---
+
 ## 2026-10-11 — tooling — archive, skills and an evidence page (owner request)
 
 Not a roadmap step. The owner asked whether a published agent workflow (Kun Chen's
