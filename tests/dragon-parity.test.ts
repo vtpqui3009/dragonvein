@@ -59,7 +59,12 @@ function anchorIds(n: number, edges: readonly (readonly [number, number])[]): nu
   return out;
 }
 
-const report: { gid: string; anchors: number; worstGapFraction: number; gaps: number[][] }[] = [];
+const report: {
+  gid: string; anchors: number; anchorMaxGap: number; worstGapFraction: number;
+  /** Per axis of the reference's z-up frame: |TS - reference| at the box's min and max side. */
+  boxGap: Record<'x' | 'y' | 'z', { min: number; max: number }>;
+}[] = [];
+const anchorGap = new Map<string, number>();
 
 describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (i, gm) => {
   const want = fx.graphs[i]!;
@@ -69,9 +74,14 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (i, gm) => {
     const ids = anchorIds(want.full.v.length, want.full.e);
     expect(anchorIds(g.v.length, g.e)).toEqual(ids);
     expect(ids.length).toBeGreaterThan(20); // 4 legs with toes, 2 wings with fingers, a crown
+    let worst = 0;
     for (const id of ids) {
-      g.v[id]!.forEach((c, k) => expect(Object.is(c, want.full.v[id]![k]), `anchor ${id}[${k}]`).toBe(true));
+      g.v[id]!.forEach((c, k) => {
+        worst = Math.max(worst, Math.abs(c - want.full.v[id]![k]!));
+        expect(Object.is(c, want.full.v[id]![k]), `anchor ${id}[${k}]`).toBe(true);
+      });
     }
+    anchorGap.set(want.gid, worst);
   });
 
   it(`the bounding box is within ${BOX_TOLERANCE * 100}% of the reference's on every axis and side`, () => {
@@ -82,17 +92,20 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (i, gm) => {
       const b = [p[k]!, -p[k + 2]!, p[k + 1]!];
       for (let a = 0; a < 3; a++) { lo[a] = Math.min(lo[a]!, b[a]!); hi[a] = Math.max(hi[a]!, b[a]!); }
     }
-    const gaps: number[][] = [];
+    const boxGap = {} as Record<'x' | 'y' | 'z', { min: number; max: number }>;
     let worst = 0;
     for (let a = 0; a < 3; a++) {
       const extent = want.placed.max[a]! - want.placed.min[a]!;
       const gLo = Math.abs(lo[a]! - want.placed.min[a]!), gHi = Math.abs(hi[a]! - want.placed.max[a]!);
-      gaps.push([gLo, gHi].map((x) => Math.round(x * 1e4) / 1e4));
+      boxGap['xyz'[a] as 'x' | 'y' | 'z'] = { min: Math.round(gLo * 1e4) / 1e4, max: Math.round(gHi * 1e4) / 1e4 };
       worst = Math.max(worst, gLo / extent, gHi / extent);
       expect(gLo, `axis ${'xyz'[a]} min: ${lo[a]} vs ${want.placed.min[a]}`).toBeLessThanOrEqual(BOX_TOLERANCE * extent);
       expect(gHi, `axis ${'xyz'[a]} max: ${hi[a]} vs ${want.placed.max[a]}`).toBeLessThanOrEqual(BOX_TOLERANCE * extent);
     }
-    report.push({ gid: want.gid, anchors: anchorIds(want.full.v.length, want.full.e).length, worstGapFraction: Math.round(worst * 1e4) / 1e4, gaps });
+    report.push({
+      gid: want.gid, anchors: anchorIds(want.full.v.length, want.full.e).length,
+      anchorMaxGap: anchorGap.get(want.gid) ?? NaN, worstGapFraction: Math.round(worst * 1e4) / 1e4, boxGap,
+    });
   });
 });
 
@@ -103,7 +116,9 @@ afterAll(() => {
   writeFileSync(path.join(ROOT, 'artifacts/parity.json'), `${JSON.stringify({
     rule: 'CLAUDE.md §1.5 (amended 2026-10-12): skin graphs equal; anchors exact; box within tolerance',
     boxTolerance: BOX_TOLERANCE,
+    boxGapUnits: 'world units, reference z-up frame; worstGapFraction = largest gap / that axis\'s extent',
     genomes: report.length,
+    anchorMaxGap: Math.max(...report.map((r) => r.anchorMaxGap)),
     worstGapFraction: worst.worstGapFraction,
     worstGenome: worst.gid,
     perGenome: report,
