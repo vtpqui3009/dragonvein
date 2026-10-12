@@ -10,45 +10,38 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `4679aa6`, the last commit of run 12 that changed
+Last updated: **2026-10-12** · at commit `a0dbec0`, the last commit of run 13 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M3c — built in a worker inside 120 ms on Medium; `gate:meshgen` green** · `TODO`
+**M3d — `gate:parity` green between the two builders on the fixed genome set** · `TODO`
 
-M3b closed in run 12 at `4679aa6`. Its second cycle scored art **8.1**, perf **8.2** and gameplay
-**9.0**, the first pass on M3 with all three at 8.0 or above. `buildDragon(genome)` builds the
-whole creature:
-- the full skin graph, exact to `builder.py` on 32 genomes;
-- membranes, spikes and tail ornament held to Blender's own vertices;
-- eyes;
-- material groups for skin, membrane and horn.
-
-`artifacts/variants/dragon-full.png` and `dragon-reference.png` match cell for cell.
-**Milestone M3 is `IN_PROGRESS`** until M3c and M3d are done.
+M3c closed in run 13 on its first critic pass: art **8.0**, perf **8.5**, gameplay **8.5**.
+Dragons build in a Web Worker (`src/assets/dragon/worker.ts`, `mesher.ts`, the three-free
+`arrays.ts`). `gate:meshgen` measures them on the built game page at its default settings
+(Medium minus post) while the game renders: worker max 23.9 ms, round trip max 26.7 ms,
+main-thread assembly max 3.9 ms, against 120 ms. The worker's one-off spawn and warm-up is
+about 70 ms and runs before any hatch (`DragonMesher.ready()`). **Milestone M3 is
+`IN_PROGRESS`** until M3d.
 
 ## The single next action
 
-Take M3c: move `buildDragon` into a Web Worker, and measure it in the browser on the Medium tier.
+M3d needs an owner answer first (see below). Then write `gate:parity`'s mesh half.
+`tools/gate-parity.mjs` SKIPs it now, and FAILS if ROADMAP marks M3d `DONE` without it (`a0dbec0`).
 
-- **The builder's output is already plain typed arrays** (`skin.ts` `SkinMesh`, `merge()` in
-  `builder.ts`). Transfer `position`, `normal`, `color` and `index` buffers plus `groups`,
-  `parts` and `kinds` from the worker, and assemble the `BufferGeometry` on the main thread.
-  `vite.config.ts` already has `worker: { format: 'es' }`. `src/assets/` may import `three`,
-  but the worker should not need it: split the typed-array build from the `BufferGeometry`
-  wrapper.
-- **`gate:meshgen`** times Node's main thread today (max 18.97 ms, cold 39.88). M3c's
-  criterion is the worker in the browser on Medium. Build that measurement (a page or
-  `dragon.html` mode, driven by Playwright) and make the gate enforce it, including the cold
-  first build, which is 31.2 ms in the browser today. Never raise the 120 ms budget.
-- **Perf asks (FINDINGS.md, M3b cycle 2):** a dragon's draw calls (3 groups each), frame
-  cost and heap are unmeasured in any frame. The frame loop's heap is about 33 kB of 40 kB.
-  Keep the worker hand-off allocation-light.
-- `gate:parity`'s mesh half becomes required the moment ROADMAP marks M3c `DONE`. M3d
-  builds it, and the vertex-count question below is for the owner then.
+- **What can be compared.** The graphs are already equal, exactly
+  (`tests/dragon-graph.test.ts`), and so are the primitive parameters. Blender's vertices
+  match within 1e-5 (`tests/dragon-full.test.ts`). The bounding box and limb anchors are
+  reachable: the reference's evaluated mesh against `buildDragonArrays`. The fixture
+  writer is `assetgen/dragon_vectors.py`, which already runs Blender per genome.
+- **What cannot be compared.** A vertex count. The reference skins with Skin + Subsurf
+  (about 20 000 vertices); the TS sweep has about 5 000. They cannot agree by construction.
+  Do not edit CLAUDE.md §1.5. Bring the numbers and ask, unless the owner has answered.
+- The reference's Skin modifier also leaves about 30 loose vertices per body (`STATE.md`
+  run 12). Count bounding boxes on faces, not on all vertices.
 
 ## Open items that need the owner, not a run
 
@@ -56,10 +49,11 @@ Take M3c: move `buildDragon` into a Web Worker, and measure it in the browser on
   and horns read, but critics keep noting a long, low body against
   `docs/ART_BIBLE.md`'s "chunky, front-heavy, head about 1/5". Only a change to
   `assetgen/dragon/builder.py` can move it. Should the reference be re-proportioned?
-- **For M3d, coming soon:** CLAUDE.md §1.5 has `gate:parity` compare *vertex count* between
+- **M3d is blocked on this:** CLAUDE.md §1.5 has `gate:parity` compare *vertex count* between
   the builders. Blender's Skin + Subsurf (about 20 000 vertices) and the TS sweep (about
-  5 000) cannot agree by construction. Graph equality (proven) plus bounding box and anchors
-  within tolerance is the reachable form. M3d will bring the numbers and ask.
+  5 000) cannot agree by construction. The reachable form is graph equality (proven) plus
+  bounding box and limb anchors within tolerance. May §1.5's vertex-count clause be read as
+  that, or replaced by it?
 - A verification-grade real-GPU row, when convenient (M16 requires it). Run
   `npm run gate:perf -- --real-gpu` on a GPU machine at 1920×1080, and once with
   `?tier=potato`. Also open `dragon.html` on the deployed site and say whether the dragons look
@@ -68,15 +62,20 @@ Take M3c: move `buildDragon` into a Web Worker, and measure it in the browser on
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
+- Nothing in the game calls `DragonMesher` yet. M9's hatch must `await mesher.ready()` while
+  idle, or its first build is cold (144.8 ms measured).
+- Perf:
+  - no dragon in any measured frame;
+  - the real-GPU log predates M2;
+  - heap is about 34.9 of 40 kB per frame.
 - Art:
-  - Umbra dragons render at V about 0.2, under the bible's 0.28 value floor (the genes are 0.30).
-  - The shadow sides still go dark.
-  - The membranes are flat fills, and a lower wing panel crosses the tail. This is the
-    reference's geometry.
-  - The tail ornament is the same blade on every tailTip-2 dragon.
-- No dragon or creature in the game scene yet (A6). `gate:smoke` does not load `dragon.html`.
-- G2 advisory: the children lean towards one parent. Revisit at M9b.
-- Broadleaf minors, G3 input latency unmeasured, perf P4 heap headroom.
+  - the C and H cells read alike;
+  - the wings are flat sails, where the concept's are spread;
+  - shadow sides go black;
+  - black slivers in the game sky, which are unexplained;
+  - no creature in the game scene.
+- Viewer: unreadable at 360 px, and the wheel zooms to the centre rather than the cursor.
+- G2 advisory: children lean towards one parent. Revisit at M9b.
 
 ## Standing hazards — every run hits these
 
