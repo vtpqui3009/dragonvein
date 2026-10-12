@@ -6,6 +6,72 @@ docs/archive/FINDINGS-*.md` still gives the full score history.
 
 ---
 
+# M3c — run 13, 2026-10-12 — cycle 1, at `c01ccb8`
+
+**Scores: art-critic 8.0 · perf-critic 8.5 · gameplay-critic 8.5.** No blocking defect. All three
+are ≥ 8.0, so **M3c ships**. One defect in this step's own code was fixed after the pass:
+gameplay's worker-failure hang, fixed in `c011d0c`. The next pass scores that fix.
+
+## perf-critic — 8.5 (all six lines)
+
+P1 1.6 · P2 1.8 · P3 1.8 · P4 1.2 · P5 1.2 · P6 0.9.
+
+P3 is at full marks. On the game page, the worker build's median is 5 ms and its max
+26.8 ms. The round trip's max is 31.2 ms, and the first build after the warm-up takes
+30.4 ms. Startup is 62.4 ms and the warm-up 42 ms.
+
+- [major] P1: the real-GPU log's newest row is `3ab6e84`, from before M3.
+- [major] No dragon in any measured frame, and no frame cost recorded during meshgen.
+- [minor] The first main-thread assembly is cold: `assembleMs.first 11.4` against a median of 0.4.
+  `ready()` warms the worker but not `toGeometry`.
+- [minor] The cold path is not wired into the game: only the viewer and the test hook call `ready()`.
+- [minor] The gate's browser is not core-partitioned like `gate:perf`'s. Worker spikes reach 26.8.
+- [minor] `dragon-full.json` `sheetBuildMs` is an 8-dragon sum, so it is easy to misread.
+- [minor] P4 34863 of 40960 B/frame. P6: no real-hardware Potato. Advisory GPU drift.
+
+SCORE_MACHINE: 8.5
+
+## art-critic — 8.0 (all nine lines)
+
+A1 1.0 · A2 0.8 · A3 1.0 · A4 1.1 · A5 1.0 · A6 1.0 · A7 1.0 · A8 0.7 · A9 0.4.
+
+The worker build is look-neutral. The sheet matches the reference cell for cell.
+
+- [major] A4 `dragon-full.png`: C and H are near-twins, as are A and G. One crouched side pose
+  hides the structural variation.
+- [minor] A9/A1: the wings are flat triangular sails with one bone line; the concept's are
+  spread and finger-boned.
+- [minor] A2/A3 turntable frames 0 and 36: the belly under the near wing crushes to black.
+- [minor] A5 frame 0: the near membrane lies across the torso and hides it.
+- [minor] A8/A2 `shots/01-wide.png` (480,135), (545,178), (890,10), (955,70): unlit black slivers in
+  the sky, recurring in every shot.
+- [minor] A6: no creature or ambient life in the game frame. The satellite islands are small.
+- [minor] A2: the runtime is saturated and dark, the reference pastel. State the intended look.
+
+SCORE_MACHINE: 8.0
+
+## gameplay-critic — 8.5 (5.8 of 6.8; G2, G4 n/a)
+
+G1 2.0 · G3 1.3 · G5 1.1 · G6 1.4.
+
+Builds do not stall the main thread. A MessageChannel ping gap stayed ≤ 16.8 ms over three
+runs of 32 builds. Over 192 builds in a row the worst round trip was 52 ms, with 0 errors.
+
+- [major] G5: a worker that fails to load made `DragonMesher.ready()` hang forever, silently.
+  `onerror` rejected only pending builds. **Fixed in `c011d0c`**: failure is sticky, and
+  everything rejects. A dead-Worker test covers it.
+- [major] G5: the same failure left `dragon.html` a blank grey page. **Fixed in `c011d0c`**:
+  the page prints the error.
+- [minor] The 120 ms holds only for a warmed worker, and nothing in the game calls `ready()`
+  yet (M9).
+- [minor] G2 advisory: G leans towards A, H towards C.
+- [minor] G6: the viewer is illegible at 360 px. The wheel zooms to the centre, not the cursor.
+- [minor] The game page shows no dragon.
+
+SCORE_MACHINE: 8.5
+
+---
+
 # M3b — run 12, 2026-10-12 — cycle 2, at `4679aa6`
 
 **Scores: art-critic 8.1 · perf-critic 8.2 · gameplay-critic 9.0.** No blocking defect. All three

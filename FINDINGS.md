@@ -5,6 +5,59 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M4a — run 15, 2026-10-12 — cycle 1, at `b27bc4d`
+
+**Scores: art-critic 8.3 · perf-critic 8.2 · gameplay-critic 9.2.** No blocking defect. All three
+are ≥ 8.0, so **M4a ships** (ROADMAP §Definition of done for an asset milestone: the sheet
+reads as 8 islands, LODs are in budget, it is in MANIFEST.json, and art ≥ 8.0).
+
+## perf-critic — 8.2 (all six lines)
+
+P1 1.8 · P2 1.8 · P3 1.8 · P4 1.0 · P5 1.2 · P6 0.6.
+
+- [major] P1: the real-GPU log is stale (`3ab6e84`, 29 commits back), and a sighting, not a
+  verification.
+- [major] P6: no real-hardware Potato number.
+- [minor] P4 `heap.bytesPerFrame 33820`, with nonzero per-frame allocation.
+- [minor] `gpuFrameMs.p50 430.8` is about 15 % above PERF_BUDGET's capped figure. It is
+  advisory; a second run would settle it.
+- [minor] The island LODs are not loaded by the game, so no frame covers them. Nine at LOD0
+  would add at most 51 840 triangles.
+
+SCORE_MACHINE: 8.2
+
+## art-critic — 8.3 (all nine lines)
+
+A1 1.1 · A2 0.9 · A3 0.9 · A4 1.2 · A5 1.1 · A6 0.9 · A7 0.9 · A8 0.8 · A9 0.45.
+
+- [major] A4 `variants/island.png`: biome does not read. The steppe seeds (3, 6, 8) look
+  unrelated, and the highland ones (1, 4, 7) look like meadow.
+- [major] A4: the sheet's low camera hides the deck, where terraces, bites and roughness live.
+  Add a top-down or higher row.
+- [major] A6: large featureless decks. Seeds 1, 4, 6 and 7 are dirt plates, and seeds 3 and 5
+  have no landmark. Dressing is M5e's job.
+- [minor] A3: no contact or cast shadow on the sheet. The decks are lit flat.
+- [minor] A2 `island.frame00.png`: concentric contour rings on the green mound.
+- [minor] A9: dirt-topped seeds against the concept's green tops. The dusk plate is very
+  saturated.
+- [minor] A5: needle-thin tips on seeds 1 and 3; check LOD2 there. The turntable is coarse
+  (36 frames, 512 px).
+
+SCORE_MACHINE: 8.3
+
+## gameplay-critic — 9.2 (4.8 of 5.2; G2, G4, G5 n/a)
+
+G1 2.1 · G3 1.2 · G6 1.5.
+
+- [minor] G1: the generated island is unreachable in play. The game uses the hand-built one.
+- [minor] G3: input latency is not measured in ms.
+- [minor] Seeds 1, 6 and 8 have rock-topped decks, which may not read as habitable.
+- [minor] The turntable covers seed 1 only.
+
+SCORE_MACHINE: 9.2
+
+---
+
 # M3d — run 14, 2026-10-12 — cycle 1, at `aaa19c7`
 
 **Scores: art-critic 7.4 · perf-critic 8.15 · gameplay-critic 8.5.** No blocking defect.
@@ -56,72 +109,6 @@ G1 1.9 · G3 1.3 · G6 1.2.
 - [minor] G6: the sheet is unusable at phone width. The viewer has no pitch and no zoom
   limits.
 - [minor] Colour and material differ between the TS and reference renders; parity is geometry.
-
-SCORE_MACHINE: 8.5
-
----
-
-# M3c — run 13, 2026-10-12 — cycle 1, at `c01ccb8`
-
-**Scores: art-critic 8.0 · perf-critic 8.5 · gameplay-critic 8.5.** No blocking defect. All three
-are ≥ 8.0, so **M3c ships**. One defect in this step's own code was fixed after the pass:
-gameplay's worker-failure hang, fixed in `c011d0c`. The next pass scores that fix.
-
-## perf-critic — 8.5 (all six lines)
-
-P1 1.6 · P2 1.8 · P3 1.8 · P4 1.2 · P5 1.2 · P6 0.9.
-
-P3 is at full marks. On the game page, the worker build's median is 5 ms and its max
-26.8 ms. The round trip's max is 31.2 ms, and the first build after the warm-up takes
-30.4 ms. Startup is 62.4 ms and the warm-up 42 ms.
-
-- [major] P1: the real-GPU log's newest row is `3ab6e84`, from before M3.
-- [major] No dragon in any measured frame, and no frame cost recorded during meshgen.
-- [minor] The first main-thread assembly is cold: `assembleMs.first 11.4` against a median of 0.4.
-  `ready()` warms the worker but not `toGeometry`.
-- [minor] The cold path is not wired into the game: only the viewer and the test hook call `ready()`.
-- [minor] The gate's browser is not core-partitioned like `gate:perf`'s. Worker spikes reach 26.8.
-- [minor] `dragon-full.json` `sheetBuildMs` is an 8-dragon sum, so it is easy to misread.
-- [minor] P4 34863 of 40960 B/frame. P6: no real-hardware Potato. Advisory GPU drift.
-
-SCORE_MACHINE: 8.5
-
-## art-critic — 8.0 (all nine lines)
-
-A1 1.0 · A2 0.8 · A3 1.0 · A4 1.1 · A5 1.0 · A6 1.0 · A7 1.0 · A8 0.7 · A9 0.4.
-
-The worker build is look-neutral. The sheet matches the reference cell for cell.
-
-- [major] A4 `dragon-full.png`: C and H are near-twins, as are A and G. One crouched side pose
-  hides the structural variation.
-- [minor] A9/A1: the wings are flat triangular sails with one bone line; the concept's are
-  spread and finger-boned.
-- [minor] A2/A3 turntable frames 0 and 36: the belly under the near wing crushes to black.
-- [minor] A5 frame 0: the near membrane lies across the torso and hides it.
-- [minor] A8/A2 `shots/01-wide.png` (480,135), (545,178), (890,10), (955,70): unlit black slivers in
-  the sky, recurring in every shot.
-- [minor] A6: no creature or ambient life in the game frame. The satellite islands are small.
-- [minor] A2: the runtime is saturated and dark, the reference pastel. State the intended look.
-
-SCORE_MACHINE: 8.0
-
-## gameplay-critic — 8.5 (5.8 of 6.8; G2, G4 n/a)
-
-G1 2.0 · G3 1.3 · G5 1.1 · G6 1.4.
-
-Builds do not stall the main thread. A MessageChannel ping gap stayed ≤ 16.8 ms over three
-runs of 32 builds. Over 192 builds in a row the worst round trip was 52 ms, with 0 errors.
-
-- [major] G5: a worker that fails to load made `DragonMesher.ready()` hang forever, silently.
-  `onerror` rejected only pending builds. **Fixed in `c011d0c`**: failure is sticky, and
-  everything rejects. A dead-Worker test covers it.
-- [major] G5: the same failure left `dragon.html` a blank grey page. **Fixed in `c011d0c`**:
-  the page prints the error.
-- [minor] The 120 ms holds only for a warmed worker, and nothing in the game calls `ready()`
-  yet (M9).
-- [minor] G2 advisory: G leans towards A, H towards C.
-- [minor] G6: the viewer is illegible at 360 px. The wheel zooms to the centre, not the cursor.
-- [minor] The game page shows no dragon.
 
 SCORE_MACHINE: 8.5
 

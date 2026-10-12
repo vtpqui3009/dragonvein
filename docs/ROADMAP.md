@@ -132,9 +132,16 @@ a sighting of `dragon.html`, and the reference-design questions behind the art s
 
 | step | done when | status |
 |---|---|---|
-| **M4a** | **island generator — shape, size, biome, edge erosion, underside — with a passing variant sheet** | **TODO** |
-| M4b | 3 cliff/rock generators, each with a passing variant sheet | TODO |
+| M4a | island generator — shape, size, biome, edge erosion, underside — with a passing variant sheet | DONE |
+| **M4b** | **3 cliff/rock generators, each with a passing variant sheet** | **TODO** |
 | M4c | 2 more rock generators plus arches and floating shards | TODO |
+
+M4a closed on 2026-10-12 at `b27bc4d` (run 15) on its first pass: art 8.3, perf 8.2,
+gameplay 9.2. `terrain/island` meets §Definition of done:
+1. 8 seeds read as 8 islands (most alike pair 30.6 % apart);
+2. LOD0/1/2 = 5760/1536/280 against 8000/2500/700;
+3. it is listed in MANIFEST.json with its script;
+4. art ≥ 8.0.
 
 ## M5 — Flora wave 1
 

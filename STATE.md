@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 15 · M4a — the island generator
+## 2026-10-12 · run 15 · M4a DONE — the island generator
 
 **Step**: `M4a`, the first step in reading order that is not `DONE`. Step 0 pushed `cff41b6`.
 
@@ -52,6 +52,48 @@ A second generator needs both to read from the generator's own declaration:
 
    `node tools/variant-probe.mjs flora/broadleaf` still passes.
 5. `npm run gates` exits 0.
+
+### Result — every criterion met at `b27bc4d`
+
+1. `assetgen/terrain/island.py` (`b27bc4d`):
+   - **Construction:** `plan(seed)` draws everything up front, and the biome is stratified on
+     the golden ratio (seeds 1–8 give 3 highland, 2 meadow, 3 steppe).
+   - **Budget:** LOD0/1/2 at 5760/1536/280 triangles against 8000/2500/700.
+   - **Winding:** 0 inward faces at every LOD.
+   - **Colour:** every colour is on a grass or rock ramp of ART_BIBLE stops.
+2. `assets:build --verify` reproduces all 6 files across two processes. `--check` matches the
+   committed bytes and the MANIFEST pins, broadleaf's included (unchanged at `a24953…`).
+   `check:assets` is OK.
+3. `artifacts/variants/island.png` and `artifacts/turntables/island.webm` were rendered, along
+   with broadleaf's, through the generalised `render_all.py` (`72ba17c`).
+4. The probes pass (`549d93f`):
+   - island A4: the most alike pair (4/5) is 30.6 % apart;
+   - island A2: every vertex is within ΔE 0.14 of its ramp;
+   - broadleaf still passes: bark worst ΔE 3.0, canopy 0.12.
+5. Gates are green with 936 tests.
+
+**Scores:** art **8.3**, perf **8.2**, gameplay **9.2**, on the first pass. **M4a is `DONE`.**
+M4 stays `IN_PROGRESS` with M4b and M4c to go.
+
+### Decisions
+
+- **Generators declare how they are judged and shown.**
+  - `METRIC_AXES` gives the A4 axes.
+  - `PALETTE_ROLES` lists the surfaces held to ΔE 12 and the ramps held to ΔE 3. It is carried
+    in MANIFEST.json as `paletteRoles`.
+  - `SHEET` sets the framing keys, camera pitch and whether there is a ground.
+
+  broadleaf's behaviour is the default, so its verdicts and bytes are unchanged.
+- **One ramp rule.** The island's ramps are the same quadratic Bezier the probe already used
+  for broadleaf's canopy, so every ramp is judged one way.
+- **The rock ramp runs dusk → rock mid → deep shadow.** In the other order, dusk sat
+  mid-underside and every cone came out orange. The bible gives deep shadow to island
+  undersides.
+- **The grass highlight is capped at 0.74.** A hilltop at the light stop read as a glowing
+  blob.
+
+---
+
 
 ---
 
@@ -146,86 +188,6 @@ it.**
 or if bounding box or limb-anchor positions differ beyond tolerance. The graph half already
 holds (`tests/dragon-graph.test.ts`, under the named 1-ulp `pow` exception). M3d writes
 the gate on that wording.
-
----
-
-## 2026-10-12 · run 13 · M3c DONE (M3 IN_PROGRESS) — the dragon builds in a worker inside 120 ms on Medium
-
-**Step**: `M3c`, the first step in reading order that is not `DONE`. Step 0 pushed `caebd19`.
-
-**Ownership**: `src/assets/dragon/` (mesh-builder), then `src/main.ts`, `src/dragon-view.ts`,
-`tools/` and `tests/` (integrator). One sequential owner, in that order.
-
-**What "on Medium" can mean today.** The game has no tier system yet (M6e). Its default
-settings are the Medium row minus post (`perf.json` `tier.note`). The honest measurement is
-the worker build run from the **game page at those default settings**, with the game loop
-rendering. That is where a hatch will happen, on the CI runner's SwiftShader host.
-
-### Acceptance criteria
-
-1. **A three-free core.** `buildDragonArrays(genome)` returns plain typed arrays plus groups,
-   parts and kinds. `buildDragon` wraps them in a `BufferGeometry`.
-   `tests/dragon-worker.test.ts` proves the two give byte-identical arrays on all 32 genomes.
-2. **A worker and its client.** `src/assets/dragon/worker.ts` builds from a serialised
-   genome. `DragonMesher` (`src/assets/dragon/mesher.ts`) posts the genome, receives the
-   buffers as **transferables** (no copy), and assembles the geometry. The test proves the
-   genome round-trips: the rebuilt genome has the same gid and phenotype, and the worker's
-   arrays equal the direct build's.
-3. **Measured where it counts.** `gate:meshgen` loads the built game page at its default
-   settings and calls `__dragonveinMeshgen(recipes)`. That builds all 32 fixed genomes, one
-   at a time, through the worker while the game renders, and records for each dragon:
-   - its build time inside the worker;
-   - its round trip (post to geometry ready);
-   - its main-thread assembly time.
-
-   The gate fails if any worker build or round trip, the cold first included, exceeds
-   120 ms. It writes `artifacts/meshgen.json` with the numbers and the tier note.
-4. **The game does not pay for it at boot.** The mesher and worker load lazily on first use.
-   `gate:perf`'s bundle and boot numbers stay within budget.
-5. `dragon.html` builds through the worker too. `npm run gates` exits 0.
-
-### Result — every criterion met at `c01ccb8`
-
-1. `buildDragonArrays` (in `arrays.ts`, with no three.js) and `toGeometry` are byte-identical to
-   the old `buildDragon` on 32 genomes (`5c99df7`).
-2. `worker.ts` and `DragonMesher`: a genome is posted as JSON and the four buffers come back as
-   transferables. `Genome.fromJSON` (`7db3638`) round-trips 32 genomes, and the reply equals
-   the direct build.
-3. `gate:meshgen` runs on the game page while it renders (`a68bb9b`): worker max 26.8 ms, round
-   trip max 31.2, main-thread assembly max 11.4, against 120. The re-gate at `c011d0c` gave
-   23.9, 26.7 and 3.9.
-4. The mesher loads lazily: the worker is its own 10 kB gzip chunk. `bundle.gzipBytes` is
-   164 842 against 1.4 MB, and `bootMs` is 373.
-5. `dragon.html` builds through the worker (`c01ccb8`). Gates are green with 872 tests.
-
-**Scores:** art **8.0**, perf **8.5**, gameplay **8.5**, all on the first pass. **M3c is
-`DONE`. M3 stays `IN_PROGRESS`** until M3d.
-
-### Decisions
-
-- **The warm-up is honest, not a dodge.** A fresh worker's first build was a 144.8 ms round
-  trip (module fetch and parse, then a cold JIT), against about 9 ms after it.
-  - `DragonMesher.ready()` builds one throwaway dragon in the worker. The game will call it
-    while idle, before a hatch can happen.
-  - The gate holds every real build to 120 ms, including the first after the warm-up. It
-    reports the warm-up as `startupMs` and `warmMs` (about 70 ms).
-  - The change in what the gate enforces went in its own commit, with this reason
-    (`a68bb9b`).
-- **"On Medium" means the game page's default settings,** which `perf.json` calls Medium
-  minus post until M6e. It is measured there, under the render loop, because that is where a
-  hatch happens.
-- **A failing worker now fails loudly (`c011d0c`, after the pass).** Before the fix,
-  `ready()` and later builds hung forever when the worker could not load. The fix is in
-  this step's own code and cheap. The next pass scores it.
-- **`gate:parity`'s mesh half is now keyed to M3d (`a0dbec0`).** Keyed to M3c, as run 10 set
-  it, it would have turned `main` red at this close-out, and `main` would have stayed red for
-  the next run. It now SKIPs until the comparison exists, and FAILS if M3d is marked `DONE`
-  without it. That was shown on a scratch copy.
-
-### Blocker for M3d
-
-CLAUDE.md §1.5's vertex-count comparison cannot hold between Skin + Subsurf (about 20 000
-vertices) and the TS sweep (about 5 000). That is the owner's call (NEXT.md).
 
 ---
 
