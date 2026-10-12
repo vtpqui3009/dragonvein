@@ -101,6 +101,11 @@ export function bellyWeight(up: number): number {
 
 export type PartKind = 'spine' | 'limb' | 'eye' | 'glint' | 'membrane' | 'spike' | 'ornament';
 
+/** Geometry group material index per part: 0 skin, 1 membrane, 2 horn. */
+export const MATERIAL_OF: Record<PartKind, number> = {
+  spine: 0, limb: 0, eye: 0, glint: 0, membrane: 1, spike: 2, ornament: 2,
+};
+
 /** Skeleton, torso, limbs and eyes: M3a's subset. */
 export function buildDragonBody(genome: Genome, opts: SkinOptions = SKIN_LOD0): DragonBody {
   return build(genome, false, opts);
@@ -171,6 +176,17 @@ function build(genome: Genome, full: boolean, opts: SkinOptions): DragonBody {
   geometry.setAttribute('normal', new BufferAttribute(nrm, 3));
   geometry.setAttribute('color', new BufferAttribute(col, 3));
   geometry.setIndex(new BufferAttribute(index, 1));
+  // Material groups, in part order: skin (tubes and eyes), membrane, horn (spikes and
+  // ornament). The reference gives each its own material (`mats`); a matte membrane read
+  // as glass under the skin's gloss (run 12, art A3).
+  const groups: { mat: number; start: number; count: number }[] = [];
+  for (let pi = 0; pi < merged.parts.length; pi++) {
+    const part = merged.parts[pi]!, mat = MATERIAL_OF[kinds[pi]!];
+    const last = groups[groups.length - 1];
+    if (last && last.mat === mat && last.start + last.count === part.start) last.count += part.count;
+    else groups.push({ mat, start: part.start, count: part.count });
+  }
+  for (const gr of groups) geometry.addGroup(gr.start, gr.count, gr.mat);
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
   return { geometry, graph: g, idx, parts: merged.parts, kinds };

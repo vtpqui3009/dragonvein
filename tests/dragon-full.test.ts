@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { breed, wild, type Element, type Genome } from '../src/core/genome';
-import { buildDragon } from '../src/assets/dragon/builder';
+import { MATERIAL_OF, buildDragon } from '../src/assets/dragon/builder';
 import { membranePolys, ornamentParams, spikeParams } from '../src/assets/dragon/graph';
 import { membraneMesh, primitiveVertices } from '../src/assets/dragon/parts';
 
@@ -115,6 +115,16 @@ describe.each(genomes.map((g, i) => [i, g] as const))('whole dragon #%i', (i, gm
       expect(holes, `part ${pi} (${d.kinds[pi]}): edges with no twin`).toBe(0);
       expect(vol, `part ${pi} (${d.kinds[pi]}): signed volume`).toBeGreaterThan(0);
     }
+  });
+
+  it('material groups cover every triangle once, and each part sits in its material', () => {
+    const gs = d.geometry.groups;
+    expect(gs.reduce((n, g) => n + g.count, 0)).toBe(index.length);
+    gs.forEach((g, k) => { if (k) expect(g.start).toBe(gs[k - 1]!.start + gs[k - 1]!.count); });
+    d.parts.forEach((part, pi) => {
+      const g = gs.find((x) => x.start <= part.start && part.start + part.count <= x.start + x.count);
+      expect(g?.materialIndex, `part ${pi} ${d.kinds[pi]}`).toBe(MATERIAL_OF[d.kinds[pi]!]);
+    });
   });
 
   it('has every part the genome asks for', () => {
