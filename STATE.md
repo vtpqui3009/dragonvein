@@ -59,9 +59,15 @@ This is also the first runtime use of an `assetgen/` asset.
    - `cpuFrameMs.p95` ≤ 3.5 with `mainThreadTailEnforced`.
 
    Potato stays in budget on draws.
-4. **Seen moving.** `artifacts/shots/01-wide.png` shows the trees. `node tools/art-probe.mjs`
-   reports ambient motion in the canopy from the `m0-island.webm` frames, and it is no lower
-   than before.
+4. **Seen moving.** `artifacts/shots/01-wide.png` shows the trees. The smoke run writes
+   `artifacts/shots/11-wind-a.png` and `11-wind-b.png`:
+   - the same camera, with the island bob frozen, at wind times 0 s and 0.8 s;
+   - the playtest log prints the changed-pixel count between them;
+   - nonzero means the canopy moved, and the changed pixels lie on trees.
+
+   The existing ambient-motion line (art-probe AC6) does not apply: it measures the
+   satellites drifting in a turntable whose camera moves anyway, so it cannot isolate sway.
+   Its baseline is 5.66 × 3.07 px.
 5. `npm run gates` exits 0.
 
 ---
