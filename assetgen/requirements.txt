@@ -1,0 +1,4 @@
+# Pinned: the committed .glb hashes in public/assets/MANIFEST.json were built with this
+# exact Blender. A different bpy may export different bytes, which `build_all.py --check`
+# would (correctly) report as drift. Bump only together with a rebuild of every asset.
+bpy==5.2.2

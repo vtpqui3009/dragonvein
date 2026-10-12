@@ -5,6 +5,8 @@
     python3 -I assetgen/build_all.py --out DIR    # build into DIR instead (no repo write)
     python3 -I assetgen/build_all.py --verify     # build twice, in two separate
                                                   # processes, and compare SHA-256
+    python3 -I assetgen/build_all.py --check      # rebuild into a temp dir and compare
+                                                  # with the committed binaries + MANIFEST
 
 `--verify` is how `CLAUDE.md` §1.2 ("reproduces them byte-for-byte") is proven rather
 than asserted. It really does fork two child processes; a single process writing twice
@@ -218,6 +220,53 @@ def verify():
     return 0
 
 
+def check(committed_root):
+    """Rebuild into a temp dir and compare against what is committed (CLAUDE.md §1.2).
+
+    `--verify` proves two processes on *this* machine agree. This proves the committed
+    bytes are what this machine builds, which is the claim §1.2 makes about the repository.
+    In CI it is the cross-machine half: the runner reproduces the hashes another container
+    committed. Every committed binary is compared twice — with the fresh build, and with
+    its MANIFEST pin — and a drift names both hashes, so a failure says what moved.
+    """
+    fresh = tempfile.mkdtemp(prefix="dragonvein-assets-check-")
+    cmd = [sys.executable, "-I", os.path.abspath(__file__), "--out", fresh, "--no-manifest"]
+    print(f"rebuild: {' '.join(cmd)}", flush=True)
+    proc = subprocess.run(cmd, cwd=REPO)
+    if proc.returncode != 0:
+        print(f"CHECK FAILED: the rebuild exited {proc.returncode}", file=sys.stderr)
+        return 1
+    built = _glb_hashes(fresh)
+    committed = _glb_hashes(committed_root)
+    mpath = os.path.join(committed_root, "MANIFEST.json")
+    pins = {}
+    if os.path.exists(mpath):
+        with open(mpath, encoding="utf-8") as fh:
+            for entry in json.load(fh).get("assets", {}).values():
+                for lod in entry.get("lods", {}).values():
+                    pins[lod["file"]] = lod.get("sha256")
+    bad = 0
+    print(f"\nSHA-256, committed ({committed_root}) against a fresh build:")
+    for rel in sorted(set(built) | set(committed)):
+        b, c, m = built.get(rel), committed.get(rel), pins.get(rel)
+        ok = b is not None and b == c == m
+        print(f"  {'MATCH' if ok else 'DRIFT'}  {rel:34} {c or '(not committed)'}")
+        if not ok:
+            bad += 1
+            print(f"         fresh build {b or '(not built)'}\n"
+                  f"         MANIFEST    {m or '(not pinned)'}", file=sys.stderr)
+    if not built:
+        print("CHECK FAILED: the rebuild produced no .glb files", file=sys.stderr)
+        return 1
+    if bad:
+        print(f"\nCHECK FAILED: {bad} committed file(s) are not what the generators build "
+              "here. Rebuild with `npm run assets:build` and commit, or, if this is a "
+              "different machine, record a CLAUDE.md §1.2 finding.", file=sys.stderr)
+        return 1
+    print(f"\ncheck OK — {len(built)} committed file(s) match a fresh build and MANIFEST.json")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default=os.path.join(REPO, "public", "assets"),
@@ -226,10 +275,17 @@ def main(argv=None):
                     help="skip MANIFEST.json (used by --verify's child processes)")
     ap.add_argument("--verify", action="store_true",
                     help="build twice in two processes and compare SHA-256")
+    ap.add_argument("--check", action="store_true",
+                    help="rebuild into a temp dir and compare with the committed binaries "
+                         "and MANIFEST.json")
+    ap.add_argument("--committed", default=os.path.join(REPO, "public", "assets"),
+                    help="committed asset root for --check (default public/assets)")
     args = ap.parse_args(argv)
 
     if args.verify:
         return verify()
+    if args.check:
+        return check(os.path.abspath(args.committed))
     try:
         build_all(os.path.abspath(args.out), write_manifest=not args.no_manifest)
     except BuildError as exc:
