@@ -13,6 +13,59 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 19 · M5a — wind vertex shader on 200+ instanced trees
+
+**Step**: `M5a`, the first step in reading order that is not `DONE`. Step 0 pushed `743d96a`.
+
+**Ownership.** There is no `src/render/` yet. The wind material is a new
+`src/render/wind.ts`, and the trees enter the scene through `src/main.ts`. That touches two
+directories, so it goes to **one sequential owner**, the integrator (CLAUDE.md §2.4).
+
+**Where the proof lives.** `gate:perf` measures the game page through `__dragonveinPerf`. A
+separate proof page would need its own copy of that 972-line instrument. So the 200+ trees
+go into the game scene, where the budget is already enforced:
+- the committed `flora/broadleaf` replaces the hand-built broadleaf placeholders on the
+  hero island;
+- groves are added on the companion islands, bobbing with them.
+
+This is also the first runtime use of an `assetgen/` asset.
+
+### Acceptance criteria
+
+1. **`src/render/wind.ts`** exports:
+   - a material patch (`onBeforeCompile`, vertex shader only) that sways a vertex by its
+     height above the instance's base, with a per-instance phase taken from the instance
+     matrix;
+   - one shared time uniform, set once per frame without allocating;
+   - a TS mirror of the sway function.
+
+   `tests/wind.test.ts` proves on the mirror that:
+   - the offset is 0 at the base;
+   - it grows with height;
+   - it is bounded by the amplitude;
+   - two instances at different positions are out of phase.
+
+   `check:layers` passes, with render importing only `core`, `assets` and `three`.
+2. **200+ instances.** The scene draws at least 200 instances of the committed
+   `public/assets/flora/broadleaf.lod{0,1,2}.glb`, every one swaying:
+   - one `InstancedMesh` per LOD in use;
+   - placement seeded from `src/core/rng.ts`;
+   - LOD picked by distance band at setup.
+
+   `__dragonveinStats()` reports `windInstances` and the playtest log prints it.
+3. **Inside budget.** `npm run gate:perf` gives:
+   - `drawCalls` ≤ 180 and `triangles` ≤ 900 000;
+   - `heap.withinBudget` true, with no budget raised;
+   - `cpuFrameMs.p95` ≤ 3.5 with `mainThreadTailEnforced`.
+
+   Potato stays in budget on draws.
+4. **Seen moving.** `artifacts/shots/01-wide.png` shows the trees. `node tools/art-probe.mjs`
+   reports ambient motion in the canopy from the `m0-island.webm` frames, and it is no lower
+   than before.
+5. `npm run gates` exits 0.
+
+---
+
 ## 2026-10-12 · run 18 · M4d DONE (M4 IN_PROGRESS) — arch and floating-shard landmark generators
 
 **Step**: `M4d`, the first step in reading order that is not `DONE`. Step 0 pushed `2dd8d0d`.
@@ -439,4 +492,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T20:04Z
