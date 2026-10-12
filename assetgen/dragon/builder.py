@@ -49,6 +49,10 @@ def skeleton(p):
         z=lerp(0.50,0.86,t)+0.06*math.sin(t*math.pi)
         r=lerp(0.040, 0.355*BM, t**(1.0/max(0.4,TT)))
         tail.append(g.node((x,0,z),r))
+        # The tail is a chain. Without these edges the Skin modifier skinned nodes 0-3 as
+        # loose beads floating behind the body (docs/concept/01-species-lineup.png), where
+        # GENOME.md makes tailTaper "tail radius falloff exponent" -- one tapering tail.
+        if i: g.e.append((tail[i-1],tail[i]))
     idx["tailTip"]=tail[0]
 
     # --- torso: hips -> chest -> shoulder ---
