@@ -13,6 +13,39 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 18 · M4d — arch and floating-shard landmark generators
+
+**Step**: `M4d`, the first step in reading order that is not `DONE`. Step 0 pushed `2dd8d0d`.
+
+**Ownership**: `assetgen/terrain/` (asset-builder), sequential, on `rockkit.py`.
+
+**Budget**: docs/PERF_BUDGET.md §Other budgets has no landmark line, so the prop budget
+applies: 4 000 / 1 200 / 300.
+
+### Acceptance criteria
+
+1. **`terrain/arch`**: a natural stone arch, a genus-1 solid on two legs. It may also be a
+   sea-stack window. **`terrain/floatshard`**: fragments of sky island hanging in the air,
+   an inverted-cone underside with a flat, broken top, in clusters. Each follows the M4c
+   pattern:
+   - `plan(seed)`, with the main silhouette axis stratified on the seed;
+   - flat-shaded;
+   - LOD0/1/2 strictly decreasing **on every seed 1–8**, within 4 000 / 1 200 / 300;
+   - 0 inward faces and 0 open edges at every LOD on every seed;
+   - colours only on the ART_BIBLE ramps (rock, from rockMid; grass allowed on floatshard
+     tops, declared optional if not on every seed).
+2. **Pipeline.** Both are registered.
+   - `--verify` is byte-identical.
+   - `--check` and `check:assets` are OK.
+3. **Seen.** `artifacts/variants/{arch,floatshard}.png` and a turntable each. The
+   floatshard sheet has no ground plane.
+4. **Probed.** `variant-probe` passes for both, and the seven existing generators still
+   pass.
+5. `npm run gates` exits 0.
+6. Art per generator is ≥ 8.0.
+
+---
+
 ## 2026-10-12 · run 17 · M4c DONE — shard and eroded rock generators
 
 **Step**: `M4c`, the first step in reading order that is not `DONE`. Step 0 pushed `a45d808`.
@@ -464,4 +497,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T17:13Z
