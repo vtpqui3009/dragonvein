@@ -130,6 +130,48 @@
         }
       }
     },
+    "terrain/eroded": {
+      "script": "assetgen/terrain/eroded.py",
+      "family": "terrain",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "dusk": "#844e32",
+        "rockMid": "#5a4a40",
+        "deepShadow": "#1a1420"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "dusk",
+            "rockMid",
+            "deepShadow"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "terrain/eroded.lod0.glb",
+          "tris": 500,
+          "sha256": "11c7f4dde9c5a9207970afeaf81580ff91a4734fbf8af886cb4cb8f2b6434fbe"
+        },
+        "lod1": {
+          "file": "terrain/eroded.lod1.glb",
+          "tris": 182,
+          "sha256": "188f7849d6f0a973139c853553e6793ab79e5259932231f639346e99f46a1819"
+        },
+        "lod2": {
+          "file": "terrain/eroded.lod2.glb",
+          "tris": 72,
+          "sha256": "b9c7bd9070ea65f02a9920b1baad6c351e1374401fdb2baa4a8ca1c0e25831cc"
+        }
+      }
+    },
     "terrain/island": {
       "script": "assetgen/terrain/island.py",
       "family": "terrain",
@@ -177,6 +219,48 @@
           "file": "terrain/island.lod2.glb",
           "tris": 280,
           "sha256": "49293b08d64651d2a03e8a540c7d27008145d071ff229474463eac492286dbee"
+        }
+      }
+    },
+    "terrain/shard": {
+      "script": "assetgen/terrain/shard.py",
+      "family": "terrain",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "dusk": "#844e32",
+        "rockMid": "#5a4a40",
+        "deepShadow": "#1a1420"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "dusk",
+            "rockMid",
+            "deepShadow"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "terrain/shard.lod0.glb",
+          "tris": 808,
+          "sha256": "453f61b0b11279b80adfa81edf1939c3e4ce8eac48ed1a1d020a7eb300d80d27"
+        },
+        "lod1": {
+          "file": "terrain/shard.lod1.glb",
+          "tris": 268,
+          "sha256": "566bb35adc9ac03f84133f135efaf22c90e5ff696667dc50156c0275898ccfb7"
+        },
+        "lod2": {
+          "file": "terrain/shard.lod2.glb",
+          "tris": 128,
+          "sha256": "ef668a46cad8b534515284b709d28c8a82e523373c83efc1b067cdae2ef7b62b"
         }
       }
     },

@@ -11,8 +11,8 @@ terrain/boulders; ROADMAP M4b). Not a generator itself; nothing here draws a ran
 """
 import math
 
-import bmesh
-import bpy
+import bpy  # before bmesh: bmesh only imports once bpy has initialised
+import bmesh  # noqa: E402
 
 PALETTE = {
     "grassDark": "#1e4a21",
@@ -159,3 +159,56 @@ def icosphere(subdivisions):
 def _unit(v):
     n = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
     return (v[0] / n, v[1] / n, v[2] / n)
+
+
+def vertex_normals(m):
+    """Area-weighted vertex normals of a Mesh's faces, for colouring by what a vertex
+    looks at (sky, flank, ground). Faces are fanned from their first vertex."""
+    acc = [[0.0, 0.0, 0.0] for _ in m.v]
+    for f in m.f:
+        a = m.v[f[0]]
+        for i in range(1, len(f) - 1):
+            b, c = m.v[f[i]], m.v[f[i + 1]]
+            ux, uy, uz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+            vx, vy, vz = c[0] - a[0], c[1] - a[1], c[2] - a[2]
+            n = (uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx)
+            for k in (f[0], f[i], f[i + 1]):
+                acc[k][0] += n[0]
+                acc[k][1] += n[1]
+                acc[k][2] += n[2]
+    out = []
+    for n in acc:
+        ln = math.sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2])
+        out.append((0.0, 0.0, 1.0) if ln < 1e-12 else (n[0] / ln, n[1] / ln, n[2] / ln))
+    return out
+
+
+def rock_tone(nz, base, ground=0.0, hollow=0.0):
+    """Ramp position for a rock vertex: `base` (rock mid, about 0.45-0.65) on the flanks,
+    pulled toward dusk only where the normal looks at the sky (nz > 0), toward deep shadow
+    where it looks at the ground, near the ground (`ground` 0..1) and inside hollows."""
+    t = base - 0.24 * max(0.0, nz) ** 1.5 + 0.30 * max(0.0, -nz) + 0.16 * ground + 0.40 * hollow
+    return clamp01(t)
+
+
+def fractured_stone(m, sub, pos, rad, sq, yaw, cuts, tone, floor=-0.12):
+    """A rubble stone: an icosphere squashed by `sq`, chopped by fracture `cuts`
+    ((unit normal, offset in radii) pairs, star-shaped about the centre so it stays
+    outward), yawed, and clamped at `floor` radii below the ground. Coloured by its own
+    face directions on the rock ramp. Returns the vertex range it added."""
+    verts, faces = icosphere(sub)
+    c, s = math.cos(yaw), math.sin(yaw)
+    first = len(m.v)
+    for d in verts:
+        k = 1.0
+        for n, off in cuts:
+            dn = d[0] * n[0] + d[1] * n[1] + d[2] * n[2]
+            if dn > 1e-6:
+                k = min(k, off / dn)
+        x, y, z = d[0] * k * rad, d[1] * k * rad, d[2] * k * rad * sq
+        x, y = c * x - s * y, s * x + c * y
+        p = (pos[0] + x, pos[1] + y, max(floor * rad, pos[2] + z))
+        m.vert(p, ramp(ROCK, rock_tone(d[2], 0.52 + 0.12 * tone, 0.0)))
+    for a, b, cc in faces:
+        m.face((first + a, first + b, first + cc))
+    return first, len(m.v)
