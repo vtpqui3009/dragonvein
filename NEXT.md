@@ -10,92 +10,78 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `a654bd9`, the end of run 6, plus the dispatcher's
-§3.6 ruling commit on 2026-10-12. The last commit of run 6 that changed code was `c6995c4`. The close-out commit that wrote this file follows it, so `git log -1`
-being one or two docs commits ahead of that stamp is expected and not staleness.
+Last updated: **2026-10-12** · at commit `ccb560e`, the last commit of run 7b that changed
+code. The close-out commit that wrote this file follows it, so `git log -1` being one or two
+docs commits ahead of that stamp is expected and not staleness.
 
 ---
 
 ## Current step
 
-**M1a — one generator goes end to end: script → LOD0/1/2 `.glb` → 8-seed variant sheet →
-turntable → `MANIFEST.json`** · `TODO`
+**M1b — `assets:build` and `assets:render` run in CI and publish their artefacts** · `TODO`
 
-Every M0 step is now `DONE`. M0f closed this run at `c6995c4` with art **8.3**, perf **7.8**
-and gameplay **8.8**. Gameplay passed 8.0 for the first time since M0d, because the
-camera now answers drag, wheel and pinch.
-
-**M0 the milestone stays `IN_PROGRESS`, and only the owner can close it.** Perf is held at
-7.8–7.9 by deductions no run can move: there is no real-GPU verification row, and
-SwiftShader frame cost drifts with no scene change. `CLAUDE.md` §7 also needs a human to
-have seen it running. This does not block M1a. The bar itself is no longer in question —
-see §Open items.
+M1a closed at `ccb560e` on all eight of its criteria (STATE.md run 7), with art **8.65**,
+perf **7.4** and gameplay **9.6**. A4 went live and scored 1.4 / 1.6. Run 7 built the
+B1 broadleaf generator and ran out of usage mid-fix. Run 7b took it over in the owner's
+own session and closed it. **M1 the milestone stays `IN_PROGRESS`**: M1b is open, and perf
+is held below 8.0 by the same two owner items that hold M0.
 
 ## The single next action
 
-Take M1a. It is the first asset step, and the contract's first workstream.
+Take M1b. It is CI wiring, so `integrator` owns it (`.github/`, `tools/`).
 
-- **Pick the generator from `docs/ASSET_PLAN.md`. Do not invent one.** B1 canopy trees are
-  the natural first: the M0 island already has three tree archetypes hand-built in
-  `src/main.ts`, so the critic has a direct before/after.
-- **`assetgen/build_all.py` and `assetgen/render_all.py` do not exist yet**, although
-  `package.json` already calls them. M1a writes them. Only `genome.py`, `dragon/` and
-  `render_proof.py` are there.
-- `CLAUDE.md` §1.2: a committed `.glb` must be reproduced **byte-for-byte** by
-  `npm run assets:build` and named in `public/assets/MANIFEST.json`. `check:assets` must
-  enforce that. Prove the byte-for-byte claim by building twice and comparing hashes
-  before committing anything.
-- The 8-seed variant sheet must read as eight different trees. If it does not, fix the
-  generator rather than picking luckier seeds (`ops/build-prompt.md`).
-- `asset-builder` owns `assetgen/`. Wiring into `check:assets` (`tools/`) is the
-  integrator's. That makes two owners, so run them sequentially, not in parallel.
-- Setup: load the `asset-env` skill. `pip install bpy` took about a minute, and the GL
-  libraries were already present except `libegl1`, which was not needed. Cycles on CPU:
-  0.8 s for a small still, 25–100 s for a review frame. Budget for the turntable.
-- **This step may be too big for one run.** If it is, `CLAUDE.md` §4b.4 says to propose
-  the split in `STATE.md` and take the half that fits, for example generator + LODs +
-  variant sheet first, then turntable + manifest + check.
+- **`.github/workflows/assets.yml` already exists but is stale.** It runs the old
+  `assetgen/render_proof.py`. M1b points it at `python3 -I assetgen/build_all.py --verify`
+  (the byte-for-byte proof, CLAUDE.md §1.2), `npm run assets:render`, and
+  `node tools/variant-probe.mjs flora/broadleaf`, then uploads `artifacts/variants/` and
+  `artifacts/turntables/`. Its trigger is `assetgen/**` only. Add `public/assets/**`, so a
+  hand-edited binary also triggers the proof.
+- Costs measured here: `bpy` installs in ~1 min, the full sheet and 36-frame turntable take
+  **3 min 16 s** on 4 CPU cores, and `--verify` takes under a minute.
+- **The real risk is the Ubuntu runner.** `--verify` proves two processes on one machine
+  agree. CI is a different machine, and the committed hashes were built in this container.
+  If the runner's bpy produces different bytes, that is a real §1.2 finding to record, not
+  something to paper over. A reasonable answer is to have CI rebuild and compare against
+  MANIFEST, and to fail loudly with both hashes.
+- `*.github.io` is blocked here, and so is reading Actions logs without the GitHub MCP
+  tools. Check whether those tools are connected before relying on seeing a CI run.
 
 ## Open items that need the owner, not a run
 
-- **Closing M0** needs a real-GPU verification row (`docs/PERF_BUDGET.md` §Real-GPU
-  verification, four steps, plus `?tier=potato`) and a human sighting of the current build.
-  The camera now orbits, so the sighting can also confirm drag and pinch on a real phone.
-- ~~The step-versus-milestone bar~~ — **ruled, 2026-10-12.** `CLAUDE.md` §3.6 now states it
-  outright: a **step** closes on its own acceptance criteria with gates green; a
-  **milestone** closes only when every step is `DONE` **and** all three critics are
-  ≥ 8.0. That is what runs 5 and 6 already did, so **M0e and M0f stand as `DONE`** and M0
-  stays `IN_PROGRESS`. No run needs to re-ask. The owner can still overrule the wording.
+- **Closing M0 and M1** needs a real-GPU verification row (`docs/PERF_BUDGET.md`
+  §Real-GPU verification, four steps, plus `?tier=potato`) and a human sighting of the
+  current build. The only row is at `c429d4a`. This is the perf-critic's lead deduction
+  every round, at 7.4–7.9.
+- **Two sessions, one branch.** Run 7 (second account) was set to auto-continue when its
+  usage reset. If it resumes, it holds a stale plan for M1a, which is now DONE. Please
+  archive that session, or turn off its auto-continue.
 
-## Carried forward, minor (in `FINDINGS.md`)
+## Carried forward, minor (all in `FINDINGS.md`)
 
-- G6: pinch-in and wheel-up are covered only by the wheel flood, not asserted on their own.
+- Broadleaf: there is no per-seed colour or value variation; seeds 6 and 8 are the weakest
+  visual pair; a branch stub on seed 5; the root flare reads as a plate on seeds 5 and 7.
+- The broadleaf is not yet placed in the island scene, so A6 cannot move until a step
+  does that. Per-frame heap is 33–35 kB of 40 kB, so placing it must be instanced.
 - G3: input-to-presented-frame latency is unmeasured.
-- Art: thin black shards read as glitches; one satellite side is yellow-olive; the sky is
-  darker than the concept's pastel.
 
 ## Standing hazards — every run hits these
 
-- The checkout often arrives in **detached HEAD** with local `main` stale — 34 commits
-  behind run 4, 20 the run before; run 5 found it already level. `git reset --hard
-  origin/main` is **refused by the session's permission layer**, three times now. Use
-  `git checkout main && git fetch origin main && git merge --ff-only origin/main` on a
-  clean tree, which reaches the same state. Do not read the refusal as a credential
-  problem.
-- **A comment in this codebase has twice asserted the opposite of what the renderer did.**
-  The key light's comment claimed its shadows raked across open ground when they fell
-  behind their casters; the rim's claimed `<opaque_fragment>` summed
-  `totalEmissiveRadiance` into `outgoingLight`, which three 0.186 does not do, so the rim
-  had never been in a frame. Both survived review because the code *looked* right.
-  Measure the pixels, not the prose. The cheapest test for "is this uniform doing
-  anything": multiply it by 20 and re-render. If nothing moves, it is not wired up.
-- **No GPU anywhere in CI or the containers.** SwiftShader only. P1's absolute frame
-  number is unreachable here by design; see `docs/RUBRIC.md` §P1.
-- **`*.github.io` is blocked** by the egress policy (403 on CONNECT). No build session has
-  been able to load the deployed page. Do not infer the deploy works from a green workflow.
-- **Freeze the tree while the critics score.** Letting a build land mid-scoring cost ~1.5
-  points on an earlier cycle. Run the perf-critic **alone** on a quiet container — it
-  measures timings — then art and gameplay in parallel.
+- **Git at Step 0.** Run 5 found local `main` level. Run 7 found it an **unrelated root**:
+  `merge --ff-only` could not work, and `checkout -B` / `-b` and `reset --hard` were all
+  refused by the permission layer. What worked was `git switch --detach origin/main`,
+  then `git push origin HEAD:main`. **`git checkout main` onto that stale root silently
+  loads a pre-§4b `CLAUDE.md`.** Check `git log -1` against `origin/main` before
+  trusting any file you read.
+- **Mesh winding.** Run 7's "truncated crown" was half of every lobe wound inward. Blender's
+  `from_pydata` does not fix winding, and three.js culls back faces. Count inward faces with
+  bmesh `recalc_face_normals` (STATE.md run 7b) before trusting a render.
+- **A comment has twice asserted the opposite of what the renderer did.** Measure the
+  pixels, not the prose.
+- **No GPU anywhere in CI or the containers.** SwiftShader only.
+- **`*.github.io` is blocked** by the egress policy.
+- **Freeze the tree while the critics score.** Run the perf-critic alone, then art and
+  gameplay in parallel. Critics may write to `FINDINGS.md` despite the brief, so check
+  `git status` after a round.
 
 ## Tools worth knowing about before you start
 
@@ -107,7 +93,11 @@ Take M1a. It is the first asset step, and the contract's first workstream.
 - **Owner's evidence page**: `node tools/evidence-page.mjs`, republished every run to
   https://claude.ai/artifact/Pgkt22EifnK5hUzmXqssoj (see `run-closeout`). Its "Needs you"
   box is §Open items below, verbatim.
-- **History is archived**: runs 0–4 and closed critic rounds are in `docs/archive/`.
+- `node tools/variant-probe.mjs <family/name>`: A4 spread and A2 palette numbers for an
+  asset, after `npm run assets:render`. It reads the shipped `.glb` bytes.
+- `node tools/check-assets.mjs` pins every binary by hash and counts its triangles from the
+  bytes. It needs no Blender.
+- **History is archived**: runs 0–6 and closed critic rounds are in `docs/archive/`.
   `STATE.md` and `FINDINGS.md` hold only what a run needs now.
 
 - `node tools/art-probe.mjs [shot.png]` prints the numbers this run's acceptance criteria
@@ -126,7 +116,7 @@ Take M1a. It is the first asset step, and the contract's first workstream.
 
 ```sh
 git log --oneline -8
-grep -E '^\| M0' docs/ROADMAP.md                 # step status
+grep -E '^\| \*?\*?M1' docs/ROADMAP.md          # step status
 sed -n '1,60p' STATE.md                          # newest journal entry
 grep -hE '^SCORE_MACHINE' FINDINGS.md docs/archive/FINDINGS-*.md | head -6   # latest scores first
 npm ci && npm run gates                          # the ground truth

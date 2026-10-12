@@ -66,8 +66,8 @@ nothing listens to proves nothing, are in `docs/archive/STATE-2026-10.md` run 4
 
 | step | done when | status |
 |---|---|---|
-| **M1a** | **one generator goes end to end: script → LOD0/1/2 `.glb` → 8-seed variant sheet → turntable → `MANIFEST.json`** | **TODO** |
-| M1b | `assets:build` and `assets:render` run in CI and publish their artefacts | TODO |
+| M1a | one generator goes end to end: script → LOD0/1/2 `.glb` → 8-seed variant sheet → turntable → `MANIFEST.json` | DONE |
+| **M1b** | **`assets:build` and `assets:render` run in CI and publish their artefacts** | **TODO** |
 
 ## M2 — Genome in TypeScript
 
