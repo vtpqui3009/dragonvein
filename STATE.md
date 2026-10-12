@@ -13,6 +13,48 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 15 · M4a — the island generator
+
+**Step**: `M4a`, the first step in reading order that is not `DONE`. Step 0 pushed `cff41b6`.
+
+**Ownership**: `assetgen/` (asset-builder): the generator, plus generalising `render_all.py`.
+Then `tools/variant-probe.mjs` and `tools/check-assets.mjs` (integrator). Sequential.
+
+**What has to generalise first.** `render_all.py` lays out a sheet from `canopyWidth` and
+`height`, and `variant-probe` hard-codes the tree's A4 axes and its bark/canopy palette roles.
+A second generator needs both to read from the generator's own declaration:
+- metric axes;
+- sheet width key;
+- palette roles: surfaces held to ΔE 12, ramps held to ΔE 3.
+
+`flora/broadleaf` must come through unchanged in bytes and verdicts.
+
+### Acceptance criteria
+
+1. **`assetgen/terrain/island.py`, a C1 generator** (`docs/ASSET_PLAN.md` §C), `build(seed, lod)`:
+   - `plan(seed)` draws everything up front, so the LODs are one island;
+   - it varies shape, size, biome, edge erosion and underside taper;
+   - biome is stratified on the seed, like broadleaf's `form`, so consecutive seeds cover it.
+   - Every colour comes from `docs/ART_BIBLE.md` §Palette, on one of two ramps: grass (foliage
+     dark → mid → light) and rock (rock mid → dusk → deep shadow).
+   - Triangle budget 8 000 / 2 500 / 700, strictly decreasing.
+   - Each LOD is a closed mesh with **0 inward-facing faces**, counted with bmesh (NEXT.md
+     §Mesh winding).
+2. **Pipeline.** Registered in `build_all.py`.
+   - `assets:build --verify` reproduces the `.glb` bytes across two processes.
+   - `--check` matches the committed bytes and the MANIFEST pins, for both generators.
+   - `check:assets` passes.
+3. **Seen.** `npm run assets:render` writes `artifacts/variants/island.png` (seeds 1–8) and
+   `artifacts/turntables/island.webm`, and still writes broadleaf's.
+4. **Probed.** `node tools/variant-probe.mjs terrain/island` passes:
+   - A4: no pair of seeds within 8 % on every one of width, depth, relief, roughness and taper;
+   - A2: manifest colours within ΔE 12 of the bible, and every vertex within ΔE 3 of its ramp.
+
+   `node tools/variant-probe.mjs flora/broadleaf` still passes.
+5. `npm run gates` exits 0.
+
+---
+
 ## 2026-10-12 · run 14 · M3d DONE (M3 IN_PROGRESS) — `gate:parity` green between the two builders
 
 **Step**: `M3d`, the first step in reading order that is not `DONE`. Step 0 pushed `c5c46fa`.
@@ -455,4 +497,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T15:15:09Z
