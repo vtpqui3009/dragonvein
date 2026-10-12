@@ -121,18 +121,18 @@
       "lods": {
         "lod0": {
           "file": "flora/fanpalm.lod0.glb",
-          "tris": 2876,
-          "sha256": "48ee9d3126a5fcf50efbdf4414a5467c7f201455272ac0aec5c30e8a2367ca6c"
+          "tris": 3524,
+          "sha256": "36506458c0c1ff80d6ac3ec8b2a27b3cf9cb92d2fd88543ee76385a502b2977e"
         },
         "lod1": {
           "file": "flora/fanpalm.lod1.glb",
-          "tris": 1012,
-          "sha256": "3835ae35a0f47567b80c39c76d6755122a7045150bcb99a20c02eb8914dd78cc"
+          "tris": 1244,
+          "sha256": "74ab306334bd88fc4f3da5e2aa0d99f740dffaf822044765ccacb9b5840ef8dc"
         },
         "lod2": {
           "file": "flora/fanpalm.lod2.glb",
-          "tris": 282,
-          "sha256": "c9c553f960a80a504ed467b257deb48dc866c2b9da68d1a02dbe9e332c0134b1"
+          "tris": 306,
+          "sha256": "51bea56462f9dd7e5409267b829ca4e1c64779e9c15863025434ceacf3de05af"
         }
       }
     },
@@ -166,18 +166,18 @@
       "lods": {
         "lod0": {
           "file": "flora/windtwisted.lod0.glb",
-          "tris": 2078,
-          "sha256": "9193326ffeb1b9ec32820bd8d26cf12251354b7cabc7121892582677ad740f52"
+          "tris": 2038,
+          "sha256": "feffdbdb857b258a0c5b324c695fbac0a0add95b7f1056040ffbdb617393dbd5"
         },
         "lod1": {
           "file": "flora/windtwisted.lod1.glb",
-          "tris": 720,
-          "sha256": "307187d54878eaa28d5a56562611c63a52036b4fb521a562c79da144f8298940"
+          "tris": 688,
+          "sha256": "f2a75c238af00bd12fd321e881d6d8ff6ffb5c52e9bb59dbd1987ea9197f1e1d"
         },
         "lod2": {
           "file": "flora/windtwisted.lod2.glb",
-          "tris": 172,
-          "sha256": "84facbf50e4f3afa5de970c8191c75515c955a63c27f86184d5f9a6c749095a0"
+          "tris": 188,
+          "sha256": "91e88ddcfdc004699411cb5e6bf0c4b027d53b645fe6dac01a0857c822aea188"
         }
       }
     },
