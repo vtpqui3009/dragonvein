@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 18 · M4d — arch and floating-shard landmark generators
+## 2026-10-12 · run 18 · M4d DONE (M4 IN_PROGRESS) — arch and floating-shard landmark generators
 
 **Step**: `M4d`, the first step in reading order that is not `DONE`. Step 0 pushed `2dd8d0d`.
 
@@ -43,6 +43,38 @@ applies: 4 000 / 1 200 / 300.
    pass.
 5. `npm run gates` exits 0.
 6. Art per generator is ≥ 8.0.
+
+---
+
+### Result — M4d DONE; M4 IN_PROGRESS (every step done; waits on the owner)
+
+All six criteria hold at `e699c95`:
+1. Both generators are flat-shaded and stay on the rock and grass ramps.
+   - Every seed 1–8 and every LOD has 0 inward faces, 0 open edges and positive shell
+     volume, and its triangle counts strictly decrease.
+   - arch is one genus-1 solid swept around its opening, LOD0 780–1180.
+   - floatshard LOD0 is 608–1242. Its grass is on seeds 1–4 only and is declared optional.
+2. `--verify` reproduces 27 files byte-for-byte, and `--check` and `check:assets` pass. The
+   21 existing files are unchanged.
+3. The sheets and turntables are rendered. The floatshard sheet has no ground.
+4. The probe passes for all nine generators. The most alike pairs are arch 1/4 at 28.3 % and
+   floatshard 1/3 at 25.0 %.
+5. `npm run gates` exits 0.
+6. Art per generator: arch 8.4, floatshard 8.2.
+
+**Scores (cycle 1):** art 8.3, perf 8.7, gameplay 9.0.
+
+**Usage limit.** The run hit the usage limit at about 19:20 UTC, while the asset-builder was
+mid-way through floatshard. Nothing unverified was committed. After the reset the same
+builder resumed from its own transcript and finished.
+
+**Open, carried to FINDINGS:**
+- floatshard near-pairs and clipping;
+- arch seeds 2 and 5;
+- no asset is placed (M5e).
+
+**Blockers.** The M4 milestone needs the owner to see the sheets (NEXT.md §Open items). M3
+still needs the dragon sighting.
 
 ---
 
@@ -115,96 +147,6 @@ imports `bpy` before `bmesh`, which makes each rock module's `__main__` runnable
 - LOD1 and LOD2 are never rendered.
 
 **Blockers.** None for M4d. M3 remains with the owner (NEXT.md §Open items).
-
----
-
-## 2026-10-12 · run 16 · M4b DONE — three cliff and rock generators
-
-**Step**: `M4b`, the first step in reading order that is not `DONE`. Step 0 pushed the run marker.
-
-**Ownership**: `assetgen/terrain/` (asset-builder). The pipeline (`build_all`, `render_all`,
-`variant-probe`) is already generic since run 15.
-
-**The three, chosen to read as three kinds of rock** (`docs/ASSET_PLAN.md` §C2):
-`terrain/stratified` (a layered butte), `terrain/columnar` (a basalt column cluster) and
-`terrain/boulders` (a pile of rounded boulders). They share a small kit,
-`assetgen/terrain/rockkit.py`, which holds the mesh accumulator, the palette ramps and the
-inward-face count. Budgets follow docs/PERF_BUDGET.md §Other budgets for props:
-4 000 / 1 200 / 300.
-
-### Acceptance criteria
-
-1. **Each of the three** follows the island's pattern:
-   - `plan(seed)` draws everything, so the LODs are one object;
-   - its kind's own parameters, with the main silhouette axis stratified on the seed;
-   - LOD0/1/2 strictly decreasing, within 4 000 / 1 200 / 300;
-   - 0 inward faces at every LOD;
-   - colours only on ART_BIBLE ramps (rock: dusk → rock mid → deep shadow; grass for caps).
-2. **Pipeline.** All three registered.
-   - `assets:build --verify` is byte-identical across processes for all files.
-   - `--check` matches the commits and pins.
-   - `check:assets` is OK.
-3. **Seen.** `npm run assets:render` writes `artifacts/variants/{stratified,columnar,boulders}.png`
-   and a turntable each.
-4. **Probed.** `node tools/variant-probe.mjs terrain/<name>` passes for each, A4 and A2, and the
-   island and broadleaf still pass.
-5. `npm run gates` exits 0.
-
-If the three cannot all land with critics inside the run, the step is split (ROADMAP §How
-big a step may be), and the split is recorded here.
-
----
-
-### Result — M4b DONE (M4 IN_PROGRESS: M4c remains)
-
-All five criteria hold at `b58251a`:
-1. The three generators follow the island pattern. Each has 0 inward faces at every LOD on
-   seeds 1–8. Every LOD chain strictly decreases on every seed. Triangles, LOD0/1/2 on the
-   committed seed, against 4 000 / 1 200 / 300:
-   - stratified 896/384/144;
-   - columnar 470/304/105;
-   - boulders 400/100/80.
-2. `assets:build --verify` reproduces all 15 files byte-for-byte. `--check` and
-   `check:assets` are OK.
-3. `artifacts/variants/{stratified,columnar,boulders}.png` and the three turntables are
-   rendered.
-4. `variant-probe` passes for all five generators. The most alike pairs are 25.0 %, 22.6 %
-   and 21.5 % apart (the limit is 8 %), and every rock ramp is within ΔE 0.16.
-5. `npm run gates` exits 0.
-
-**Scores.**
-
-| critic | cycle 1 at `5aa2665` | cycle 2 at `4cadbbc` |
-|---|---|---|
-| art | 8.4 (stratified ~8.7, columnar ~8.6, **boulders ~7.8**) | **8.5** (stratified 8.4, columnar 8.6, boulders 8.1) |
-| perf | 8.2 | carried |
-| gameplay | 9.2 | carried |
-
-Perf and gameplay were not re-run in cycle 2. The rework touched only `boulders.py` and its
-`.glb` files, which the game does not load, so the measured frame is the same. The gates
-were re-run green.
-
-**Decisions and fixes in this run.**
-- The palette ramps are quadratic Beziers in `rockkit.ramp`, the same rule the probe judges
-  by. A piecewise-linear ramp failed ΔE 3 against the probe's curve.
-- `PALETTE_ROLES["optional"]`, a probe change in its own commit: stratified's grass cap is on
-  some seeds only, so the probe holds the grass ramp to ΔE 3 wherever it appears and does
-  not require it on the committed seed.
-- Stratified's grass cap has its own lip ring, so green does not bleed down the cliff face.
-- Boulders, rework cycle 2:
-  - 4–8 fracture planes per stone;
-  - flat shading at icosphere subdivision 1;
-  - rockMid base, with dusk only on sky-facing faces;
-  - tighter seating, and sizes floored at 0.34;
-  - LOD2 always drops at least one stone.
-
-**Open, carried to FINDINGS:**
-- the rocks are not placed in the game (M5e);
-- columnar flat-pavement seeds;
-- stratified smears and warmth;
-- boulders near-pairs.
-
-**Blockers.** None for M4c. M3 remains with the owner (NEXT.md §Open items).
 
 ---
 

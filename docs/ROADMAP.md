@@ -135,7 +135,7 @@ a sighting of `dragon.html`, and the reference-design questions behind the art s
 | M4a | island generator — shape, size, biome, edge erosion, underside — with a passing variant sheet | DONE |
 | M4b | 3 cliff/rock generators, each with a passing variant sheet | DONE |
 | M4c | 2 more rock generators (shard, eroded), each with a passing variant sheet | DONE |
-| **M4d** | **arch and floating-shard landmark generators, each with a passing variant sheet** | **TODO** |
+| M4d | arch and floating-shard landmark generators, each with a passing variant sheet | DONE |
 
 M4a closed on 2026-10-12 at `b27bc4d` (run 15) on its first pass: art 8.3, perf 8.2,
 gameplay 9.2. `terrain/island` meets §Definition of done:
@@ -164,11 +164,22 @@ gameplay 9.0. `terrain/shard` and `terrain/eroded` meet §Definition of done:
 3. both are in MANIFEST.json;
 4. art per generator 8.4 and 8.3.
 
+M4d closed on 2026-10-12 at `e699c95` (run 18) on its first pass: art 8.3, perf 8.7,
+gameplay 9.0. `terrain/arch` and `terrain/floatshard` meet §Definition of done:
+1. 8 seeds read as 8 objects (most alike pairs 28.3 % and 25.0 % apart);
+2. LOD0/1/2 = 940/292/140 and 738/250/90, strictly decreasing on every seed;
+3. both are in MANIFEST.json;
+4. art per generator 8.4 and 8.2.
+
+**M4 the milestone is `IN_PROGRESS`.** Every step is `DONE` and the last pass had all three
+critics ≥ 8.0. No human has seen the assets yet (CLAUDE.md §7), so the owner's look at the
+sheets on the evidence page is what closes it (NEXT.md).
+
 ## M5 — Flora wave 1
 
 | step | done when | status |
 |---|---|---|
-| M5a | wind vertex shader, proven on one tree at 200+ instances inside budget | TODO |
+| **M5a** | **wind vertex shader, proven on one tree at 200+ instances inside budget** | **TODO** |
 | M5b | 3 canopy tree generators with passing variant sheets | TODO |
 | M5c | 2 more trees, and saplings | TODO |
 | M5d | 4 understory generators — bushes, ferns, reeds, grass clumps | TODO |
