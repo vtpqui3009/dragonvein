@@ -5,6 +5,75 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M3b — run 12, 2026-10-12 — cycle 1, at `027727f`
+
+**Scores: art-critic 7.5 · perf-critic 8.4 · gameplay-critic 8.7.** No blocking defect. Art is
+below 8.0, so the step is reworked (cycle 2).
+
+## perf-critic — 8.4 (all six lines)
+
+P1 1.8 · P2 1.8 · P3 1.6 · P4 1.2 · P5 1.2 · P6 0.8.
+
+- [major] P1: the real-GPU log's newest row is the `3ab6e84` sighting, before M2 and M3.
+- [major] No measured frame holds a dragon (`drawCalls 27`, `triangles 42268` are M0's). Whole
+  dragons are about 7.8k triangles each (`dragon-full.json`).
+- [major] P3: `dragon-full.json` gives only an 8-dragon total (`sheetBuildMs 148.9`), with no
+  per-dragon max or cold time in the browser. Node: max 16.02, cold 37.56 ms.
+- [minor] P4 `heap.bytesPerFrame 34338` (uncorrected 40472, 488 B under).
+- [minor] P6: no real-hardware Potato number. Advisory GPU drift.
+- [minor] One `cpuFrameMs 4.2` sample in `playtest.log` during video capture.
+
+SCORE_MACHINE: 8.4
+
+## art-critic — 7.5 (all nine lines)
+
+A1 1.0 · A2 0.7 · A3 0.9 · A4 1.2 · A5 0.8 · A6 0.9 · A7 0.9 · A8 0.7 · A9 0.4.
+
+- [major] A3/A2 `dragon-full.png` cells A, F, C and turntable frames 0–3: shadow sides crush to
+  near black (about #1a0505 on A), under the folded wing, on the far legs and the belly.
+- [major] A5 `?view=turn&i=0&cam=-3,3,8,0,1.3,0`: the inner membrane and its fold cut through the
+  flank, and spikes poke through the membrane. On F the membrane slices into the torso at the
+  wing root.
+- [major] A3: the membranes carry a white-blue specular streak (cell D, E), so they read as glass,
+  where the reference's are matte.
+- [major] A4: one body plan and pose. A, C, G and H read as one silhouette recoloured.
+  Wing, crown, spikes, tail and hue vary, and the children visibly inherit.
+- [minor] "Reads as the Python one": gene for gene, every cell matches in wing hue, crown, spikes
+  and ornament shape. The reference shows no tail, only a floating ornament. It is pastel where
+  the runtime is saturated.
+- [minor] A8: stair-stepped two-tone boundary on the thighs (close-up), and a hard ring where the
+  horns meet the skull.
+- [minor] A9: the concept's ball-chain tail, mottled belly and spread wings are absent; the wings
+  are folded sails.
+- [minor] A1: dragons fill about 25 % of a cell; the ornament vanishes at small scale.
+- [minor] A6: no creature in the game scene. The turntable's grey horizon band is off-palette.
+
+SCORE_MACHINE: 7.5
+
+## gameplay-critic — 8.7 (4.5 of 5.2; G2, G4, G5 n/a)
+
+G1 2.0 · G3 1.2 · G6 1.3.
+
+- [major] D1: "reads as the Python one" fails on the tail. Every reference cell shows a floating
+  ornament with no tail body; the runtime draws a tapering tail. Spikes and limbs are chunkier
+  in the reference.
+- [minor] D2: two-finger pinch in `dragon.html` rotates instead of zooming (carried).
+- [minor] D3: near-black boxy far hips and legs at every yaw.
+- [minor] D4 (G2 advisory): G is closest to A; both parents show (A's body, a membrane between
+  A's and B's).
+- [minor] D5: `gate:smoke` does not load `dragon.html`. D6: no dragon in the game.
+
+SCORE_MACHINE: 8.7
+
+*Builder note on the missing reference tail:* measured. The reference graph puts the tail root
+(node 4) and the hip (node 5) at the same point. In Blender 5.2's Skin modifier, a zero-length
+edge collapses the whole chain behind it to zero thickness. A five-node test chain skins at
+2r (0.085 … 0.8). The same chain with a coincident hip node skins at 0.0 at every node, and
+moving the hip 0.02 restores 2r. The TS skin merges coincident nodes (run 11), which is why it
+drew the tail. The fix belongs in the reference (cycle 2).
+
+---
+
 # M3a — run 11, 2026-10-12 — cycle 3, at `e015a48`
 
 **Scores: art-critic 7.6 · perf-critic 8.7 · gameplay-critic 9.0.** No blocking defect. This was
