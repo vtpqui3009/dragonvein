@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { Rng } from './core/rng';
+import { WIND_UNIFORMS, setWindTime, withWind } from './render/wind';
 
 /**
  * M0 spine: prove the whole chain works end to end — build, deploy, render, measure.
@@ -931,10 +933,74 @@ const crystalShards: Placed[] = [];
   }
 }
 
+// --- the generated broadleaf (M5a): placements, laid out before the placeholder trees ---
+/*
+ * `public/assets/flora/broadleaf.lod{0,1,2}.glb` — the committed output of
+ * `assetgen/flora/broadleaf.py`, seed 1 — is the first `assetgen/` asset the game draws.
+ * It replaces the hand-built broadleaf (a trunk under two icosahedron blobs) on the hero
+ * island, and it is the grove on every companion island.
+ *
+ * Placement is decided here, synchronously, and seeded from `src/core/rng.ts`, so the
+ * layout is the same in every build and every other prop's rejection sampling already
+ * avoids these trunks — whether or not the GLB ever arrives. The meshes themselves are
+ * built when the files load (`loadBroadleaf`, below); if the fetch fails the island is
+ * simply missing its broadleaves, and the error is logged.
+ *
+ * LOD is chosen per instance at setup by its distance from the default camera
+ * (`lodBand`): the hero island's trees are LOD0, the nearest companions LOD1, the rest
+ * LOD2. One `InstancedMesh` per LOD in use, every one carrying the wind patch.
+ */
+type TreeSpot = {
+  x: number; y: number; z: number;
+  /** Uniform scale of the 7.4-unit generated tree, then an extra stretch on y. */
+  s: number; sy: number;
+  rotY: number; tiltX: number; tiltZ: number;
+  /** Brightness multiplier, grey so the vertex colours keep their bible hues. */
+  shade: number;
+  /** Companion index, or -1 for the hero island (which rotates instead of bobbing). */
+  owner: number;
+  lod: 0 | 1 | 2;
+};
+/** Model height of the generated tree, from its LOD0 bounding box (max y 7.43). */
+const BROADLEAF_HEIGHT = 7.43;
+/** Distance bands, world units from the default camera: < 35 LOD0, < 70 LOD1, else LOD2. */
+const LOD_BANDS = [35, 70] as const;
+function lodBand(x: number, y: number, z: number): 0 | 1 | 2 {
+  const d = Math.hypot(x - camera.position.x, y - camera.position.y, z - camera.position.z);
+  return d < LOD_BANDS[0] ? 0 : d < LOD_BANDS[1] ? 1 : 2;
+}
+const broadleafSpots: TreeSpot[] = [];
+
+/*
+ * Eight on the hero island, the count the hand-built broadleaf had, so the island does not
+ * close into a green wall: the conifers and snags below keep their numbers and the glade
+ * stays open. 1.6-2.2 units tall — the height band the old broadleaf and the conifers
+ * already stand in (a quarter of the island's radius, as in the concept). The trunk
+ * footprint reserved is about the crown's half-width, so crowns may touch but trunks never
+ * crowd; and these are laid out first, so they get the spread positions and the conifers
+ * fill between them.
+ */
+const HERO_BROADLEAVES = 8;
+{
+  const rng = new Rng(0xb10a_df01);
+  const next = (): number => rng.next();
+  for (let i = 0; i < HERO_BROADLEAVES; i++) {
+    const s = (1.6 + rng.next() * 0.6) / BROADLEAF_HEIGHT;
+    const spot = pick(next, 0.28 + s * 1.15, 4.9, CLEARING);
+    if (!spot) continue;
+    broadleafSpots.push({
+      x: spot.x, y: TOP_Y, z: spot.z, s, sy: 0.92 + rng.next() * 0.16,
+      rotY: rng.next() * Math.PI * 2,
+      tiltX: (rng.next() - 0.5) * 0.06, tiltZ: (rng.next() - 0.5) * 0.06,
+      shade: 0.9 + rng.next() * 0.1, owner: -1, lod: lodBand(spot.x, TOP_Y, spot.z),
+    });
+  }
+}
+
 // Trees — three values per asset (ART_BIBLE §Direction): dark trunk, mid lower canopy,
 // light upper tier. Two tiers so the silhouette still reads as a tree at 25% (rubric A1).
 /*
- * Three tree archetypes, because one was the single heaviest mark against rubric A4.
+ * Tree archetypes, because one was the single heaviest mark against rubric A4.
  *
  * The art-critic isolated nine tree apexes, measured a cone half-angle of 14.6-22.8 deg
  * at 25 px below the apex, found three of them identical to the pixel, and wrote: "every
@@ -943,46 +1009,37 @@ const crystalShards: Placed[] = [];
  * this is a miss against the concept as well as against the rubric.
  *
  * A4's own note — "a beautiful single asset repeated 200 times is still a dead world" —
- * is the thing to answer, and the answer is not more instances of a better cone. So:
+ * is the thing to answer, and the answer is not more instances of a better cone. It now
+ * cuts the other way too: the generated broadleaf is one committed seed drawn 220 times,
+ * varied only by yaw, scale, a y-stretch, a slight lean and a grey shade. More seeds in
+ * the scene is the remedy, and a later step's to take.
  *
- *   conifer    trunk + two stacked cones, the shape that was already here
- *   broadleaf  a taller bare trunk under two offset foliage blobs, as in the concept
+ *   conifer    trunk + two stacked cones
+ *   broadleaf  the generated tree (above) — it used to be a bare trunk under two
+ *              icosahedron blobs, built here; M5a replaced it
  *   snag       a dead trunk, leaning, no canopy at all
  *
- * The mix is shuffled with the same seeded rng rather than assigned by index, so the
- * three do not come out in bands, and it is still identical in every build — rubric A5
- * needs two screenshots taken days apart to differ only by the island's rotation.
- *
- * Cost is one new draw call. The trunk mesh is shared by all three archetypes (a snag is
- * a trunk, a broadleaf has a trunk), so the only addition is the foliage blob; the
- * conifer's two cones keep their own meshes and their capacity drops to the conifer
- * count. `docs/ARCHITECTURE.md` §Render contract asks for one `InstancedMesh` per prop
- * type, which is what this is.
+ * The conifer/snag mix is shuffled with the same seeded rng rather than assigned by
+ * index, so the two do not come out in bands, and it is still identical in every build —
+ * rubric A5 needs two screenshots taken days apart to differ only by the island's
+ * rotation.
  */
-const TREES = 24;
 const CONIFERS = 13;
-const BROADLEAVES = 8;
 const SNAGS = 3;
-const BLOBS_PER_BROADLEAF = 2;
+const TREES = CONIFERS + SNAGS;
 
 const trunks = instanced(new THREE.CylinderGeometry(0.1, 0.16, 1.0, 5), TREES, 0.95);
 const canopies = instanced(new THREE.ConeGeometry(0.66, 1.5, 7), CONIFERS, 0.85);
 const crowns = instanced(new THREE.ConeGeometry(0.45, 1.1, 7), CONIFERS, 0.8);
-// Detail 1 is 80 faces. Under `flatShading` that reads as a faceted ball rather than a
-// smooth one, which is the register the rest of the island is drawn in.
-const foliage = instanced(
-  new THREE.IcosahedronGeometry(1, 1), BROADLEAVES * BLOBS_PER_BROADLEAF, 0.88);
 trunks.castShadow = true;
 canopies.castShadow = true;
 crowns.castShadow = true;
-foliage.castShadow = true;
 {
   const rng = makeRng(0x10a9_0a1c);
 
   /** The mix, shuffled in place so the archetypes scatter instead of banding. */
-  const plan: ('conifer' | 'broadleaf' | 'snag')[] = [
+  const plan: ('conifer' | 'snag')[] = [
     ...Array<'conifer'>(CONIFERS).fill('conifer'),
-    ...Array<'broadleaf'>(BROADLEAVES).fill('broadleaf'),
     ...Array<'snag'>(SNAGS).fill('snag'),
   ];
   for (let i = plan.length - 1; i > 0; i--) {
@@ -992,9 +1049,8 @@ foliage.castShadow = true;
     plan[j] = swap;
   }
 
-  let t = 0;      // trunks, shared by all three
+  let t = 0;      // trunks, shared by both
   let c = 0;      // conifer canopies and crowns
-  let f = 0;      // broadleaf foliage blobs
   for (const kind of plan) {
     if (kind === 'conifer') {
       /*
@@ -1023,35 +1079,6 @@ foliage.castShadow = true;
       canopies.setColorAt(c, tint.copy(cDark).lerp(cMid, 0.18 + rng() * 0.82));
       crowns.setColorAt(c, tint.copy(cMid).lerp(cLight, 0.15 + rng() * 0.8));
       t++; c++;
-    } else if (kind === 'broadleaf') {
-      // A bare trunk you can see under a rounded crown — the concept's tree, and the
-      // archetype that does most to stop the skyline reading as a row of triangles.
-      const h = 0.78 + rng() * 0.45;
-      const blobR = 0.36 + rng() * 0.20;
-      const spot = pick(rng, 0.26 + blobR * 0.4, 5.0, CLEARING);
-      if (!spot) continue;
-      const rotY = rng() * Math.PI * 2;
-      const lean = (rng() - 0.5) * 0.09;
-      place(trunks, t, spot.x, TOP_Y + 0.5 * h, spot.z,
-        1.45, h, 1.45, rotY, lean, lean);
-      trunks.setColorAt(t, tint.copy(cShadow).lerp(cRock, 0.45 + rng() * 0.4));
-      t++;
-      // Two blobs, the upper one smaller and offset, so the crown has a silhouette
-      // rather than being a ball on a stick.
-      for (let k = 0; k < BLOBS_PER_BROADLEAF; k++) {
-        const r = blobR * (k === 0 ? 1 : 0.68 + rng() * 0.2);
-        const a = rng() * Math.PI * 2;
-        const off = k === 0 ? 0.10 * blobR : 0.42 * blobR;
-        place(foliage, f,
-          spot.x + Math.cos(a) * off,
-          TOP_Y + h + blobR * (k === 0 ? 0.30 : 0.92),
-          spot.z + Math.sin(a) * off,
-          r, r * (0.78 + rng() * 0.22), r, rng() * Math.PI * 2);
-        // Lighter and warmer than the conifers on purpose: two families of green give
-        // the canopy an interior, which is what A1 was reading as absent.
-        foliage.setColorAt(f, tint.copy(cMid).lerp(cLight, 0.35 + rng() * 0.6));
-        f++;
-      }
     } else {
       // A dead tree. Thinner, taller, leaning hard, and pale — a standing snag is grey,
       // not green, so it also breaks the colour field the critic measured as unimodal.
@@ -1067,7 +1094,6 @@ foliage.castShadow = true;
   }
   trunks.count = t;
   canopies.count = crowns.count = c;
-  foliage.count = f;
 }
 
 // Scatter rocks — the island reads as rock under the grass, not as a green coin. The
@@ -1314,6 +1340,8 @@ function registerBobber(
 const quatTilt = new THREE.Quaternion();
 const eulerTilt = new THREE.Euler();
 const vKeel = new THREE.Vector3();
+/** Each companion's yaw, kept so the groves can find the tilted deck plane later. */
+const companionRotY = new Float64Array(COMPANIONS.length);
 
 {
   const caps = instanced(new THREE.CylinderGeometry(6, 5.6, 1.1, 36), COMPANIONS.length, 0.95, far);
@@ -1338,23 +1366,23 @@ const vKeel = new THREE.Vector3();
   const cones = instanced(coneGeo, COMPANIONS.length, 0.98, far);
   const treeTotal = COMPANIONS.reduce((t, c) => t + c.trees, 0);
   // The far deck gets the same three archetypes as the hero island (conifer cone,
-  // rounded broadleaf, bare snag), for the same reason: A4 is about the repeat set in
-  // the frame, and ~65 identical cones is a repeat set. The trunk mesh doubles as the
-  // snag, exactly as it does on the hero island.
+  // broadleaf, bare snag), for the same reason: A4 is about the repeat set in the frame,
+  // and ~65 identical cones is a repeat set. The broadleaf is the generated tree, placed
+  // as a grove after this loop (M5a); it used to be an icosahedron blob on a trunk here.
+  // The trunk mesh is now the snag only.
   const farTrees = instanced(new THREE.ConeGeometry(0.62, 1.9, 6), treeTotal, 0.85, far);
-  const farFoliage = instanced(new THREE.IcosahedronGeometry(1, 1), treeTotal, 0.88, far);
   const farTrunks = instanced(new THREE.CylinderGeometry(0.08, 0.13, 1.0, 5), treeTotal, 0.95, far);
 
   const capY: number[] = [], capOwner: number[] = [];
   const coneY: number[] = [], coneOwner: number[] = [];
   const treeY: number[] = [], treeOwner: number[] = [];
-  const folY: number[] = [], folOwner: number[] = [];
   const trunkY: number[] = [], trunkOwner: number[] = [];
 
   const rng = makeRng(0x15_1a4d);
-  let t = 0, fo = 0, tr = 0;
+  let t = 0, tr = 0;
   COMPANIONS.forEach((c, i) => {
     const rotY = rng() * Math.PI * 2;
+    companionRotY[i] = rotY;
     const deckY = c.y;
     place(caps, i, c.x, deckY, c.z,
       c.s * c.aspect, c.s * c.thick, c.s / c.aspect, rotY, c.tiltX, c.tiltZ);
@@ -1406,15 +1434,12 @@ const vKeel = new THREE.Vector3();
         farTrees.setColorAt(t, tint.copy(cDark).lerp(cMid, 0.2 + rng() * 0.7));
         treeY.push(y); treeOwner.push(i); t++;
       } else if (kind < 0.88) {
-        const r = h * 0.5;
-        const y = deck + h * 0.55 + r * 0.5;
-        place(farFoliage, fo, x, y, z, r, r * 0.85, r, rng() * Math.PI * 2);
-        farFoliage.setColorAt(fo, tint.copy(cMid).lerp(cLight, 0.25 + rng() * 0.6));
-        folY.push(y); folOwner.push(i); fo++;
-        const ty = deck + h * 0.28;
-        place(farTrunks, tr, x, ty, z, h * 0.9, h * 0.55, h * 0.9, 0);
-        farTrunks.setColorAt(tr, tint.copy(cShadow).lerp(cRock, 0.4 + rng() * 0.4));
-        trunkY.push(ty); trunkOwner.push(i); tr++;
+        // A broadleaf's slot: the grove below fills it with the generated tree. The three
+        // draws the old blob-broadleaf took (yaw, crown tint, trunk tint) are still taken,
+        // so the stream — and with it every later island's yaw, colour and dressing — is
+        // the one the art-critic scored.
+        rng(); rng(); rng();
+        continue;
       } else {
         const ty = deck + h * 0.6;
         place(farTrunks, tr, x, ty, z, h * 0.55, h * 1.2, h * 0.55,
@@ -1425,7 +1450,6 @@ const vKeel = new THREE.Vector3();
     }
   });
   farTrees.count = t;
-  farFoliage.count = fo;
   farTrunks.count = tr;
 
   // A6: the satellites were flat discs carrying identical cones — "a dressed island is
@@ -1485,12 +1509,149 @@ const vKeel = new THREE.Vector3();
   registerBobber(caps, capY, capOwner);
   registerBobber(cones, coneY, coneOwner);
   registerBobber(farTrees, treeY, treeOwner);
-  registerBobber(farFoliage, folY, folOwner);
   registerBobber(farTrunks, trunkY, trunkOwner);
   registerBobber(farRocks, rockY, rockOwner);
   registerBobber(farBushes, bushY, bushOwner);
   registerBobber(farTufts, tuftY, tuftOwner);
 }
+
+/*
+ * Groves of the generated broadleaf on every companion island (M5a).
+ *
+ * A grove per island, sized by the island: `9 + 8 * s` trees, so the small near
+ * satellite gets about eleven and the big far ones about twenty. They stand where the
+ * old blob-broadleaves stood — inside the deck's inscribed circle, clear of each other's
+ * trunks — at 1.0-1.6x the island's scale, which is the band the far conifers and the
+ * old broadleaf occupied. Each base sits on the island's *tilted* deck plane, not on a
+ * level one through its centre, so a tree on the downhill side of a 0.1 rad tilt does not
+ * float. The trees themselves stand plumb: a tree grows up, whatever its ground does.
+ *
+ * Seeded from `src/core/rng.ts` like the hero island's eight. Every instance records its
+ * owner and resting height, and joins the bob through `registerBobber` once its mesh
+ * exists, so a grove rides its island exactly as the conifers and the dressing do.
+ */
+{
+  const rng = new Rng(0x6201_e5a1);
+  const vNormal = new THREE.Vector3();
+  COMPANIONS.forEach((c, i) => {
+    const count = Math.round(9 + 8 * c.s);
+    eulerTilt.set(c.tiltX, companionRotY[i] as number, c.tiltZ);
+    quatTilt.setFromEuler(eulerTilt);
+    vNormal.set(0, 1, 0).applyQuaternion(quatTilt);
+    vKeel.set(0, 0.55 * c.s * c.thick, 0).applyQuaternion(quatTilt);
+    const cx = c.x + vKeel.x, cy = c.y + vKeel.y, cz = c.z + vKeel.z;
+    const reach = 4.6 * c.s * Math.min(c.aspect, 1 / c.aspect);
+    const mine: Spot[] = [];
+    for (let k = 0; k < count; k++) {
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const height = (1.0 + rng.next() * 0.6) * c.s;
+        const a = rng.next() * Math.PI * 2;
+        const d = Math.sqrt(rng.next()) * reach;
+        const x = cx + Math.cos(a) * d;
+        const z = cz + Math.sin(a) * d;
+        const r = height * 0.24;
+        if (mine.some((o) => (o.x - x) ** 2 + (o.z - z) ** 2 < (o.r + r) ** 2)) continue;
+        mine.push({ x, z, r });
+        // On the deck plane through (cx, cy, cz) with normal vNormal.
+        const y = cy - (vNormal.x * (x - cx) + vNormal.z * (z - cz)) / vNormal.y;
+        broadleafSpots.push({
+          x, y, z, s: height / BROADLEAF_HEIGHT, sy: 0.92 + rng.next() * 0.16,
+          rotY: rng.next() * Math.PI * 2,
+          tiltX: (rng.next() - 0.5) * 0.08, tiltZ: (rng.next() - 0.5) * 0.08,
+          shade: 0.88 + rng.next() * 0.12, owner: i, lod: lodBand(x, y, z),
+        });
+        break;
+      }
+    }
+  });
+}
+
+/** Instances of the generated tree actually drawn, all of them wind-patched. Read by the gates. */
+let windInstances = 0;
+
+/**
+ * Loads the three LOD files that are in use and builds one `InstancedMesh` per LOD.
+ *
+ * One material for every LOD — the stock standard material with the rim patch and then
+ * the wind patch (`withWind` composes with `withRim`) — so the three meshes share one
+ * program. The vertex colours are the asset's bible ramp; the material colour is white
+ * rather than the file's 0.8 grey, so those hexes arrive unmultiplied, and the per-instance
+ * colour is a grey shade, which varies brightness without moving a hue.
+ *
+ * Only the hero island's LOD0 casts: the shadow camera spans the hero island alone, so a
+ * companion's tree in the shadow pass would be a draw call that lands nowhere. Its depth
+ * material carries the same wind patch, so a shadow sways with the canopy that casts it.
+ */
+async function loadBroadleaf(): Promise<void> {
+  const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+  const loader = new GLTFLoader();
+  const used = ([0, 1, 2] as const).filter((l) => broadleafSpots.some((t) => t.lod === l));
+  const files = await Promise.all(used.map(async (lod) => {
+    const gltf = await loader.loadAsync(
+      `${import.meta.env.BASE_URL}assets/flora/broadleaf.lod${lod}.glb`);
+    gltf.scene.updateMatrixWorld(true);
+    const found: THREE.Mesh[] = [];
+    gltf.scene.traverse((o) => { if (o instanceof THREE.Mesh) found.push(o); });
+    const src = found[0];
+    if (found.length !== 1 || !src) {
+      throw new Error(`broadleaf.lod${lod}.glb: expected one mesh, found ${found.length}`);
+    }
+    const geometry = (src.geometry as THREE.BufferGeometry).clone().applyMatrix4(src.matrixWorld);
+    if (!geometry.getAttribute('color')) throw new Error(`broadleaf.lod${lod}.glb has no vertex colours`);
+    return { lod, geometry };
+  }));
+
+  const first = files[0];
+  if (!first) return;
+  first.geometry.computeBoundingBox();
+  WIND_UNIFORMS.uWindHeight.value = first.geometry.boundingBox?.max.y ?? BROADLEAF_HEIGHT;
+  /*
+   * Front faces only, although the file's material says `doubleSided`. Every LOD of the
+   * committed tree was checked weld-by-position: 0 open edges, 0 non-manifold edges, and
+   * every shell (26 / 23 / 10) has positive signed volume, i.e. closed and wound outward.
+   * A back face of a closed outward shell is never visible from outside it, so culling
+   * them changes no pixel and halves the rasteriser's work on 220 trees — which on
+   * SwiftShader is what the frame is made of. Re-check if the generator changes.
+   */
+  const material = withWind(withRim(new THREE.MeshStandardMaterial({
+    color: 0xffffff, vertexColors: true, roughness: 0.78, side: THREE.FrontSide,
+  })));
+  const depthMaterial = withWind(new THREE.MeshDepthMaterial());
+
+  for (const { lod, geometry } of files) {
+    const spots = broadleafSpots.filter((t) => t.lod === lod);
+    const hero = spots.filter((t) => t.owner < 0).length;
+    // The hero island rotates and the companions bob, so one mesh cannot hold both. The
+    // bands keep them apart (every hero tree is nearer than LOD_BANDS[0], every companion
+    // farther); if a band change ever mixed them, that is a layout bug, not a fallback.
+    if (hero !== 0 && hero !== spots.length) {
+      throw new Error(`broadleaf LOD${lod} mixes hero and companion instances`);
+    }
+    const onHero = hero > 0;
+    const mesh = new THREE.InstancedMesh(geometry, material, spots.length);
+    mesh.name = `broadleaf.lod${lod}`;
+    mesh.receiveShadow = true;
+    mesh.castShadow = onHero;
+    if (onHero) mesh.customDepthMaterial = depthMaterial;
+    const baseY: number[] = [], owner: number[] = [];
+    spots.forEach((t, k) => {
+      place(mesh, k, t.x, t.y, t.z, t.s, t.s * t.sy, t.s, t.rotY, t.tiltX, t.tiltZ);
+      mesh.setColorAt(k, tint.setScalar(t.shade));
+      baseY.push(t.y); owner.push(t.owner);
+    });
+    const parent = onHero ? island : far;
+    // Compile off the frame where the driver allows it (KHR_parallel_shader_compile), so the
+    // first frame with trees is not also the frame that builds their program.
+    await renderer.compileAsync(mesh, camera, scene);
+    parent.add(mesh);
+    if (!onHero) registerBobber(mesh, baseY, owner);
+    windInstances += mesh.count;
+  }
+}
+loadBroadleaf().catch((e: unknown) => {
+  // The rest of the world still renders; gate:smoke turns this console error into a failure.
+  console.error('broadleaf: the generated tree did not load, so the islands are drawn without it:', e);
+});
 
 /*
  * The flock, in its own mesh so it can fly.
@@ -1888,6 +2049,15 @@ let fps = 0;
 let framesRendered = 0;
 let bootMs = 0;
 let lastCpuMs = 0;
+/**
+ * Test hook state (`__dragonveinWind`). While `sceneFrozenAt` is set, the island's spin,
+ * the companions' bob and the flock all read that instant instead of the live clock, and
+ * `windFrozenSec` pins the wind. With both pinned, two frames differ only by what the
+ * wind time changes — which is how gate:smoke proves the canopy moves (M5a criterion 4).
+ * Never set in play.
+ */
+let sceneFrozenAt: number | null = null;
+let windFrozenSec: number | null = null;
 
 function frame(now: number): void {
   frameMs = now - last;
@@ -1912,8 +2082,11 @@ function frame(now: number): void {
   const startedAt = performance.now();
   resize();
   applyOrbit();
-  island.rotation.y = now * 0.00012;
-  updateFarMotion(now);
+  const sceneNow = sceneFrozenAt ?? now;
+  island.rotation.y = sceneNow * 0.00012;
+  updateFarMotion(sceneNow);
+  // One number into the uniform every wind-patched program shares. Allocation-free.
+  setWindTime(windFrozenSec ?? now / 1000);
   // The rim is gated in view space, so its direction has to be re-derived whenever the
   // camera moves. Allocation-free: two pre-allocated vectors, written in place.
   updateRimDirection();
@@ -2053,7 +2226,18 @@ declare global {
     drawCalls: number | null; triangles: number | null;
     frameMs: number | null; cpuFrameMs: number | null;
     contextLost: boolean;
+    /** Instances of the generated broadleaf in the scene, every one wind-patched (M5a).
+     *  0 until the GLBs have loaded. */
+    windInstances: number;
   }) | undefined;
+  /** Test hook for gate:smoke's wind shots. Not used in play. */
+  var __dragonveinWind: {
+    /** Freeze spin, bob and flock at the current instant (kept across repeated calls)
+     *  and pin the wind clock at `windSeconds`. */
+    freeze: (windSeconds: number) => void;
+    /** Back to the live clock. */
+    release: () => void;
+  } | undefined;
   var __dragonveinPerf: {
     reset: () => void;
     /** Pause or resume `renderer.render` without stopping the loop. See `renderingEnabled`. */
@@ -2090,7 +2274,7 @@ declare global {
  * before the first frame.
  */
 globalThis.__dragonveinStats = () => (framesSinceRestore === 0 && !contextLost ? {
-  drawCalls: null, triangles: null, frameMs: null, cpuFrameMs: null, contextLost,
+  drawCalls: null, triangles: null, frameMs: null, cpuFrameMs: null, contextLost, windInstances,
 } : {
   drawCalls: contextLost ? null : renderer.info.render.calls,
   triangles: contextLost ? null : renderer.info.render.triangles,
@@ -2100,7 +2284,17 @@ globalThis.__dragonveinStats = () => (framesSinceRestore === 0 && !contextLost ?
   cpuFrameMs: contextLost ? null : lastCpuMs,
   /** So a reader that gets nulls can tell "dead" from "not started". */
   contextLost,
+  windInstances,
 });
+
+globalThis.__dragonveinWind = {
+  freeze: (windSeconds: number) => {
+    // `last` is the timestamp of the latest frame, so the frozen pose is the one on screen.
+    if (sceneFrozenAt === null) sceneFrozenAt = last;
+    windFrozenSec = windSeconds;
+  },
+  release: () => { sceneFrozenAt = null; windFrozenSec = null; },
+};
 
 /** Read by `gate:smoke` to prove the camera answers input (rubric G6). Degrees for logs. */
 globalThis.__dragonveinCamera = () => ({

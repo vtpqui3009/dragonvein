@@ -10,6 +10,8 @@ const RULES = {
   'src/ui':      { forbid: [/^three/, /\.\.\/(render|assets)\//] },
   'src/audio':   { forbid: [/^three/, /\.\.\/(render|ui|assets)\//] },
   'src/content': { forbid: [/^three/, /\.\.\/(render|ui|audio|assets|sim)\//] },
+  // docs/ARCHITECTURE.md §Ownership: render may import `core`, `assets` and `three` only.
+  'src/render':  { forbid: [/\.\.\/(sim|ui|audio|content)\//] },
 };
 const IMPORT = /(?:^|\n)\s*import[^'"]*['"]([^'"]+)['"]/g;
 

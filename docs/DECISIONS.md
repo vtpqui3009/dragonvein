@@ -113,3 +113,20 @@ movement is the early scores being generous. No action.
 
 If a fourth scoring of an unchanged surface lands outside 6.5–7.5, that is the evidence
 this entry asked for and the pin should be reconsidered then.
+
+## 2026-10-12 — `GLTFLoader` from `three/examples`, loaded on demand (run 19, M5a)
+
+The game now loads its first `assetgen/` asset at runtime, the committed
+`flora/broadleaf` GLBs. `GLTFLoader` ships inside the existing `three` package, so it is
+not a new dependency in `package.json`. It is still new runtime code, so its cost is
+recorded here, as §2.6 asks for any addition to the bundle.
+
+- **Bundle**, from `artifacts/perf.json`: `bundle.gzipBytes` went from 165 036 before to
+  about 193 790 after, which is +28.8 kB gzipped. That is 13.5 kB for the loader's own
+  chunk, about 13 kB of `three` classes it pulls into the shared chunk, and a small `rng`
+  chunk. The total is about 13.8 % of the 1.4 MB budget.
+- **How it loads.** A dynamic `import()` after the first frame, so `bootMs` is unchanged
+  (about 360 ms against 2 500).
+
+Every later generated asset (rocks, landmarks, more flora) loads through the same loader at
+no further bundle cost.

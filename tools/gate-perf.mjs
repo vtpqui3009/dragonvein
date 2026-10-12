@@ -453,6 +453,18 @@ async function measure({
       );
     }
 
+    // M5a: the generated trees arrive after boot, from three GLB fetches. Measure the scene
+    // with them in it, not a race against the loader: wait (bounded) until the page reports
+    // them, and say so in `errors` if it never does.
+    const treesReady = await page.waitForFunction(
+      () => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0,
+      undefined, { timeout: 30_000 },
+    ).then(() => true, () => false);
+    if (!treesReady) {
+      errors.push('the generated broadleaf never loaded (windInstances stayed 0), so this ' +
+        'measured a scene without its trees');
+    }
+
     // The heap is read over CDP, not from inside the page: the measurement must not be
     // part of what it measures.
     const cdp = sampleHeap ? await page.context().newCDPSession(page) : null;
@@ -795,6 +807,8 @@ try {
     framesRendered: paced.probe.framesRendered,
     drawCalls: paced.stats?.drawCalls ?? null,
     triangles: paced.stats?.triangles ?? null,
+    /** Wind-patched instances of the generated tree in the measured scene (M5a). */
+    windInstances: paced.stats?.windInstances ?? null,
     /**
      * RUBRIC.md P6, which ROADMAP.md makes live from M0. A separate pass at 720p with the
      * shadow pass off, reported separately so a critic can cite it without untangling it
@@ -948,7 +962,8 @@ try {
     `${report.bundle.assets.count} asset file(s), ${(report.bundle.assets.gzipBytes / 1000).toFixed(2)} kB ` +
     'gzipped, reported separately per CLAUDE.md §2.6)');
   console.log(`boot to first frame: ${report.bootMs}ms vs budget ${BUDGET.bootMs}ms`);
-  console.log(`draw calls: ${report.drawCalls}   triangles: ${report.triangles}`);
+  console.log(`draw calls: ${report.drawCalls}   triangles: ${report.triangles}   ` +
+    `wind instances: ${report.windInstances}`);
   console.log(`potato tier (P6): ${report.potato.viewport.drawingBufferWidth}x` +
     `${report.potato.viewport.drawingBufferHeight}, shadows ${report.potato.tier?.shadows}, ` +
     `settings ${report.potato.settingsVerified ? 'verified' : 'WRONG'}  ` +

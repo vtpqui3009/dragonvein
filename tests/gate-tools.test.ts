@@ -82,6 +82,8 @@ describe('check:layers', () => {
     const dir = makeTree({
       'src/ui/panel.ts': "import { fmt } from '../core/fmt';\nexport const p = fmt;\n",
       'src/sim/world.ts': "import { Rng } from '../core/rng';\nexport const r = Rng;\n",
+      'src/render/wind.ts': "import * as THREE from 'three';\nimport { Rng } from '../core/rng';\n" +
+        "import { m } from '../assets/dragon/mesher';\nexport const x = [THREE, Rng, m];\n",
     });
     const r = runTool('check-layers.mjs', dir);
     expect(r.output).toContain('check:layers OK');
@@ -93,6 +95,8 @@ describe('check:layers', () => {
     ['src/sim/world.ts', "import { r } from '../render/scene';\nexport const x = r;\n", '../render/scene'],
     ['src/core/util.ts', "import { s } from '../sim/world';\nexport const x = s;\n", '../sim/world'],
     ['src/content/items.ts', "import { a } from '../audio/bus';\nexport const x = a;\n", '../audio/bus'],
+    ['src/render/scene.ts', "import { w } from '../sim/world';\nexport const x = w;\n", '../sim/world'],
+    ['src/render/hud.ts', "import { p } from '../ui/panel';\nexport const x = p;\n", '../ui/panel'],
   ])('rejects %s importing %s', (file, body, spec) => {
     const dir = makeTree({ [file]: body });
     const r = runTool('check-layers.mjs', dir);
@@ -226,7 +230,7 @@ describe('the gate scripts themselves are runnable', () => {
   it('every tool parses under this node', () => {
     for (const tool of [
       'check-assets.mjs', 'check-determinism.mjs', 'check-layers.mjs', 'glb.mjs', 'variant-probe.mjs',
-      'gate-meshgen.mjs', 'gate-parity.mjs', 'gate-perf.mjs', 'playtest.mjs',
+      'gate-meshgen.mjs', 'gate-parity.mjs', 'gate-perf.mjs', 'playtest.mjs', 'png.mjs',
       'preview-server.mjs', 'rasteriser-cap.mjs', 'site-config.mjs', 'strip-sourcemaps.mjs',
     ]) {
       expect(() => execFileSync(process.execPath, ['--check', path.join(ROOT, 'tools', tool)]))

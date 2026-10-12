@@ -21,6 +21,12 @@
  *    09-orbit-mouse.png        the 1280×720 page after a mouse drag right, a drag down and a wheel step
  *    10-orbit-touch.png        a hasTouch context after a one-finger drag and a pinch-out
  *
+ *  And for M5a, proof that the trees sway — the same camera with the scene clock frozen
+ *  (island spin, companion bob, flock), only the wind time differing:
+ *    11-wind-a.png             wind time 0 s
+ *    11-wind-b.png             wind time 0.8 s
+ *    11-wind-diff.png          the pixels that changed between them, white on black
+ *
  *  And one motion artefact, `artifacts/turntables/m0-island.webm`: rubric A5 asks whether
  *  anything pops in a scene whose whole definition of done is that it *rotates*, and
  *  three stills are weak evidence for that. The critic should be able to watch it.
@@ -29,6 +35,7 @@ import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import pw from 'playwright';
 import { startPreview } from './preview-server.mjs';
+import { decodePng, encodePng } from './png.mjs';
 
 const LOG = 'artifacts/playtest.log';
 const SHOTS = 'artifacts/shots';
@@ -53,6 +60,12 @@ const poseText = (c) => c
   ? `az ${c.azimuthDeg.toFixed(2)}° pitch ${c.pitchDeg.toFixed(2)}° dist ${c.distance.toFixed(2)}`
   : 'absent';
 const HELD_LOSS_MS = 1_200;           // long enough for the first restore attempts to no-op
+/** M5a criterion 2: instances of the generated broadleaf, every one wind-patched. */
+const MIN_WIND_INSTANCES = 200;
+/** M5a criterion 4: the two wind times photographed. */
+const WIND_TIMES_S = [0, 0.8];
+/** A pixel counts as changed when any channel moved by more than this (0-255). */
+const WIND_DIFF_THRESHOLD = 3;
 
 /**
  * Runs in the page. Where every visible piece of the HUD sits against the viewport.
@@ -141,6 +154,17 @@ try {
   // The settled frame. Give the sun, the shadow map and the instanced scatter a moment
   // past boot so the art-critic is not scoring a half-warmed first frame.
   await page.waitForTimeout(2000);
+  // And the generated trees, which arrive after boot (the GLBs load asynchronously). A
+  // frame without them is not the scene M5a ships, so wait for them rather than race.
+  try {
+    await page.waitForFunction(
+      () => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0,
+      undefined, { timeout: 30_000 },
+    );
+    await page.waitForTimeout(500);   // one more frame or two, with the trees drawn
+  } catch {
+    errors.push('the generated broadleaf never appeared: __dragonveinStats().windInstances stayed 0');
+  }
   const wide = await page.screenshot({ path: `${SHOTS}/01-wide.png` });
   say(`shot: ${SHOTS}/01-wide.png  (t+${Date.now() - loadedAt}ms)`);
   // M0e made the HUD wrap. At desktop width it must not: 01-wide is the frame the
@@ -184,6 +208,92 @@ try {
   if (remaining > 0) await page.waitForTimeout(remaining);
   await page.screenshot({ path: `${SHOTS}/03-late.png` });
   say(`shot: ${SHOTS}/03-late.png  (t+${Date.now() - loadedAt}ms, rubric A5)`);
+
+  // --- the trees sway (M5a criteria 2 and 4) -----------------------------------------
+  /*
+   * The art-probe's ambient-motion line cannot isolate sway: the island spins and the
+   * satellites bob, so every frame differs from the last anyway. So the page's own clock
+   * is frozen for this — spin, bob and flock held at one instant by
+   * `__dragonveinWind.freeze` — and only the wind time is moved, 0 s then 0.8 s. With the
+   * camera at its default pose and nothing else moving, the pixels that change between
+   * the two shots are the pixels the wind moved, and a count of zero means the vertex
+   * shader is not swaying anything.
+   */
+  {
+    const windInstances = await page.evaluate(
+      () => globalThis.__dragonveinStats?.().windInstances ?? 0);
+    say(`wind: windInstances ${windInstances} (want >= ${MIN_WIND_INSTANCES})`);
+    if (windInstances < MIN_WIND_INSTANCES) {
+      errors.push(`wind: only ${windInstances} wind-patched tree instances, want >= ${MIN_WIND_INSTANCES}`);
+    }
+    const hasHook = await page.evaluate(() => Boolean(globalThis.__dragonveinWind));
+    if (!hasHook) {
+      errors.push('wind: the page exposes no __dragonveinWind hook, so sway cannot be isolated');
+    } else {
+      const framesNow = () => page.evaluate(() => globalThis.__dragonveinPerf?.read().framesRendered ?? 0);
+      const shots = [];
+      for (const [k, t] of WIND_TIMES_S.entries()) {
+        await page.evaluate((sec) => globalThis.__dragonveinWind?.freeze(sec), t);
+        // Two whole frames past the change, so the canvas holds a frame drawn with it.
+        const f0 = await framesNow();
+        await page.waitForFunction(
+          (f) => (globalThis.__dragonveinPerf?.read().framesRendered ?? 0) >= f + 2,
+          f0, { timeout: 15_000 },
+        );
+        const file = `${SHOTS}/11-wind-${k === 0 ? 'a' : 'b'}.png`;
+        await page.screenshot({ path: file });
+        shots.push(file);
+        say(`shot: ${file}  (scene clock frozen, wind time ${t} s, M5a criterion 4)`);
+      }
+      // The HUD is DOM over the canvas and its FPS readout repaints on a timer, so it is
+      // cut out of the comparison: what is counted is the scene, nothing else. The page
+      // runs at deviceScaleFactor 1, so CSS pixels are image pixels.
+      const hudBox = await page.evaluate(() => {
+        const r = document.getElementById('hud')?.getBoundingClientRect();
+        return r ? { x0: r.left - 2, y0: r.top - 2, x1: r.right + 2, y1: r.bottom + 2 } : null;
+      });
+      await page.evaluate(() => globalThis.__dragonveinWind?.release());
+
+      const [a, b] = shots.map((f) => decodePng(f));
+      let changed = 0, foliage = 0;
+      let x0 = a.w, y0 = a.h, x1 = -1, y1 = -1;
+      const mask = new Uint8Array(a.w * a.h * 3);
+      for (let i = 0; i < a.w * a.h; i++) {
+        if (hudBox) {
+          const hx = i % a.w, hy = Math.floor(i / a.w);
+          if (hx >= hudBox.x0 && hx <= hudBox.x1 && hy >= hudBox.y0 && hy <= hudBox.y1) continue;
+        }
+        const ra = a.px[i * 3], ga = a.px[i * 3 + 1], ba = a.px[i * 3 + 2];
+        const d = Math.max(Math.abs(ra - b.px[i * 3]), Math.abs(ga - b.px[i * 3 + 1]),
+          Math.abs(ba - b.px[i * 3 + 2]));
+        if (d <= WIND_DIFF_THRESHOLD) continue;
+        changed++;
+        // Foliage-coloured in either frame: green leads both red and blue.
+        const gb = b.px[i * 3 + 1];
+        if ((ga > ra && ga > ba) || (gb > b.px[i * 3] && gb > b.px[i * 3 + 2])) foliage++;
+        mask[i * 3] = mask[i * 3 + 1] = mask[i * 3 + 2] = 255;
+        const x = i % a.w, y = Math.floor(i / a.w);
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+      await writeFile(`${SHOTS}/11-wind-diff.png`, encodePng(a.w, a.h, mask));
+      say(`wind: changed pixels between 11-wind-a and 11-wind-b: ${changed} ` +
+        `(any channel > ${WIND_DIFF_THRESHOLD}/255; ${a.w * a.h} px in frame; HUD box ` +
+        `${hudBox ? `x${Math.round(hudBox.x0)}-${Math.round(hudBox.x1)} y${Math.round(hudBox.y0)}-` +
+          `${Math.round(hudBox.y1)} excluded` : 'not found, nothing excluded'})`);
+      say(`wind: changed-pixel bbox ${changed ? `x${x0}-${x1} y${y0}-${y1}` : 'none'}; ` +
+        `${changed ? ((100 * foliage) / changed).toFixed(1) : '0.0'}% of them foliage-coloured ` +
+        `(green leads red and blue in either frame)`);
+      say(`shot: ${SHOTS}/11-wind-diff.png  (the changed pixels, white on black)`);
+      if (changed === 0) {
+        errors.push('wind: 11-wind-a and 11-wind-b are identical — nothing swayed between ' +
+          'wind times 0 s and 0.8 s with the scene clock frozen');
+      }
+    }
+  }
+  await flush();
 
   // --- the same frame with the shadow pass off (rubric A3, rubric P6) -----------------
   // `?tier=potato` is the only switch in the build that turns the shadow map off, and at
