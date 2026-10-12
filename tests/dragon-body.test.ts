@@ -1,0 +1,136 @@
+/**
+ * The runtime dragon body (M3a): src/assets/dragon/builder.ts on the 32 fixed genomes.
+ *
+ * The graph underneath is proven equal to the reference in tests/dragon-graph.test.ts.
+ * This file checks the skin laid over it, against STATE.md run 11's criteria: finite,
+ * closed, outward-wound, inside the graph's own envelope, deterministic, inside budget.
+ */
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { breed, wild, type Element, type Genome } from '../src/core/genome';
+import { BELLY_THRESHOLD, bodyColours, buildDragonBody, hsv } from '../src/assets/dragon/builder';
+import { paths } from '../src/assets/dragon/skin';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+type Recipe =
+  | { op: 'wild'; seed: number; element: Element | null }
+  | { op: 'breed'; a: number; b: number; seed: number };
+const fx = JSON.parse(readFileSync(path.join(ROOT, 'docs/fixtures/genomes.json'), 'utf8')) as {
+  genomes: { recipe: Recipe; gid: string }[];
+};
+const genomes: Genome[] = [];
+for (const { recipe: r } of fx.genomes) {
+  genomes.push(r.op === 'wild' ? wild(r.seed, r.element ?? undefined) : breed(genomes[r.a]!, genomes[r.b]!, r.seed));
+}
+
+/** Body triangles allowed at LOD0 for skeleton, torso and limbs (STATE.md run 11). */
+const TRI_BUDGET = 6000;
+
+describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (i, gm) => {
+  const body = buildDragonBody(gm);
+  const pos = body.geometry.getAttribute('position').array as Float32Array;
+  const nrm = body.geometry.getAttribute('normal').array as Float32Array;
+  const col = body.geometry.getAttribute('color').array as Float32Array;
+  const index = body.geometry.getIndex()!.array as Uint32Array;
+
+  it('every attribute is finite and the normals are unit length', () => {
+    let bad = 0, worstUnit = 0, maxIndex = 0;
+    for (const a of [pos, nrm, col]) for (const x of a) if (!Number.isFinite(x)) bad++;
+    for (let k = 0; k < nrm.length; k += 3) {
+      worstUnit = Math.max(worstUnit, Math.abs(Math.hypot(nrm[k]!, nrm[k + 1]!, nrm[k + 2]!) - 1));
+    }
+    for (const v of index) maxIndex = Math.max(maxIndex, v);
+    expect(bad, 'non-finite values').toBe(0);
+    expect(worstUnit, 'worst |normal| - 1').toBeLessThan(1e-4);
+    expect(maxIndex).toBeLessThan(pos.length / 3);
+  });
+
+  it('every tube is closed and wound outward', () => {
+    expect(body.parts.reduce((s, p) => s + p.count, 0)).toBe(index.length);
+    for (const part of body.parts) {
+      // Closed and consistently oriented: each directed edge appears once, its reverse once.
+      const directed = new Map<string, number>();
+      let vol = 0;
+      for (let t = part.start; t < part.start + part.count; t += 3) {
+        const tri = [index[t]!, index[t + 1]!, index[t + 2]!];
+        for (let k = 0; k < 3; k++) {
+          const key = `${tri[k]},${tri[(k + 1) % 3]}`;
+          directed.set(key, (directed.get(key) ?? 0) + 1);
+        }
+        const [a, b, c] = tri.map((v) => [pos[v * 3]!, pos[v * 3 + 1]!, pos[v * 3 + 2]!] as const);
+        vol += (a![0] * (b![1] * c![2] - b![2] * c![1]) - a![1] * (b![0] * c![2] - b![2] * c![0])
+          + a![2] * (b![0] * c![1] - b![1] * c![0])) / 6;
+      }
+      for (const [key, n] of directed) {
+        const [u, v] = key.split(',');
+        expect(n, `edge ${key} used ${n}x`).toBe(1);
+        expect(directed.get(`${v},${u}`), `edge ${key} has no twin: a hole`).toBe(1);
+      }
+      expect(vol, 'signed volume: negative means wound inward').toBeGreaterThan(0);
+    }
+  });
+
+  it('the bounding box holds every graph node and stays inside the graph envelope + 10%', () => {
+    const bb = body.geometry.boundingBox!;
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    body.graph.v.forEach(([x, y, z], n) => {
+      const q = [x, z, -y]; // z-up -> y-up
+      const r = body.graph.r[n]!;
+      expect(bb.containsPoint({ x: q[0]!, y: q[1]!, z: q[2]! } as never), `node ${n}`).toBe(true);
+      for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k]!, q[k]! - r); hi[k] = Math.max(hi[k]!, q[k]! + r); }
+    });
+    const min = [bb.min.x, bb.min.y, bb.min.z], max = [bb.max.x, bb.max.y, bb.max.z];
+    for (let k = 0; k < 3; k++) {
+      const grow = 0.10 * (hi[k]! - lo[k]!);
+      expect(min[k]!, `axis ${k} min`).toBeGreaterThanOrEqual(lo[k]! - grow);
+      expect(max[k]!, `axis ${k} max`).toBeLessThanOrEqual(hi[k]! + grow);
+    }
+  });
+
+  it(`stays within ${TRI_BUDGET} triangles`, () => {
+    expect(index.length / 3).toBeLessThanOrEqual(TRI_BUDGET);
+  });
+
+  it('is deterministic: two builds are byte-identical', () => {
+    const again = buildDragonBody(gm).geometry;
+    for (const name of ['position', 'normal', 'color']) {
+      expect(Buffer.from((again.getAttribute(name).array as Float32Array).buffer)
+        .equals(Buffer.from((body.geometry.getAttribute(name).array as Float32Array).buffer)), name).toBe(true);
+    }
+    expect(Buffer.from((again.getIndex()!.array as Uint32Array).buffer).equals(Buffer.from(index.buffer))).toBe(true);
+  });
+
+  it('has a belly: the downward-facing surface takes the belly colour, the rest the scale colour', () => {
+    const { scale, belly } = bodyColours(gm.phenotype);
+    let nBelly = 0, nScale = 0, wrong = 0;
+    for (let k = 0; k < col.length; k += 3) {
+      const want = nrm[k + 1]! < BELLY_THRESHOLD ? belly : scale;
+      if (col[k] !== Math.fround(want[0]) || col[k + 1] !== Math.fround(want[1]) || col[k + 2] !== Math.fround(want[2])) wrong++;
+      if (want === belly) nBelly++; else nScale++;
+    }
+    expect(wrong, 'vertices with the wrong colour for their normal').toBe(0);
+    expect(nBelly).toBeGreaterThan(0);
+    expect(nScale).toBeGreaterThan(nBelly);
+  });
+
+  it(`skins every node: one tube for the spine, one per leg, one per toe (${i})`, () => {
+    const ps = paths(body.graph, body.idx.tailTip);
+    const covered = new Set(ps.flatMap((p) => p.nodes));
+    expect(covered.size).toBe(body.graph.v.length);
+    expect(ps[0]!.nodes).toContain(body.idx.nose);
+    expect(ps[0]!.nodes).toContain(body.idx.hip);
+    expect(ps.length).toBe(1 + 4 + 4 * gm.phenotype.toeCount);
+    expect(body.parts.length).toBe(ps.length);
+  });
+});
+
+describe('hsv() is colorsys.hsv_to_rgb', () => {
+  it('matches hand-computed values, including a hue that wraps', () => {
+    expect(hsv(0, 1, 1)).toEqual([1, 0, 0]);
+    expect(hsv(1 / 3, 1, 1)[1]).toBe(1);
+    expect(hsv(-0.25, 0.5, 0.8)).toEqual(hsv(0.75, 0.5, 0.8));
+    expect(hsv(0.5, 0, 0.4)).toEqual([0.4, 0.4, 0.4]);
+  });
+});
