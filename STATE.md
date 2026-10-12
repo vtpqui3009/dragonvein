@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 13 · M3c — the dragon builds in a worker inside 120 ms on Medium
+## 2026-10-12 · run 13 · M3c DONE (M3 IN_PROGRESS) — the dragon builds in a worker inside 120 ms on Medium
 
 **Step**: `M3c`, the first step in reading order that is not `DONE`. Step 0 pushed `caebd19`.
 
@@ -47,6 +47,49 @@ rendering. That is where a hatch will happen, on the CI runner's SwiftShader hos
 4. **The game does not pay for it at boot.** The mesher and worker load lazily on first use.
    `gate:perf`'s bundle and boot numbers stay within budget.
 5. `dragon.html` builds through the worker too. `npm run gates` exits 0.
+
+### Result — every criterion met at `c01ccb8`
+
+1. `buildDragonArrays` (in `arrays.ts`, with no three.js) and `toGeometry` are byte-identical to
+   the old `buildDragon` on 32 genomes (`5c99df7`).
+2. `worker.ts` and `DragonMesher`: a genome is posted as JSON and the four buffers come back as
+   transferables. `Genome.fromJSON` (`7db3638`) round-trips 32 genomes, and the reply equals
+   the direct build.
+3. `gate:meshgen` runs on the game page while it renders (`a68bb9b`): worker max 26.8 ms, round
+   trip max 31.2, main-thread assembly max 11.4, against 120. The re-gate at `c011d0c` gave
+   23.9, 26.7 and 3.9.
+4. The mesher loads lazily: the worker is its own 10 kB gzip chunk. `bundle.gzipBytes` is
+   164 842 against 1.4 MB, and `bootMs` is 373.
+5. `dragon.html` builds through the worker (`c01ccb8`). Gates are green with 872 tests.
+
+**Scores:** art **8.0**, perf **8.5**, gameplay **8.5**, all on the first pass. **M3c is
+`DONE`. M3 stays `IN_PROGRESS`** until M3d.
+
+### Decisions
+
+- **The warm-up is honest, not a dodge.** A fresh worker's first build was a 144.8 ms round
+  trip (module fetch and parse, then a cold JIT), against about 9 ms after it.
+  - `DragonMesher.ready()` builds one throwaway dragon in the worker. The game will call it
+    while idle, before a hatch can happen.
+  - The gate holds every real build to 120 ms, including the first after the warm-up. It
+    reports the warm-up as `startupMs` and `warmMs` (about 70 ms).
+  - The change in what the gate enforces went in its own commit, with this reason
+    (`a68bb9b`).
+- **"On Medium" means the game page's default settings,** which `perf.json` calls Medium
+  minus post until M6e. It is measured there, under the render loop, because that is where a
+  hatch happens.
+- **A failing worker now fails loudly (`c011d0c`, after the pass).** Before the fix,
+  `ready()` and later builds hung forever when the worker could not load. The fix is in
+  this step's own code and cheap. The next pass scores it.
+- **`gate:parity`'s mesh half is now keyed to M3d (`a0dbec0`).** Keyed to M3c, as run 10 set
+  it, it would have turned `main` red at this close-out, and `main` would have stayed red for
+  the next run. It now SKIPs until the comparison exists, and FAILS if M3d is marked `DONE`
+  without it. That was shown on a scratch copy.
+
+### Blocker for M3d
+
+CLAUDE.md §1.5's vertex-count comparison cannot hold between Skin + Subsurf (about 20 000
+vertices) and the TS sweep (about 5 000). That is the owner's call (NEXT.md).
 
 ---
 
@@ -160,131 +203,6 @@ within float32 tolerance.
   - umbra renders under the bible's value floor;
   - no creature in the game scene.
 - Owner: proportions, and M3d's vertex-count question (NEXT.md).
-
----
-
-## 2026-10-12 · run 11 · M3a DONE (M3 IN_PROGRESS) — skeleton, torso and limbs from a genome into a `BufferGeometry`
-
-**Step**: `M3a`, the first step in reading order that is not `DONE`. Step 0 pushed `1a22af8`.
-
-**Ownership**: `assetgen/` graph vectors (asset-builder), then `src/assets/dragon/` (mesh-builder),
-then `tools/`, `tests/`, the viewer page and config (integrator). One sequential owner, in that order.
-
-**What can match and what cannot.** `assetgen/dragon/builder.py` builds a *skin graph* —
-`skeleton(p)` then `add_limbs` — which is pure arithmetic on the phenotype: node positions,
-radii, edges. Blender then skins that graph with its Skin modifier and Subsurf, which
-TypeScript cannot reproduce vertex for vertex. So the graph is ported exactly and proven
-the M2 way, and the TS skin is its own sweep, held to the graph by geometry checks.
-
-### Acceptance criteria
-
-1. **The graph is the reference's.** `assetgen/dragon_vectors.py` writes
-   `docs/fixtures/dragon-graphs.json`: for each of the 32 fixed genomes, the graph
-   `skeleton(p)` + `add_limbs(g, idx, p)` produces — every node position and radius, every
-   edge, and the named anchors (`tailTip`, `hip`, `chest`, `shoulder`, `neck`, `headBack`,
-   `headMid`, `nose`, `headPos`, `headMidPos`, `headBackPos`). It pins `builder.py`'s
-   SHA-256 and is byte-identical on re-run. `tests/dragon-graph.test.ts` rebuilds each
-   graph in TS and compares with `Object.is`. Any value that cannot be exact (a libm
-   `pow`/`sin` last-ulp difference) is named in the test with its measured error, not
-   hidden behind a blanket tolerance.
-2. **A `BufferGeometry` comes out.** `buildDragonBody(genome)` in
-   `src/assets/dragon/builder.ts` returns an indexed `THREE.BufferGeometry` with `position`,
-   `normal` and `color` (scale colour, belly colour where the normal faces down — the
-   reference's `paint_belly`). `tests/dragon-body.test.ts`, for all 32 genomes:
-   - no NaN or infinite value in any attribute;
-   - every part is closed (each edge shared by exactly two triangles) and wound outward
-     (positive signed volume), because three.js culls back faces (NEXT.md §Mesh winding);
-   - the bounding box holds every graph node, and lies inside the graph's node-plus-radius
-     box grown by 10 %;
-   - two builds of the same genome are byte-identical;
-   - triangles ≤ 6 000 for skeleton, torso and limbs (wings and crown arrive at M3b).
-3. **`gate:meshgen` measures instead of skipping.** It builds all 32 fixed genomes with the
-   TS builder and fails if any build takes > 120 ms. The worker and Medium-tier
-   measurement is M3c's. The change goes in its own commit.
-4. **Seen rendered.** `node tools/dragon-sheet.mjs` renders `dragon.html` headlessly into
-   `artifacts/variants/dragon-body.png` (8 genomes: one wild per element plus two bred) and
-   a turntable `artifacts/turntables/dragon-body.webm`. The 8 bodies read as 8 different
-   creatures, and none shows an inward-facing patch, hole or detached limb.
-5. `npm run gates` exits 0, with `gate:parity`'s mesh half still a named SKIP (M3c is not
-   `DONE`).
-
-### Result — every criterion met at `e015a48`
-
-1. **The graph is the reference's.** All 32 graphs match: 56–64 nodes each, every position,
-   edge and anchor `Object.is`-equal (`a62a533`). The one exception is measured and named:
-   `t ** (1/tailTaper)` rounds its last bit differently in Python's libm and in V8 on 5 of 1 960
-   radii, all at tail node 3 and all by exactly 1 ulp. The test allows ≤ 1 ulp on tail nodes
-   1–3 only, and fails if more than 8 differ.
-2. **A `BufferGeometry` comes out** (`323ccf9`, `29c060e`, `570c706`).
-   `tests/dragon-body.test.ts` checks all 32 genomes for:
-   - finite values and unit normals;
-   - every part closed (each directed edge used once, with its twin) and with positive signed
-     volume;
-   - the bounding box holding every node and staying inside the envelope + 10 %;
-   - byte-identical rebuilds;
-   - at most 5 752 triangles, against a cap of 6 000;
-   - colours matching their part and normal.
-3. **`gate:meshgen` measures** (`802bff6`, its own commit): max 9.1 ms, median 5.5, cold 22.7,
-   against 120.
-4. **Seen rendered.** `artifacts/variants/dragon-body.png` and
-   `artifacts/turntables/dragon-body.webm`. Both critics confirm 8 distinct bodies with no
-   hole, inward patch or detached limb in any view they rendered.
-5. Gates green: 485 tests. `gate:parity` genome OK, mesh a named SKIP.
-
-**Scores** (FINDINGS.md, three cycles):
-
-| cycle | commit | art | perf | gameplay |
-|---|---|---|---|---|
-| 1 | `84ce145` | 7.4 | 8.9 | 8.7 |
-| 2 | `dda79a2` | 7.2 | 8.7 | 9.0 |
-| 3 | `e015a48` | **7.6** | **8.7** | **9.0** |
-
-So **M3a is `DONE` and M3 stays `IN_PROGRESS`** (§3.6). It needs every step and a pass with all
-three ≥ 8.0.
-
-### Decisions
-
-- **A reference bug fixed at the source (`8d78efa`).** `skeleton()` never joined its five tail
-  nodes. Blender skinned four of them as loose beads behind the body, which is visible in
-  `docs/concept/01-species-lineup.png`. `docs/GENOME.md` makes `tailTaper` a "tail radius
-  falloff exponent", so the reference was wrong. It was fixed before the port copied it. The
-  concept images were not regenerated (CLAUDE.md §2.9).
-- **The skin is the TS builder's own, held to the graph.** It is not an imitation of Blender's
-  Skin + Subsurf. The tubes are centripetal Catmull-Rom curves through the nodes, with:
-  - radii clamped between neighbouring nodes, and pinches filled to 0.92 of the neighbours'
-    mean;
-  - coincident nodes merged (the reference puts the tail root and the hip at the same point);
-  - ring frames averaged over ±1.5 radii;
-  - rounded caps.
-
-  Wider averaging (2.0) put ripples in the neck, so it stays at 1.5.
-- **Colour genes mean what the player sees (`570c706`).** The HSV is decoded from sRGB into
-  the linear vertex colour. Blender reads the same triple as linear, which put a gale dragon at
-  the gene floor s = 0.35 on screen at s = 0.11 (art A2). The bible's 0.35–1.00 describes
-  what is seen. This diverges from the reference's *look*, not its geometry.
-- **Belly as a soft band on the spine tube.** Its centre is the reference's −0.30. The
-  reference's per-face switch painted blotches on the neck and legs.
-- **The sheet uses seeds 1–6 in order, plus two children of sheet dragons.**
-  `wild(seed, element)` gives one body per seed under every element, so a sheet on one seed
-  showed one body in six colours. That is the genome working as specified, and the sheet was
-  what changed. The seeds were not picked.
-- **`gate:meshgen` (`802bff6`) and `gate:parity` (run 10) had the same defect:** each failed as
-  soon as `builder.ts` existed, which is two steps before its milestone. `gate:meshgen` now
-  measures, which is stricter than a skip.
-
-### Open blockers for milestone M3
-
-- **Art 7.6.** What is left:
-  - the reference's proportions, a long low lizard against the bible's chunky, front-heavy
-    dragon with a head about 1/5 of body length. Only a change to `builder.py` can move it, so
-    this is a **question for the owner** (NEXT.md);
-  - the far-side legs in the body's shadow;
-  - the seam where a leg tube enters the body;
-  - no creature in the game scene (A6).
-
-  M3b's horns, crest and wings should lift A1, A4 and A9.
-- Perf, standing: no real-GPU row since `3ab6e84`. There is no dragon in any measured frame
-  until the game uses one.
 
 ---
 

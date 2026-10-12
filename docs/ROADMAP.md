@@ -96,8 +96,8 @@ at `3ab6e84`; M2's code is not yet imported by the game, so nothing visible chan
 |---|---|---|
 | M3a | skeleton, torso and limbs build from a genome into a `BufferGeometry` | DONE |
 | M3b | wings, crown, membrane and tail ornament; the creature reads as the Python one | DONE |
-| **M3c** | **built in a worker inside 120 ms on Medium; `gate:meshgen` green** | **TODO** |
-| M3d | `gate:parity` green between the two builders on the fixed genome set | TODO |
+| M3c | built in a worker inside 120 ms on Medium; `gate:meshgen` green | DONE |
+| **M3d** | **`gate:parity` green between the two builders on the fixed genome set** | **TODO** |
 
 M3a closed on 2026-10-12 at `e015a48` (run 11), on its STATE.md criteria with gates green. The
 graph is identical to the reference on 32 genomes, and the skin is closed and outward-wound.
@@ -112,6 +112,12 @@ vertices are within 1e-5 of Blender's, and its sheet matches `dragon-reference.p
 The second cycle scored art **8.1**, perf **8.2** and gameplay **9.0**, the first M3 pass with all
 three ≥ 8.0. The reference's invisible tail turned out to be a Skin-modifier collapse behind a
 zero-length edge, and was fixed at the source (`df81a56`).
+
+M3c closed on 2026-10-12 at `c01ccb8` (run 13), on its first pass: art **8.0**, perf **8.5**,
+gameplay **8.5**. Dragons build in a Web Worker. `gate:meshgen` measures them on the built game
+page at its default settings while it renders. The worst round trip is 26.7–31.2 ms against
+120. The worker's one-off warm-up (about 70 ms) runs before any hatch, and is reported, not
+hidden. Its failure path was fixed after the pass (`c011d0c`).
 
 ## M4 — Terrain assets
 
