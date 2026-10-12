@@ -13,6 +13,40 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 17 · M4c — shard and eroded rock generators
+
+**Step**: `M4c`, the first step in reading order that is not `DONE`. Step 0 pushed `a45d808`.
+
+**Split first.** M4c was written as four generators: shard, eroded, arches and floating
+shards. M4b's three took all of run 16, including a rework cycle, so the step was split
+(CLAUDE.md §4b.4; ROADMAP §How big a step may be):
+- M4c is the two remaining `docs/ASSET_PLAN.md` §C2 rocks, `terrain/shard` and
+  `terrain/eroded`;
+- M4d is the two §C3 landmarks, arch and floating shards.
+
+**Ownership**: `assetgen/terrain/` (asset-builder), sequential, on `rockkit.py`.
+
+### Acceptance criteria
+
+1. **`terrain/shard`** (angular crystalline rock spikes) and **`terrain/eroded`** (a
+   wind-carved rock with hollows and an undercut waist) each follow the M4b pattern:
+   - `plan(seed)` draws everything, and the main silhouette axis is stratified on the seed;
+   - flat-shaded facets (FINDINGS M4b: smooth blobs are out of style against concept 03);
+   - LOD0/1/2 strictly decreasing **on every seed 1–8**, within 4 000 / 1 200 / 300;
+   - 0 inward faces at every LOD on every seed;
+   - colours only on the ART_BIBLE rock ramp, based on rock mid, with dusk only on faces
+     that look at the sky.
+2. **Pipeline.** Both are registered.
+   - `assets:build --verify` is byte-identical.
+   - `--check` and `check:assets` are OK.
+3. **Seen.** `artifacts/variants/{shard,eroded}.png` and a turntable each.
+4. **Probed.** `node tools/variant-probe.mjs terrain/<name>` passes for both, and the five
+   existing generators still pass.
+5. `npm run gates` exits 0.
+6. Art per generator is ≥ 8.0 (ROADMAP §Definition of done for an asset milestone).
+
+---
+
 ## 2026-10-12 · run 16 · M4b DONE — three cliff and rock generators
 
 **Step**: `M4b`, the first step in reading order that is not `DONE`. Step 0 pushed the run marker.
@@ -473,4 +507,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T16:26Z
