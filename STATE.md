@@ -13,6 +13,42 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 10 · M2b — the genome in TypeScript, identical to the reference
+
+**Step**: `M2b`, the first step in reading order that is not `DONE`. Step 0 pushed `6f5a9e4`.
+
+**Ownership**: `src/core/` (core-builder), `assetgen/` vectors (asset-builder), `tools/` gate and
+`tests/` (integrator). One sequential owner, in that order.
+
+**Reading `genome.py` found five places the languages differ**, every one of which would give
+a different dragon:
+1. `round(v)` for `i`/`e` genes is banker's rounding (`round(2.5) == 2`), not `Math.round`.
+2. `%` on floats is floor-mod in Python (`-0.3 % 1.0 == 0.7`) and remainder in JS
+   (`-0.3`). `circ_mean`, the hue blend, depends on it.
+3. `min`/`max` return the first argument on ties, so `max(-0.0, 0)` is `-0.0`, where
+   `Math.max` gives `+0`. Signed zeros are visible both to `Object.is` and to `json.dumps`.
+4. `gid()` is `sha1(json.dumps({k: round(v, 5)}, sort_keys=True) + "|".join(element))[:10]`.
+   That means Python's `round(x, 5)` (correctly rounded, half-even on exact ties), Python's
+   float repr (`1.0`, `1e-05`, `-0.0`), and its `", "` / `": "` separators. `src/core` may
+   import nothing, so SHA-1 is implemented in TS.
+5. `gate:parity` cannot go green as written, because it waits for M3's mesh builder.
+
+`docs/GENOME.md` (locked, §7) does not specify the id format, so the reference decides and
+the port reproduces it exactly. No owner question is needed.
+
+### Acceptance criteria
+
+| # | criterion | instrument |
+|---|---|---|
+| AC1 | `src/core/genome.ts` exports the gene table, elements, `Genome` (`express`, `phenotype`, `rarity`, `gid`, `toJSON`), `wild` and `breed`, with the same contract as `genome.py`. It imports only `./rng`. | file, `check:layers` |
+| AC2 | `assetgen/genome_vectors.py` writes `docs/fixtures/genomes.json`, the file `gate:parity` names. It holds **32 fixed genomes**: wild ones for all six elements (with and without a forced element) and bred ones across three generations, including hybrids and at least one fusion. Each records its alleles, element, generation, lineage, phenotype, rarity and gid. It also carries edge vectors for traps 1–4 (`.5` ties, negative mod, a `round(x, 5)` exact tie, `1e-05`, `-0.0`). Byte-identical on re-run, with `genome.py` pinned by SHA. | script, `sha256sum` twice |
+| AC3 | A vitest test asserts exact equality on all 32 (alleles, phenotype, rarity and gid string) and on every edge vector. It is seen failing with `Math.round` in place of half-even, and with JS `%` in place of floor-mod. | `npm run test`, deliberate-bug runs |
+| AC4 | `gate:parity` checks the genome level now and passes. The mesh half stays an explicit SKIP naming M3c until `src/assets/dragon/builder.ts` exists. This is a gate change in its own commit (§2.7). | `npm run gate:parity` |
+| AC5 | `npm run gates` exits 0. | `npm run gates` |
+| AC6 | Critics score on a frozen tree. The genome is not yet wired into the game. | `FINDINGS.md` |
+
+---
+
 ## 2026-10-12 · run 9 · M2a DONE — the TypeScript Rng matches Python stream for stream
 
 **Step**: `M2a`, the first step in reading order that is not `DONE` (M0 and M1 closed). Step 0
@@ -368,4 +404,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T09:51:27Z
