@@ -10,40 +10,41 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `8f73e84`, the last commit of run 14 that changed
+Last updated: **2026-10-12** · at commit `b27bc4d`, the last commit of run 15 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M4a — island generator: shape, size, biome, edge erosion, underside, with a passing variant sheet** · `TODO`
+**M4b — 3 cliff/rock generators, each with a passing variant sheet** · `TODO`
 
-M3d closed in run 14, so **every M3 step is `DONE`**. `gate:parity` now compares the two dragon
-builders for real, under CLAUDE.md §1.5 as amended by the owner:
-- skin graphs and limb anchors match exactly (anchorMaxGap 0);
-- bounding boxes are within 3 % (worst 2.04 %).
+M4a closed in run 15 on its first pass: art **8.3**, perf **8.2**, gameplay **9.2**.
+`assetgen/terrain/island.py` builds floating islands from a seed:
+- deck, cliff strata and a tapering underside, varied in shape, size, biome, erosion and
+  underside;
+- LODs 5760/1536/280, byte-reproducible;
+- `variant-probe` passes (the most alike pair is 30.6 % apart, and every vertex is within ΔE
+  0.14 of its ramp).
 
-The pass scored art **7.4**, perf **8.15** and gameplay **8.5**. **Milestone M3 stays
-`IN_PROGRESS`**: art is under 8.0, and no human has yet seen the dragons running (§7).
+The pipeline is now generic. Generators declare `SHEET`, `METRIC_AXES` and `PALETTE_ROLES`,
+and `render_all.py` and `variant-probe` read them.
 
 ## The single next action
 
-Take M4a, the first terrain generator, in `assetgen/terrain/island.py`. Follow the M1a pattern
-that `flora/broadleaf.py` set:
-- LOD0/1/2 `.glb`, byte-reproducible;
-- an 8-seed variant sheet;
-- a turntable;
-- an entry in `MANIFEST.json`.
+Take M4b in `assetgen/terrain/`: three cliff/rock generators. `docs/ASSET_PLAN.md` §C2 names
+five: stratified, columnar, boulder pile, shard, eroded. Pick three that read as three
+different rock *kinds*.
 
-The `asset-env` skill has Blender's setup. `docs/ASSET_PLAN.md` §C1 is the target: shape,
-size, biome, edge erosion and an underside taper. Read §Definition of done in ROADMAP before
-writing criteria.
-
-- The island in the game today is hand-built in `src/main.ts`. M4a builds the generator and
-  its sheet. It does not have to swap the game's island in, unless the criteria say so.
-- Hazards from M1a: mesh winding (count inward faces), and `variant-probe` needs
-  `artifacts/variants/<name>.metrics.json`.
+- **Copy the island's pattern:** `plan(seed)` first, `build(seed, lod)`, `metrics`,
+  `inward_faces`, and the declarations. Register each in `build_all.py`'s `GENERATORS`.
+  `render_all.py` and the probe need no change unless the sheet framing does.
+- **One step, three generators.** If a run cannot fit all three with sheets and critics,
+  say so in STATE.md and split it (§How big a step may be). Push after each generator.
+- **The art critic's M4a notes apply here too:**
+  - a sheet camera that hides the top surface (consider `SHEET["rx"]` per generator);
+  - biome or kind must read at sheet scale, not only in the metrics;
+  - no contact shadow on floating things.
 
 ## Open items that need the owner, not a run
 
@@ -68,18 +69,20 @@ writing criteria.
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
-- M3 art:
-  - shadow sides go black in the viewer;
-  - wing hue clashes with body hue (magenta on brown);
-  - the sheet is unusable at 360 px;
-  - the viewer has no pitch and no zoom limits.
-- The game scene has no dragon or creature (A6). `gate:smoke` never loads `dragon.html`.
-- G2 preview: children lean towards one parent (H reads as C). Revisit at M9b.
+- Island:
+  - biome does not read at sheet scale;
+  - the sheet's low camera hides terraces and bites;
+  - several seeds are dirt-topped, against the concept's green;
+  - contour banding on mounds;
+  - nothing on the decks yet (M5e dresses them);
+  - the game still uses the hand-built island.
+- M3: the art deductions sit with the owner's design questions (NEXT.md §Open items). The
+  viewer has no pitch and is poor at 360 px.
 - Perf:
   - the real-GPU log predates M2;
-  - `heap.uncorrectedBytesPerFrame` is at 97 % of budget;
-  - no dragon in any measured frame.
-- Nothing in the game calls `DragonMesher.ready()` yet. M9's hatch must.
+  - heap is about 34 kB of 40;
+  - no dragon or generated island in any measured frame.
+- G2 preview: children lean towards one parent (H reads as C). Revisit at M9b.
 
 ## Standing hazards — every run hits these
 
