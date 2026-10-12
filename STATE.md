@@ -13,6 +13,43 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 16 · M4b — three cliff and rock generators
+
+**Step**: `M4b`, the first step in reading order that is not `DONE`. Step 0 pushed the run marker.
+
+**Ownership**: `assetgen/terrain/` (asset-builder). The pipeline (`build_all`, `render_all`,
+`variant-probe`) is already generic since run 15.
+
+**The three, chosen to read as three kinds of rock** (`docs/ASSET_PLAN.md` §C2):
+`terrain/stratified` (a layered butte), `terrain/columnar` (a basalt column cluster) and
+`terrain/boulders` (a pile of rounded boulders). They share a small kit,
+`assetgen/terrain/rockkit.py`, which holds the mesh accumulator, the palette ramps and the
+inward-face count. Budgets follow docs/PERF_BUDGET.md §Other budgets for props:
+4 000 / 1 200 / 300.
+
+### Acceptance criteria
+
+1. **Each of the three** follows the island's pattern:
+   - `plan(seed)` draws everything, so the LODs are one object;
+   - its kind's own parameters, with the main silhouette axis stratified on the seed;
+   - LOD0/1/2 strictly decreasing, within 4 000 / 1 200 / 300;
+   - 0 inward faces at every LOD;
+   - colours only on ART_BIBLE ramps (rock: dusk → rock mid → deep shadow; grass for caps).
+2. **Pipeline.** All three registered.
+   - `assets:build --verify` is byte-identical across processes for all files.
+   - `--check` matches the commits and pins.
+   - `check:assets` is OK.
+3. **Seen.** `npm run assets:render` writes `artifacts/variants/{stratified,columnar,boulders}.png`
+   and a turntable each.
+4. **Probed.** `node tools/variant-probe.mjs terrain/<name>` passes for each, A4 and A2, and the
+   island and broadleaf still pass.
+5. `npm run gates` exits 0.
+
+If the three cannot all land with critics inside the run, the step is split (ROADMAP §How
+big a step may be), and the split is recorded here.
+
+---
+
 ## 2026-10-12 · run 15 · M4a DONE — the island generator
 
 **Step**: `M4a`, the first step in reading order that is not `DONE`. Step 0 pushed `cff41b6`.
@@ -456,4 +493,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T15:40:58Z
