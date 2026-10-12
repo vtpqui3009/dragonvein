@@ -5,6 +5,65 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M3b — run 12, 2026-10-12 — cycle 2, at `4679aa6`
+
+**Scores: art-critic 8.1 · perf-critic 8.2 · gameplay-critic 9.0.** No blocking defect. All three
+are ≥ 8.0, so **M3b ships**. This is the first M3 pass with all three over the bar. M3 stays
+`IN_PROGRESS` until M3c and M3d are done.
+
+## perf-critic — 8.2 (all six lines)
+
+P1 1.5 · P2 1.8 · P3 1.7 · P4 1.2 · P5 1.2 · P6 0.8.
+
+- [major] P1: no real-GPU row for M2 or M3 code. The newest row is the `3ab6e84` sighting.
+- [major] No measured frame holds a dragon. Up to 9294 triangles and 3 material groups per
+  dragon, with draw, frame and heap cost unmeasured.
+- [major] Breeding-stutter risk: the cold browser build `firstDragonMs 31.2` is on the main thread
+  (two dropped frames). The worker is M3c's. Make the build cheaper; never raise 120.
+- [minor] P4 `heap.bytesPerFrame 33155`, uncorrected 39561.
+- [minor] P6: no real-hardware Potato. The advisory GPU term is about 3× PERF_BUDGET's quote,
+  probably the rasteriser cap on 2 cores.
+- [minor] P3 scope: Node and headless main thread, not Medium in a worker (M3c).
+
+SCORE_MACHINE: 8.2
+
+## art-critic — 8.1 (all nine lines)
+
+A1 1.0 · A2 0.7 · A3 1.0 · A4 1.3 · A5 1.0 · A6 1.0 · A7 0.9 · A8 0.8 · A9 0.4.
+
+- [major] A2 `dragon-full.png` cell F at V 0.19–0.24 and E at V 0.29, against the bible's
+  0.28 floor. Repro: sample (690, 525) and (790, 510).
+- [major] A6 `shots/*.png`: no dragon or creature in any game frame. The satellite islands
+  are bare.
+- [minor] A4: the tail ornament is the same cream blade on all eight (the reference's too).
+  A, C, G and H share proportions.
+- [minor] A2/A9: flat, saturated membranes, where the reference shows soft, faceted ones. The
+  runtime is darker and more saturated than the reference and the concept.
+- [minor] A5 cell A and turntable tile 2: a lower wing panel crosses the tail.
+- [minor] A3 turntable tiles 1–2: the shadow-side legs and belly go black. The warm rim is weak.
+- [minor] The turntable's grey horizon band (viewer).
+
+"Reads as the Python one": strong. Silhouette, wing angle, crown, spike count, tail blade and
+head line up in A–H. What remains is material.
+
+SCORE_MACHINE: 8.1
+
+## gameplay-critic — 9.0 (4.7 of 5.2; G2, G4, G5 n/a)
+
+G1 2.0 · G3 1.2 · G6 1.5.
+
+- [minor] `playtest.log` never loads `dragon.html`.
+- [minor] The viewer drag turns yaw only, with no pitch or pan.
+- [minor] The wheel zoom step is clamped per event.
+- [minor] G2 advisory: the second parent shows weakly. G reads as A with greener wings, and H as C.
+
+Criterion 4: all 8 cells agree on wing size and pose, horn count and crest, spike row, tail
+ornament and silhouette. Colour and surface differ, and that is material, not shape.
+
+SCORE_MACHINE: 9.0
+
+---
+
 # M3b — run 12, 2026-10-12 — cycle 1, at `027727f`
 
 **Scores: art-critic 7.5 · perf-critic 8.4 · gameplay-critic 8.7.** No blocking defect. Art is
@@ -275,56 +334,6 @@ element's bias (`ELEMENT_BIAS`). The sheet used seed 11 for all six elements, wh
 into every cell. The sheet changes; the genome does not (docs/GENOME.md is the arbiter).
 
 SCORE_MACHINE: 8.7
-
----
-
-# M2b — run 10, 2026-10-12 — cycle 1, at `156321e`
-
-**Scores: art-critic 8.2 · perf-critic 9.0 · gameplay-critic 9.2.** No blocking defect. The step
-is pure logic; the genome is not imported by the game yet.
-
-## perf-critic — 9.0 (7.4 of 8.2; P3 n/a)
-
-P1 2.3 · P2 1.8 · P4 1.3 · P5 1.2 · P6 0.8.
-
-- [minor] P1: no real-GPU percentile. Both log rows are sightings.
-  Repro: `npm run gate:perf -- --real-gpu`.
-- [minor] P6: no real-hardware Potato evidence.
-- [minor] P4: `heap.bytesPerFrame 32 953` is 80% of 40 960. New draw calls will trip it
-  before P2 does.
-- [minor] `cpuFrameMs.p95 1.5`, `max 7.4` is a little above the documented capped range. It
-  is within budget; re-run to confirm it is noise.
-- [minor] forward: P3 and `gate:meshgen` become scoreable at M3c.
-
-SCORE_MACHINE: 9.0
-
-## art-critic — 8.2 (all nine lines)
-
-A1 1.0 · A2 0.9 · A3 0.9 · A4 1.4 · A5 1.1 · A6 0.9 · A7 0.9 · A8 0.8 · A9 0.35.
-
-- [major] A6 `01-wide.png`, `03-late.png`: no creature, no dragon, no ambient life, so the frame
-  has no focal subject.
-- [major] A3 `01-wide.png` hero deck: trees cast no readable shadow on the island top.
-- [minor] A4 `variants/broadleaf.png`: one species idiom, and canopy hue is fixed across seeds.
-- [minor] A5: the branch stub on seed 5, and the pale wedge on seed 7's trunk base.
-- [minor] A5 `turntables/broadleaf.webm`: a pale smear on the stage floor under the trunk.
-- [minor] A6: the satellite islands are sparse, with flat black undersides.
-- [minor] A9: a saturated sky against the concept's soft peach-lavender.
-- [minor] A7 `06-hud-360.png`: the HUD panel covers the top island at 360 px.
-
-SCORE_MACHINE: 8.2
-
-## gameplay-critic — 9.2 (4.8 of 5.2; G2, G4, G5 n/a)
-
-G1 2.0 · G3 1.3 · G6 1.5.
-
-- [minor] G1/G3: `playtest.log` has no genome line. Breeding is not exercised in a running page
-  (expected before M9).
-- [minor] G3: input-to-frame latency is not measured.
-- [minor] SwiftShader FPS (3–6) is visible in the shots. That is perf territory.
-- [note] at M9b, G2 needs a render-level check that a child resembles its parents.
-
-SCORE_MACHINE: 9.2
 
 ---
 

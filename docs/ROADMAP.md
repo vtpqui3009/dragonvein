@@ -95,8 +95,8 @@ at `3ab6e84`; M2's code is not yet imported by the game, so nothing visible chan
 | step | done when | status |
 |---|---|---|
 | M3a | skeleton, torso and limbs build from a genome into a `BufferGeometry` | DONE |
-| **M3b** | **wings, crown, membrane and tail ornament; the creature reads as the Python one** | **TODO** |
-| M3c | built in a worker inside 120 ms on Medium; `gate:meshgen` green | TODO |
+| M3b | wings, crown, membrane and tail ornament; the creature reads as the Python one | DONE |
+| **M3c** | **built in a worker inside 120 ms on Medium; `gate:meshgen` green** | **TODO** |
 | M3d | `gate:parity` green between the two builders on the fixed genome set | TODO |
 
 M3a closed on 2026-10-12 at `e015a48` (run 11), on its STATE.md criteria with gates green. The
@@ -105,6 +105,13 @@ graph is identical to the reference on 32 genomes, and the skin is closed and ou
 **7.6**, perf 8.7 and gameplay 9.0, so **M3 stays `IN_PROGRESS`** until a pass clears 8.0 in all
 three. The art deductions that remain are listed in FINDINGS.md, and the largest one, the
 reference's proportions, is with the owner (NEXT.md).
+
+M3b closed on 2026-10-12 at `4679aa6` (run 12). The whole dragon (wings, membranes, crown, spikes,
+tail ornament) is exact to the reference in graph and primitive parameters. Its primitive
+vertices are within 1e-5 of Blender's, and its sheet matches `dragon-reference.png` cell for cell.
+The second cycle scored art **8.1**, perf **8.2** and gameplay **9.0**, the first M3 pass with all
+three ≥ 8.0. The reference's invisible tail turned out to be a Skin-modifier collapse behind a
+zero-length edge, and was fixed at the source (`df81a56`).
 
 ## M4 — Terrain assets
 

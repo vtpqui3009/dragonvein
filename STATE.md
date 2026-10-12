@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 12 · M3b — wings, crown, membrane and tail ornament
+## 2026-10-12 · run 12 · M3b DONE (M3 IN_PROGRESS) — wings, crown, membrane and tail ornament
 
 **Step**: `M3b`, the first step in reading order that is not `DONE`. Step 0 pushed `e80255c`.
 
@@ -57,6 +57,72 @@ within float32 tolerance.
    Side by side, each cell is recognisably the same creature: wings, horn count, crest type,
    spine row and tail ornament agree.
 5. `gate:meshgen` builds the whole dragon and stays under 120 ms. `npm run gates` exits 0.
+
+### Result — every criterion met at `4679aa6`
+
+1. **The full graph is exact** (`8fed67b`, then `df81a56`). Every graph has 84–110 nodes. On
+   all 32 genomes the positions, radii and edges are `Object.is`-equal, under the one named
+   `pow` exception.
+2. **The primitive parts are exact** in parameters: membrane polygons, spike and ornament
+   cones and icosphere. Their world vertices are within 1e-5 of Blender's, and the membrane
+   bounding boxes after Solidify and Subsurf are within 1e-4 (`tests/dragon-full.test.ts`).
+3. **A whole dragon:** `buildDragon` (`b9becca`, `5c8cc3a`). On all 32 genomes every part is
+   closed and outward (welded by position), the mesh is inside its envelope and
+   deterministic, triangles reach at most 9 294 against the 12 000 cap, and the material
+   groups cover every triangle once.
+4. **It reads as the Python one.** Compare `artifacts/variants/dragon-full.png` with
+   `dragon-reference.png`, same cells and same ortho camera. Both critics confirm all 8 cells
+   agree on wings, horn count, crest, spike row, tail ornament and silhouette. The
+   differences are material.
+5. `gate:meshgen` times the whole dragon: max 18.97 ms, cold 39.88, in Node. The browser's
+   cold first build is 31.2 ms. Gates are green with 773 tests.
+
+**Scores**
+
+| cycle | commit | art | perf | gameplay |
+|---|---|---|---|---|
+| 1 | `027727f` | 7.5 | 8.4 | 8.7 |
+| 2 | `4679aa6` | **8.1** | **8.2** | **9.0** |
+
+**M3b is `DONE`. M3 stays `IN_PROGRESS`**, because M3c and M3d remain.
+
+### Decisions
+
+- **The reference tail was invisible, and the cause was found and fixed at the source
+  (`df81a56`).** Run 11 joined the tail into a chain, but its fifth node sat exactly on the hip.
+  Blender 5.2's Skin modifier collapses the whole chain behind a zero-length edge to zero
+  thickness. Measured on a test chain:
+  - 2r cross-sections normally;
+  - 0.0 at every node with a coincident node;
+  - 2r again once that node moves 0.02.
+
+  The chain now ends at the hip, which is the tail's t = 1 point. Run 11's TS skin had already
+  merged coincident nodes, so only the reference changed.
+- **Refactor before port (`8ce3b88`).** `membrane_polys`,
+  `spike_params` and `ornament_params` expose the reference's pure maths. A hash of every
+  world vertex of 8 placed dragons was identical before and after.
+- **Primitives are rebuilt where Blender puts them.** A cone's base ring starts at +Y and runs
+  clockwise. The icosphere is Blender 5's plain icosahedron. The transform is T·R·S.
+  Membranes are solidified along Blender's angle-weighted vertex normals, so the bounding
+  boxes match. That proves the offsets without imitating Subsurf's topology.
+- **Branch roots are capped at 1.25× the branch's own first radius.** Horns no longer swell
+  out of the skull.
+- **The sheet is orthographic.** Every cell is at one scale, and it matches the reference
+  sheet's camera.
+- **Viewer lighting.** The membrane is matte (roughness 0.85; it read as glass), and the studio
+  hemisphere is 1.25 against the game's 0.86. Both are in `src/dragon-view.ts` only; the
+  game's rig is untouched.
+
+### Open, carried to FINDINGS.md
+
+- Perf:
+  - no dragon in any measured frame;
+  - the cold build runs on the main thread (M3c);
+  - the real-GPU log predates M2.
+- Art:
+  - umbra renders under the bible's value floor;
+  - no creature in the game scene.
+- Owner: proportions, and M3d's vertex-count question (NEXT.md).
 
 ---
 
@@ -182,63 +248,6 @@ three ≥ 8.0.
   M3b's horns, crest and wings should lift A1, A4 and A9.
 - Perf, standing: no real-GPU row since `3ab6e84`. There is no dragon in any measured frame
   until the game uses one.
-
----
-
-## 2026-10-12 · run 10 · M2b DONE (M2 DONE) — the genome in TypeScript, identical to the reference
-
-**Step**: `M2b`, the first step in reading order that is not `DONE`. Step 0 pushed `6f5a9e4`.
-
-**Ownership**: `src/core/` (core-builder), `assetgen/` vectors (asset-builder), `tools/` gate and
-`tests/` (integrator). One sequential owner, in that order.
-
-**Reading `genome.py` found five places the languages differ**, every one of which would give
-a different dragon:
-1. `round(v)` for `i`/`e` genes is banker's rounding (`round(2.5) == 2`), not `Math.round`.
-2. `%` on floats is floor-mod in Python (`-0.3 % 1.0 == 0.7`) and remainder in JS
-   (`-0.3`). `circ_mean`, the hue blend, depends on it.
-3. `min`/`max` return the first argument on ties, so `max(-0.0, 0)` is `-0.0`, where
-   `Math.max` gives `+0`. Signed zeros are visible both to `Object.is` and to `json.dumps`.
-4. `gid()` is `sha1(json.dumps({k: round(v, 5)}, sort_keys=True) + "|".join(element))[:10]`.
-   That means Python's `round(x, 5)` (correctly rounded, half-even on exact ties), Python's
-   float repr (`1.0`, `1e-05`, `-0.0`), and its `", "` / `": "` separators. `src/core` may
-   import nothing, so SHA-1 is implemented in TS.
-5. `gate:parity` cannot go green as written, because it waits for M3's mesh builder.
-
-`docs/GENOME.md` (locked, §7) does not specify the id format, so the reference decides and
-the port reproduces it exactly. No owner question is needed.
-
-### Acceptance criteria
-
-| # | criterion | instrument |
-|---|---|---|
-| AC1 | `src/core/genome.ts` exports the gene table, elements, `Genome` (`express`, `phenotype`, `rarity`, `gid`, `toJSON`), `wild` and `breed`, with the same contract as `genome.py`. It imports only `./rng`. | file, `check:layers` |
-| AC2 | `assetgen/genome_vectors.py` writes `docs/fixtures/genomes.json`, the file `gate:parity` names. It holds **32 fixed genomes**: wild ones for all six elements (with and without a forced element) and bred ones across three generations, including hybrids and at least one fusion. Each records its alleles, element, generation, lineage, phenotype, rarity and gid. It also carries edge vectors for traps 1–4 (`.5` ties, negative mod, a `round(x, 5)` exact tie, `1e-05`, `-0.0`). Byte-identical on re-run, with `genome.py` pinned by SHA. | script, `sha256sum` twice |
-| AC3 | A vitest test asserts exact equality on all 32 (alleles, phenotype, rarity and gid string) and on every edge vector. It is seen failing with `Math.round` in place of half-even, and with JS `%` in place of floor-mod. | `npm run test`, deliberate-bug runs |
-| AC4 | `gate:parity` checks the genome level now and passes. The mesh half stays an explicit SKIP naming M3c until `src/assets/dragon/builder.ts` exists. This is a gate change in its own commit (§2.7). | `npm run gate:parity` |
-| AC5 | `npm run gates` exits 0. | `npm run gates` |
-| AC6 | Critics score on a frozen tree. The genome is not yet wired into the game. | `FINDINGS.md` |
-
-### Result
-
-- `89f0a33`: `docs/fixtures/genomes.json` holds 32 genomes (14 wild, generations 1–4, 5 fusions),
-  plus edge vectors and 3 hand-set tie genomes. Byte-identical across runs, with `genome.py`
-  pinned (AC2).
-- `0d99bd3`: `src/core/genome.ts`, `py.ts` (Python arithmetic) and `sha1.ts`, with
-  `tests/genome.test.ts` at 108 exact-equality cases (AC1, AC3). Seen failing two ways. JS
-  `%` fails circ_mean and genomes #21 and #25. **`Math.round` passed all 32 random genomes**:
-  random blends never land on exactly .5. The hand-set tie genomes were added for this and
-  now catch it.
-- `156321e`: `gate:parity` checks the genome level (exit 0 real, exit 1 with the round bug),
-  and the mesh half is a named SKIP (AC4). `2a1e96f`, after the round: the mesh comparison
-  becomes required when ROADMAP marks M3c DONE, not when `builder.ts` first exists at M3a,
-  which would have turned three steps' gates red.
-- `npm run gates` exits 0 with 191 tests (AC5). Scores at `156321e`: **art 8.2 · perf 9.0 ·
-  gameplay 9.2**, no blocking defect (AC6).
-
-**M2b is `DONE`, and milestone M2 is `DONE`**: both steps are done, all three critics are
-≥ 8.0, and the running build is the one the owner saw. The next step is **M3a**. NEXT.md
-flags the M3d owner question: Blender's Skin+Subsurf cannot be matched vertex for vertex.
 
 ---
 
