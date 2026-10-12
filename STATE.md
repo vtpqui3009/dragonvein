@@ -13,6 +13,43 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 13 · M3c — the dragon builds in a worker inside 120 ms on Medium
+
+**Step**: `M3c`, the first step in reading order that is not `DONE`. Step 0 pushed `caebd19`.
+
+**Ownership**: `src/assets/dragon/` (mesh-builder), then `src/main.ts`, `src/dragon-view.ts`,
+`tools/` and `tests/` (integrator). One sequential owner, in that order.
+
+**What "on Medium" can mean today.** The game has no tier system yet (M6e). Its default
+settings are the Medium row minus post (`perf.json` `tier.note`). The honest measurement is
+the worker build run from the **game page at those default settings**, with the game loop
+rendering. That is where a hatch will happen, on the CI runner's SwiftShader host.
+
+### Acceptance criteria
+
+1. **A three-free core.** `buildDragonArrays(genome)` returns plain typed arrays plus groups,
+   parts and kinds. `buildDragon` wraps them in a `BufferGeometry`.
+   `tests/dragon-worker.test.ts` proves the two give byte-identical arrays on all 32 genomes.
+2. **A worker and its client.** `src/assets/dragon/worker.ts` builds from a serialised
+   genome. `DragonMesher` (`src/assets/dragon/mesher.ts`) posts the genome, receives the
+   buffers as **transferables** (no copy), and assembles the geometry. The test proves the
+   genome round-trips: the rebuilt genome has the same gid and phenotype, and the worker's
+   arrays equal the direct build's.
+3. **Measured where it counts.** `gate:meshgen` loads the built game page at its default
+   settings and calls `__dragonveinMeshgen(recipes)`. That builds all 32 fixed genomes, one
+   at a time, through the worker while the game renders, and records for each dragon:
+   - its build time inside the worker;
+   - its round trip (post to geometry ready);
+   - its main-thread assembly time.
+
+   The gate fails if any worker build or round trip, the cold first included, exceeds
+   120 ms. It writes `artifacts/meshgen.json` with the numbers and the tier note.
+4. **The game does not pay for it at boot.** The mesher and worker load lazily on first use.
+   `gate:perf`'s bundle and boot numbers stay within budget.
+5. `dragon.html` builds through the worker too. `npm run gates` exits 0.
+
+---
+
 ## 2026-10-12 · run 12 · M3b DONE (M3 IN_PROGRESS) — wings, crown, membrane and tail ornament
 
 **Step**: `M3b`, the first step in reading order that is not `DONE`. Step 0 pushed `e80255c`.
@@ -519,4 +556,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T14:22:32Z
