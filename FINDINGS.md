@@ -5,6 +5,63 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M5b — run 20, 2026-10-12 — cycle 1, at `4852e51`
+
+**Scores: art-critic 8.25 · perf-critic 8.4 · gameplay-critic 8.8.** No blocking defect. Art per
+generator: conifer 8.8, fanpalm **7.7**, windtwisted 8.0. Fanpalm is below the per-generator
+bar (ROADMAP §Definition of done 4), and windtwisted is on it with two majors. Both go to
+rework cycle 2.
+
+## perf-critic — 8.4 (all six lines)
+
+P1 1.5 · P2 1.8 · P3 1.8 · P4 1.3 · P5 1.2 · P6 0.8.
+
+- [major, forward] P4/P2: `heap.bytesPerFrame 37443` of 40 960, about 2 draws of headroom.
+  When the trees are placed (M5e), merge the four kinds per LOD into a shared pass. Do not
+  add an `InstancedMesh` per kind per LOD, and do not raise the budget.
+- [major, carried, owner] P1: the real-GPU row predates the scene with 174k triangles and
+  wind.
+- [minor] The flora `triBudget` of 6000/2000/500 in MANIFEST is looser than the
+  4000/1200/300 per prop in PERF_BUDGET §Other budgets. Make the two agree, or record why.
+- [minor, carried] P6: no real-hardware Potato number. Potato draws 142 800 triangles.
+- [minor] The new trees are unplaced, so their runtime cost is unmeasured.
+
+SCORE_MACHINE: 8.4
+
+## art-critic — 8.25 (all nine lines)
+
+A1 0.95 · A2 0.9 · A3 1.1 · A4 1.25 · A5 0.8 · A6 1.0 · A7 1.0 · A8 0.75 · A9 0.5.
+
+- [major] A5/A1 `variants/fanpalm.png` seeds 3, 6, 7 (x≈600–735, 1270–1380, 1570–1690):
+  wire-thin frond stems carry detached wedge or fan blades partway along. They read as
+  broken fronds. Seed 6 has a hanging wedge at (1345, 200).
+- [major] A4 `variants/windtwisted.png`: seeds 1, 6 and 8 share one silhouette, a near-upright
+  trunk with three stacked pads. Seeds 4 and 5 share another. Seeds 6 and 8 have lean 0.50
+  and 0.44, so they do not read as wind-twisted.
+- [major] A4/A5 `variants/fanpalm.png`: seeds 3 and 6 are near-twins, sparse and leaning.
+  Seeds 1, 4 and 5 are one radial crown at three heights.
+- [major] A5 `turntables/windtwisted.webm` at about 0.33 s: the bottom pad reads as a hollow
+  dish with a rim. Seed 1's pads sit on thin necks, and seed 8's top pad is a lollipop.
+- [minor] A5 fanpalm seed 8 (x≈2640–2690): a drooping frond's back clips against the trunk.
+- [minor] A1 windtwisted seed 2: 2.0 m tall, it vanishes at 25 %.
+- [minor] A5 windtwisted seeds 4 and 7: the trunk pokes through the pads.
+- [minor] A4 conifer: seeds 5 and 7 are both squat bells.
+- [minor, carried] A6: the trees are unplaced (M5e). A8: LOD1 and LOD2 are never rendered.
+
+SCORE_MACHINE: 8.25
+
+## gameplay-critic — 8.8 (G2, G4, G5 n/a)
+
+G1, G3 and G6 pass. The playable build is unchanged since M5a.
+
+- [minor] Fanpalm seeds 3, 6 and 7 have detached-looking fronds (art).
+- [minor] Windtwisted seed 2 is tiny.
+- [observation] The trees are not placed, so they are untestable in the game loop.
+
+SCORE_MACHINE: 8.8
+
+---
+
 # M5a — run 19, 2026-10-12 — cycle 1, at `e377e1d`
 
 **Scores: art-critic 8.4 · perf-critic 8.4 · gameplay-critic 9.2.** No blocking defect. All
