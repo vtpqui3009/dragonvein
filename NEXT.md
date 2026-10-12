@@ -10,68 +10,76 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `a0dbec0`, the last commit of run 13 that changed
+Last updated: **2026-10-12** · at commit `8f73e84`, the last commit of run 14 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M3d — `gate:parity` green between the two builders on the fixed genome set** · `TODO`
+**M4a — island generator: shape, size, biome, edge erosion, underside, with a passing variant sheet** · `TODO`
 
-M3c closed in run 13 on its first critic pass: art **8.0**, perf **8.5**, gameplay **8.5**.
-Dragons build in a Web Worker (`src/assets/dragon/worker.ts`, `mesher.ts`, the three-free
-`arrays.ts`). `gate:meshgen` measures them on the built game page at its default settings
-(Medium minus post) while the game renders: worker max 23.9 ms, round trip max 26.7 ms,
-main-thread assembly max 3.9 ms, against 120 ms. The worker's one-off spawn and warm-up is
-about 70 ms and runs before any hatch (`DragonMesher.ready()`). **Milestone M3 is
-`IN_PROGRESS`** until M3d.
+M3d closed in run 14, so **every M3 step is `DONE`**. `gate:parity` now compares the two dragon
+builders for real, under CLAUDE.md §1.5 as amended by the owner:
+- skin graphs and limb anchors match exactly (anchorMaxGap 0);
+- bounding boxes are within 3 % (worst 2.04 %).
+
+The pass scored art **7.4**, perf **8.15** and gameplay **8.5**. **Milestone M3 stays
+`IN_PROGRESS`**: art is under 8.0, and no human has yet seen the dragons running (§7).
 
 ## The single next action
 
-The owner answered the vertex-count question: drop it. CLAUDE.md §1.5 now compares the graph
-exactly, plus bounding box and limb anchors within tolerance (STATE.md decision entry). Write
-`gate:parity`'s mesh half on that wording.
-`tools/gate-parity.mjs` SKIPs it now, and FAILS if ROADMAP marks M3d `DONE` without it (`a0dbec0`).
+Take M4a, the first terrain generator, in `assetgen/terrain/island.py`. Follow the M1a pattern
+that `flora/broadleaf.py` set:
+- LOD0/1/2 `.glb`, byte-reproducible;
+- an 8-seed variant sheet;
+- a turntable;
+- an entry in `MANIFEST.json`.
 
-- **What can be compared.** The graphs are already equal, exactly
-  (`tests/dragon-graph.test.ts`), and so are the primitive parameters. Blender's vertices
-  match within 1e-5 (`tests/dragon-full.test.ts`). The bounding box and limb anchors are
-  reachable: the reference's evaluated mesh against `buildDragonArrays`. The fixture
-  writer is `assetgen/dragon_vectors.py`, which already runs Blender per genome.
-- **Vertex counts are not compared** (owner decision, 2026-10-12): Skin + Subsurf gives about
-  20 000 vertices, the TS sweep about 5 000.
-- The reference's Skin modifier also leaves about 30 loose vertices per body (`STATE.md`
-  run 12). Count bounding boxes on faces, not on all vertices.
+The `asset-env` skill has Blender's setup. `docs/ASSET_PLAN.md` §C1 is the target: shape,
+size, biome, edge erosion and an underside taper. Read §Definition of done in ROADMAP before
+writing criteria.
+
+- The island in the game today is hand-built in `src/main.ts`. M4a builds the generator and
+  its sheet. It does not have to swap the game's island in, unless the criteria say so.
+- Hazards from M1a: mesh winding (count inward faces), and `variant-probe` needs
+  `artifacts/variants/<name>.metrics.json`.
 
 ## Open items that need the owner, not a run
 
-- **Proportions (raised in run 11, still open).** Art no longer blocks on it now that wings
-  and horns read, but critics keep noting a long, low body against
-  `docs/ART_BIBLE.md`'s "chunky, front-heavy, head about 1/5". Only a change to
-  `assetgen/dragon/builder.py` can move it. Should the reference be re-proportioned?
-- A verification-grade real-GPU row, when convenient (M16 requires it). Run
+- **Please look at the dragons, so M3 can close (CLAUDE.md §7).** Open
+  https://vtpqui3009.github.io/dragonvein/dragon.html on the deployed site, after the Pages
+  deploy of this commit. You should see 8 dragons built from genomes in a worker; you can
+  drag to turn them and pinch or wheel to zoom. Say what you saw, and on which machine. That
+  is the M3 sighting.
+- **The reference dragon's design (art keeps scoring M3 under 8.0 on these).** All of these
+  are in `assetgen/dragon/builder.py`, so only a change there can move them, and the TS port
+  follows:
+  - The wings are upright, flat sails, where the concept's are spread bat wings.
+  - The far wing panel and a finger cross the tail and belly.
+  - The body is long and low, with the head about 1/8 of body length, where the bible asks
+    for chunky and front-heavy with the head about 1/5.
+
+  Should a run re-design these in the reference, or wait for M7 (wing animation)?
+- A verification-grade real-GPU row, when convenient (M16 requires it): run
   `npm run gate:perf -- --real-gpu` on a GPU machine at 1920×1080, and once with
-  `?tier=potato`. Also open `dragon.html` on the deployed site and say whether the dragons look
-  right to you.
+  `?tier=potato`.
 - If run 7's session on the second account is still set to auto-continue, please archive it.
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
-- Nothing in the game calls `DragonMesher` yet. M9's hatch must `await mesher.ready()` while
-  idle, or its first build is cold (144.8 ms measured).
+- M3 art:
+  - shadow sides go black in the viewer;
+  - wing hue clashes with body hue (magenta on brown);
+  - the sheet is unusable at 360 px;
+  - the viewer has no pitch and no zoom limits.
+- The game scene has no dragon or creature (A6). `gate:smoke` never loads `dragon.html`.
+- G2 preview: children lean towards one parent (H reads as C). Revisit at M9b.
 - Perf:
-  - no dragon in any measured frame;
   - the real-GPU log predates M2;
-  - heap is about 34.9 of 40 kB per frame.
-- Art:
-  - the C and H cells read alike;
-  - the wings are flat sails, where the concept's are spread;
-  - shadow sides go black;
-  - black slivers in the game sky, which are unexplained;
-  - no creature in the game scene.
-- Viewer: unreadable at 360 px, and the wheel zooms to the centre rather than the cursor.
-- G2 advisory: children lean towards one parent. Revisit at M9b.
+  - `heap.uncorrectedBytesPerFrame` is at 97 % of budget;
+  - no dragon in any measured frame.
+- Nothing in the game calls `DragonMesher.ready()` yet. M9's hatch must.
 
 ## Standing hazards — every run hits these
 
