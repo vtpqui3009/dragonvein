@@ -35,6 +35,9 @@ if HERE not in sys.path:
 # lods      : which LODs to export, in order
 GENERATORS = [
     {"module": "flora.broadleaf", "lods": (0, 1, 2)},
+    {"module": "flora.conifer", "lods": (0, 1, 2)},
+    {"module": "flora.fanpalm", "lods": (0, 1, 2)},
+    {"module": "flora.windtwisted", "lods": (0, 1, 2)},
     {"module": "terrain.island", "lods": (0, 1, 2)},
     {"module": "terrain.stratified", "lods": (0, 1, 2)},
     {"module": "terrain.columnar", "lods": (0, 1, 2)},

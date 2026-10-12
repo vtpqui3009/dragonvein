@@ -46,6 +46,141 @@
         }
       }
     },
+    "flora/conifer": {
+      "script": "assetgen/flora/conifer.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 6000,
+        "lod1": 2000,
+        "lod2": 500
+      },
+      "palette": {
+        "bark": "#4a3b2f",
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a"
+      },
+      "paletteRoles": {
+        "surfaces": [
+          "bark"
+        ],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/conifer.lod0.glb",
+          "tris": 2028,
+          "sha256": "8b5971e070b1492cb9044bcbd2a449e5b9549ae65d03eac48c7aa4736f65a1e9"
+        },
+        "lod1": {
+          "file": "flora/conifer.lod1.glb",
+          "tris": 620,
+          "sha256": "b041c3bf109e59f7d1c8b4a3c48488561f2289faef726383ee7c21466037645d"
+        },
+        "lod2": {
+          "file": "flora/conifer.lod2.glb",
+          "tris": 218,
+          "sha256": "df0a2cd21c2f573849fd0faca7dd5d90d0184e0f84cba08fa9540c0e8c727ed0"
+        }
+      }
+    },
+    "flora/fanpalm": {
+      "script": "assetgen/flora/fanpalm.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 6000,
+        "lod1": 2000,
+        "lod2": 500
+      },
+      "palette": {
+        "bark": "#4a3b2f",
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a"
+      },
+      "paletteRoles": {
+        "surfaces": [
+          "bark"
+        ],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/fanpalm.lod0.glb",
+          "tris": 2876,
+          "sha256": "48ee9d3126a5fcf50efbdf4414a5467c7f201455272ac0aec5c30e8a2367ca6c"
+        },
+        "lod1": {
+          "file": "flora/fanpalm.lod1.glb",
+          "tris": 1012,
+          "sha256": "3835ae35a0f47567b80c39c76d6755122a7045150bcb99a20c02eb8914dd78cc"
+        },
+        "lod2": {
+          "file": "flora/fanpalm.lod2.glb",
+          "tris": 282,
+          "sha256": "c9c553f960a80a504ed467b257deb48dc866c2b9da68d1a02dbe9e332c0134b1"
+        }
+      }
+    },
+    "flora/windtwisted": {
+      "script": "assetgen/flora/windtwisted.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 6000,
+        "lod1": 2000,
+        "lod2": 500
+      },
+      "palette": {
+        "bark": "#4a3b2f",
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a"
+      },
+      "paletteRoles": {
+        "surfaces": [
+          "bark"
+        ],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/windtwisted.lod0.glb",
+          "tris": 2078,
+          "sha256": "9193326ffeb1b9ec32820bd8d26cf12251354b7cabc7121892582677ad740f52"
+        },
+        "lod1": {
+          "file": "flora/windtwisted.lod1.glb",
+          "tris": 720,
+          "sha256": "307187d54878eaa28d5a56562611c63a52036b4fb521a562c79da144f8298940"
+        },
+        "lod2": {
+          "file": "flora/windtwisted.lod2.glb",
+          "tris": 172,
+          "sha256": "84facbf50e4f3afa5de970c8191c75515c955a63c27f86184d5f9a6c749095a0"
+        }
+      }
+    },
     "terrain/arch": {
       "script": "assetgen/terrain/arch.py",
       "family": "terrain",
