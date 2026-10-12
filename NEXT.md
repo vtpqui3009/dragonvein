@@ -10,50 +10,48 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `3a2287f`, the last commit of run 17 that changed
+Last updated: **2026-10-12** · at commit `e699c95`, the last commit of run 18 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M4d — arch and floating-shard landmark generators, each with a passing variant sheet** · `TODO`
+**M5a — wind vertex shader, proven on one tree at 200+ instances inside budget** · `TODO`
 
-M4c closed in run 17 on its first pass: art **8.3** (shard 8.4, eroded 8.3), perf **8.5**,
-gameplay **9.0**. Run 17 split the old M4c in two (STATE.md run 17): M4c was the two
-remaining §C2 rocks, and M4d is the §C3 landmarks. `assetgen/terrain/` now has five rock
-kinds:
-- `stratified`, `columnar` and `boulders`;
-- `shard` (808/268/128);
-- `eroded` (500/182/72).
-
-`rockkit.py` gained `vertex_normals`, `rock_tone` and `fractured_stone`; reuse them.
+M4d closed in run 18 on its first pass: art **8.3** (arch 8.4, floatshard 8.2), perf **8.7**,
+gameplay **9.0**. With M4d, **every M4 step is `DONE`** and all three critics are ≥ 8.0, but
+the M4 milestone stays `IN_PROGRESS` until the owner has seen the assets (CLAUDE.md §7; see
+Open items). `assetgen/terrain/` now holds nine generators, all byte-reproducible and
+probed, and none of them placed in the game yet (M5e):
+- the island;
+- seven rock kinds;
+- arch and floatshard.
 
 ## The single next action
 
-Take M4d in `assetgen/terrain/`: two landmark generators from `docs/ASSET_PLAN.md` §C3.
-- **`arch`**: a natural stone arch. It must be a closed, outward-wound genus-1 solid, so
-  count inward faces and open edges on every seed and LOD.
-- **`floating shards`**: sky-island fragments that hang in the air. Set
-  `SHEET["ground"] = False`, and give them no contact shadow. Read the island generator's
-  underside for the style.
+Take M5a. It is runtime work in `src/render/` (render-builder). If the wind material also
+needs wiring through `src/main.ts`, that is a two-directory change, so give it to **one
+sequential owner**, the integrator, not a fan-out.
 
-Copy the M4c pattern:
-- the module declarations and `plan(seed)`;
-- LODs strictly decreasing on **every** seed 1–8;
-- flat shading;
-- the colour based on rockMid.
-
-Landmark budgets may differ from the prop budget. Check docs/PERF_BUDGET.md §Other budgets
-before choosing.
-
-**What the art critic keeps flagging** (FINDINGS M4b and M4c):
-- dusk dominance reads as orange clay; lean the rock towards rockMid and deep shadow;
-- dark vertical smears on tall shafts read as baked dirt;
-- near-sibling seeds;
-- LOD1 and LOD2 are never rendered, so check them yourself for holes.
+- **Load the committed tree.** Load `public/assets/flora/broadleaf.lod*.glb` (seed 1).
+  Instance it 200+ times with `InstancedMesh`, one draw per LOD.
+- **Write the wind shader.** Use an `onBeforeCompile` patch on the existing material: sway
+  by height, with a per-instance phase from the instance matrix, trunk stiff and canopy
+  loose. Do it all in the vertex shader, with **no per-frame JS allocation**.
+- **Respect the heap headroom.** P4 headroom is about 4 draws (perf critic, M4c and M4d):
+  `heap.bytesPerFrame` is about 33 kB of 40 960. Measure with `gate:perf` before and after,
+  and do not raise the budget.
+- **Define a check for "proven".** Write criteria a command can check: for example
+  `perf.json` draws and triangles with the 200 instances in frame, p95 cpuFrameMs within
+  3.5 ms, and a turntable or webm showing the motion. Read docs/RUBRIC.md A5 (motion).
 
 ## Open items that need the owner, not a run
+
+- **Please look at the terrain assets, so M4 can close (CLAUDE.md §7).** The evidence page
+  (link under §Tools) shows the nine 8-seed sheets and their turntables: island,
+  stratified, columnar, boulders, shard, eroded, arch and floatshard. Say whether they read
+  as the sky-world you want. Every critic has passed them, but a human has not seen them.
 
 - **Please look at the dragons, so M3 can close (CLAUDE.md §7).** Open
   https://vtpqui3009.github.io/dragonvein/dragon.html on the deployed site, after the Pages
@@ -76,6 +74,11 @@ before choosing.
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
+- Landmarks (M4d):
+  - floatshard seeds 1 and 3 are near-pairs, 6 fuses into one mound, and a fragment clips at
+    t ≈ 1 s;
+  - arch seeds 2 and 5 read as rocks with a tunnel;
+  - the keels are almost black.
 - Rocks (M4b, M4c):
   - none of the five rock kinds is placed in the game (M5e). When they are, use one
     `InstancedMesh` per kind: the perf critic notes P4 heap headroom is about 4 draws;
