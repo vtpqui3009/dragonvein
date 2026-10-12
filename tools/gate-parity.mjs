@@ -1,11 +1,71 @@
 #!/usr/bin/env node
-/** The Python and TypeScript dragon builders must agree. docs/GENOME.md is the arbiter. */
-import { existsSync } from 'node:fs';
-if (!existsSync('src/core/genome.ts') || !existsSync('src/assets/dragon/builder.ts')) {
-  console.log('gate:parity SKIP — the TypeScript genome/builder does not exist yet (milestone M2/M3).');
-  process.exit(0);
+/**
+ * The Python and TypeScript halves must agree. docs/GENOME.md is the arbiter.
+ *
+ * Two levels, gated separately because they arrive in different milestones:
+ *
+ *   1. Genome (live from M2b). `src/core/genome.ts` must rebuild the 32 fixed genomes in
+ *      docs/fixtures/genomes.json — written from assetgen/genome.py by
+ *      assetgen/genome_vectors.py — with every allele, phenotype value, rarity and id
+ *      exactly equal. The assertions live in tests/genome.test.ts; this gate runs that
+ *      file alone so `gate:parity` fails on its own when the genome drifts.
+ *   2. Mesh (live from M3c). Both dragon builders build those genomes and must agree on
+ *      bounding box, vertex count and limb-anchor positions (CLAUDE.md §1.5). Until
+ *      `src/assets/dragon/builder.ts` exists this half is an explicit, named SKIP; the
+ *      moment it exists and this comparison has not been written, the gate fails.
+ *
+ * Before M2b the whole gate SKIPped until *both* files existed, which meant the genome
+ * half — the half that could be checked — could not go green before M3 (STATE.md run 10).
+ */
+import { existsSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+
+const GENOME_TS = 'src/core/genome.ts';
+const FIXTURE = 'docs/fixtures/genomes.json';
+const GENOME_TEST = 'tests/genome.test.ts';
+const BUILDER_TS = 'src/assets/dragon/builder.ts';
+
+let failed = false;
+
+// --- 1. genome --------------------------------------------------------------------------
+if (!existsSync(GENOME_TS)) {
+  console.log(`gate:parity genome SKIP — ${GENOME_TS} does not exist yet (M2b).`);
+} else if (!existsSync(FIXTURE) || !existsSync(GENOME_TEST)) {
+  console.error(`gate:parity genome FAIL — ${GENOME_TS} exists but ${FIXTURE} or ${GENOME_TEST} ` +
+    'does not, so nothing proves it matches assetgen/genome.py.');
+  failed = true;
+} else {
+  const require = createRequire(import.meta.url);
+  const manifestPath = require.resolve('vitest/package.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const bin = path.join(path.dirname(manifestPath),
+    typeof manifest.bin === 'string' ? manifest.bin : manifest.bin['vitest']);
+  const run = spawnSync(process.execPath, [bin, 'run', GENOME_TEST, '--reporter=dot'], {
+    encoding: 'utf8',
+  });
+  const out = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+  const count = JSON.parse(readFileSync(FIXTURE, 'utf8')).genomes?.length ?? 0;
+  if (run.status === 0) {
+    console.log(`gate:parity genome OK — ${count} fixed genomes (${FIXTURE}) rebuilt by ` +
+      `${GENOME_TS} match assetgen/genome.py exactly: alleles, phenotype, rarity, gid.`);
+  } else {
+    console.error(out);
+    console.error(`gate:parity genome FAIL — ${GENOME_TS} disagrees with assetgen/genome.py ` +
+      `on the fixed genomes. See ${GENOME_TEST}.`);
+    failed = true;
+  }
 }
-console.error('gate:parity NOT IMPLEMENTED — M2 must implement it before it can pass.');
-console.error('Build the 32 fixed genomes in docs/fixtures/genomes.json with both builders and');
-console.error('compare bounding box, vertex count and limb-anchor positions within tolerance.');
-process.exit(1);
+
+// --- 2. mesh ----------------------------------------------------------------------------
+if (!existsSync(BUILDER_TS)) {
+  console.log(`gate:parity mesh SKIP — ${BUILDER_TS} does not exist yet (M3c).`);
+} else {
+  console.error('gate:parity mesh NOT IMPLEMENTED — M3c must build the genomes in ' +
+    `${FIXTURE} with both dragon builders and compare bounding box, vertex count and ` +
+    'limb-anchor positions within tolerance (CLAUDE.md §1.5).');
+  failed = true;
+}
+
+process.exit(failed ? 1 : 0);
