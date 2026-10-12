@@ -1,30 +1,65 @@
 name: Assets
+# The asset pipeline, end to end, on a machine that did not build the committed bytes.
+# CLAUDE.md §1.2: a binary under public/assets/ ships only if `npm run assets:build`
+# reproduces it byte-for-byte. This job is where that claim meets a second machine.
 on:
   workflow_dispatch:
   push:
-    paths: ['assetgen/**']
+    paths:
+      - 'assetgen/**'
+      - 'public/assets/**'          # a hand-edited binary must meet --check too
+      - 'tools/check-assets.mjs'
+      - 'tools/variant-probe.mjs'
+      - 'tools/glb.mjs'
+      - '.github/workflows/assets.yml'
 
 jobs:
-  render:
+  assets:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: { python-version: '3.13' }
-      - name: Headless GL libraries
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: assetgen/requirements.txt
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: Headless GL libraries and ffmpeg
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq libegl1 libgl1 libglx-mesa0 libgl1-mesa-dri \
-            libxi6 libxxf86vm1 libxrender1 libxfixes3 libxkbcommon0 libsm6 libice6 libgomp1
-      - run: pip install bpy
+            libxi6 libxxf86vm1 libxrender1 libxfixes3 libxkbcommon0 libsm6 libice6 libgomp1 \
+            ffmpeg
+      # Pinned: the committed hashes were built with this bpy (assetgen/requirements.txt).
+      - run: pip install -r assetgen/requirements.txt
+
+      - name: Reproducible on this machine (two processes agree)
+        run: python3 -I assetgen/build_all.py --verify
+      - name: Reproduces the committed bytes (cross-machine, CLAUDE.md §1.2)
+        run: python3 -I assetgen/build_all.py --check
+      - name: Committed binaries pinned, counted and inside budget
+        run: node tools/check-assets.mjs
+
       - name: Render variant sheets and turntables
-        env: { LIBGL_ALWAYS_SOFTWARE: '1' }
+        run: python3 -I assetgen/render_all.py
+      - name: Probe every asset's sheet (A4 spread) and shipped colours (A2)
+        run: |
+          for id in $(node -e "console.log(Object.keys(require('./public/assets/MANIFEST.json').assets).join(' '))"); do
+            node tools/variant-probe.mjs "$id"
+          done
+      - name: Dragon proof renders
         run: python3 -I assetgen/render_proof.py
+
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: asset-renders
           path: |
+            artifacts/variants/
+            artifacts/turntables/
             assetgen/*.png
-            artifacts/
           if-no-files-found: warn
