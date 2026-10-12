@@ -10,41 +10,43 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `e699c95`, the last commit of run 18 that changed
+Last updated: **2026-10-12** · at commit `e377e1d`, the last commit of run 19 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M5a — wind vertex shader, proven on one tree at 200+ instances inside budget** · `TODO`
+**M5b — 3 canopy tree generators with passing variant sheets** · `TODO`
 
-M4d closed in run 18 on its first pass: art **8.3** (arch 8.4, floatshard 8.2), perf **8.7**,
-gameplay **9.0**. With M4d, **every M4 step is `DONE`** and all three critics are ≥ 8.0, but
-the M4 milestone stays `IN_PROGRESS` until the owner has seen the assets (CLAUDE.md §7; see
-Open items). `assetgen/terrain/` now holds nine generators, all byte-reproducible and
-probed, and none of them placed in the game yet (M5e):
-- the island;
-- seven rock kinds;
-- arch and floatshard.
+M5a closed in run 19 on its first pass: art **8.4**, perf **8.4**, gameplay **9.2**.
+- `src/render/wind.ts` sways 220 instanced trees in the vertex shader.
+- The trees are the committed `flora/broadleaf` GLBs, the first `assetgen/` asset in the
+  game: 8 at LOD0 on the hero island and groves on all 13 companions.
+- Draws 28, triangles 174 012, heap within budget.
+- GLTFLoader is loaded on demand. It cost +28.8 kB gzipped, recorded in docs/DECISIONS.md.
 
 ## The single next action
 
-Take M5a. It is runtime work in `src/render/` (render-builder). If the wind material also
-needs wiring through `src/main.ts`, that is a two-directory change, so give it to **one
-sequential owner**, the integrator, not a fan-out.
+Take M5b in `assetgen/flora/` (asset-builder). `docs/ASSET_PLAN.md` §B1 lists the canopy
+trees: broadleaf (done), conifer, fan-palm, wind-twisted, ancient giant. Build three of the
+four that remain. Pick ones that read as three different tree kinds.
 
-- **Load the committed tree.** Load `public/assets/flora/broadleaf.lod*.glb` (seed 1).
-  Instance it 200+ times with `InstancedMesh`, one draw per LOD.
-- **Write the wind shader.** Use an `onBeforeCompile` patch on the existing material: sway
-  by height, with a per-instance phase from the instance matrix, trunk stiff and canopy
-  loose. Do it all in the vertex shader, with **no per-frame JS allocation**.
-- **Respect the heap headroom.** P4 headroom is about 4 draws (perf critic, M4c and M4d):
-  `heap.bytesPerFrame` is about 33 kB of 40 960. Measure with `gate:perf` before and after,
-  and do not raise the budget.
-- **Define a check for "proven".** Write criteria a command can check: for example
-  `perf.json` draws and triangles with the 200 instances in frame, p95 cpuFrameMs within
-  3.5 ms, and a turntable or webm showing the motion. Read docs/RUBRIC.md A5 (motion).
+- **Copy the pattern of `flora/broadleaf.py`** and the M4 rock generators:
+  - `plan(seed)` and the declarations;
+  - LODs strictly decreasing on **every** seed, within broadleaf's 6000/2000/500;
+  - 0 inward faces and 0 open edges.
+- **Each tree needs a clean base at z = 0 and a vertical trunk axis**, so `withWind` in
+  `src/render/wind.ts` can sway it by height. The sway is quadratic in height above the
+  instance base.
+- **What the critics flagged that applies to trees:**
+  - in-game the 220 broadleaves are one seed, so variety comes from more generators and
+    seeds;
+  - the generated trunks render near-black in game but brown on the sheet. Check the
+    instanced material's ambient and normals when trees are placed (an M5e or `src` item,
+    not this step).
+- Placing the new trees in the game is **not** M5b. That is M5e, through the same
+  `withWind` material.
 
 ## Open items that need the owner, not a run
 
@@ -67,6 +69,9 @@ sequential owner**, the integrator, not a fan-out.
     for chunky and front-heavy with the head about 1/5.
 
   Should a run re-design these in the reference, or wait for M7 (wing animation)?
+- **A real-GPU look at the new scene** (perf now flags this as major): the game now draws 220
+  swaying trees and 174k triangles, where the last sighting was 42k. Open the deployed site
+  on your machine and say the FPS the HUD shows. Better still,
 - A verification-grade real-GPU row, when convenient (M16 requires it): run
   `npm run gate:perf -- --real-gpu` on a GPU machine at 1920×1080, and once with
   `?tier=potato`.
@@ -74,6 +79,14 @@ sequential owner**, the integrator, not a fan-out.
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
+- Wind and trees (M5a):
+  - the sway is very subtle, about 1 px at 720p;
+  - the conifers are rigid next to the swaying broadleaves;
+  - the generated trunks are near-black in game;
+  - a thin orange rim fringe on the canopy lobes;
+  - the trees pop in after the boot splash;
+  - the companions show some floating props and bare decks (these predate M5a).
+- Perf: the real-GPU row now predates a scene with 4× the triangles.
 - Landmarks (M4d):
   - floatshard seeds 1 and 3 are near-pairs, 6 fuses into one mound, and a fragment clips at
     t ≈ 1 s;
