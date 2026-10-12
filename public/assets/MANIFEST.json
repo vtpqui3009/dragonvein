@@ -1,0 +1,38 @@
+{
+  "generatedBy": "assetgen/build_all.py",
+  "assets": {
+    "flora/broadleaf": {
+      "script": "assetgen/flora/broadleaf.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 6000,
+        "lod1": 2000,
+        "lod2": 500
+      },
+      "palette": {
+        "bark": "#4a3b2f",
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a"
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/broadleaf.lod0.glb",
+          "tris": 3186,
+          "sha256": "99f20666850f26f90b32e7b995da529be460e4a25b25e638b26b168cea5fa43a"
+        },
+        "lod1": {
+          "file": "flora/broadleaf.lod1.glb",
+          "tris": 936,
+          "sha256": "b4f351e0c47babfd955f2b1af7328f5b6bc0dbc84fb7be9e0b12df94fdf056c1"
+        },
+        "lod2": {
+          "file": "flora/broadleaf.lod2.glb",
+          "tris": 342,
+          "sha256": "91e0db385f72b2493e93cdc24f36ff952c7fa1d97a0f183f1f9e2940c07b66c5"
+        }
+      }
+    }
+  }
+}
