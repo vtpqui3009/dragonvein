@@ -35,6 +35,7 @@ if HERE not in sys.path:
 # lods      : which LODs to export, in order
 GENERATORS = [
     {"module": "flora.broadleaf", "lods": (0, 1, 2)},
+    {"module": "terrain.island", "lods": (0, 1, 2)},
 ]
 
 LODS_DEFAULT = (0, 1, 2)
@@ -144,6 +145,10 @@ def build_asset(bpy, spec, out_root):
         "seedForCommitted": seed,
         "triBudget": {f"lod{l}": budget[f"lod{l}"] for l in lods},
         "palette": dict(mod.PALETTE),
+        # How the variant probe judges those colours (rubric A2): surfaces to ΔE 12 of one
+        # palette colour, ramps to ΔE 3 of their line through the stops.
+        "paletteRoles": dict(getattr(mod, "PALETTE_ROLES", {
+            "surfaces": ["bark"], "ramps": [["canopyDark", "canopyMid", "canopyLight"]]})),
         "lods": {k: entry_lods[k] for k in sorted(entry_lods)},
     }
 

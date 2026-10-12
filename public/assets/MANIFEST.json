@@ -16,6 +16,18 @@
         "canopyMid": "#3f8a33",
         "canopyLight": "#8fd24a"
       },
+      "paletteRoles": {
+        "surfaces": [
+          "bark"
+        ],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ]
+        ]
+      },
       "lods": {
         "lod0": {
           "file": "flora/broadleaf.lod0.glb",
@@ -31,6 +43,56 @@
           "file": "flora/broadleaf.lod2.glb",
           "tris": 342,
           "sha256": "8c6dcee6cc2839ff7557a10f24b86f4717c307d6ab96532ab50cad27cb52786b"
+        }
+      }
+    },
+    "terrain/island": {
+      "script": "assetgen/terrain/island.py",
+      "family": "terrain",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 8000,
+        "lod1": 2500,
+        "lod2": 700
+      },
+      "palette": {
+        "grassDark": "#1e4a21",
+        "grassMid": "#3f8a33",
+        "grassLight": "#8fd24a",
+        "rockMid": "#5a4a40",
+        "dusk": "#844e32",
+        "deepShadow": "#1a1420"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "grassDark",
+            "grassMid",
+            "grassLight"
+          ],
+          [
+            "dusk",
+            "rockMid",
+            "deepShadow"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "terrain/island.lod0.glb",
+          "tris": 5760,
+          "sha256": "947b9b8888a164127a4b82a1139cc5db1bc78b22b04cbd45caa7351d9f10455c"
+        },
+        "lod1": {
+          "file": "terrain/island.lod1.glb",
+          "tris": 1536,
+          "sha256": "e543a5c4cfc42cca83783fe502cf6eb36bd8ff85ed9fc7bf6eded40ed7635702"
+        },
+        "lod2": {
+          "file": "terrain/island.lod2.glb",
+          "tris": 280,
+          "sha256": "49293b08d64651d2a03e8a540c7d27008145d071ff229474463eac492286dbee"
         }
       }
     }
