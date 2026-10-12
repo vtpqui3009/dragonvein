@@ -13,6 +13,43 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 14 · M3d — `gate:parity` green between the two builders
+
+**Step**: `M3d`, the first step in reading order that is not `DONE`. Step 0 pushed `c5c46fa`.
+
+**Ownership**: `assetgen/dragon_vectors.py` (asset-builder), then `tests/` and
+`tools/gate-parity.mjs` (integrator). Sequential.
+
+**What parity means now.** CLAUDE.md §1.5 as the owner amended it today: the skin graphs
+equal, exactly; bounding box and limb anchors within tolerance; vertex counts not compared.
+
+**The tolerance, and why.** 3 % of the reference's extent on each axis, on each side. The
+principle: two dragons whose outlines differ by under 1/20 of their size do not read as
+different creatures. 3 % is under that, with margin. It was measured before it was chosen,
+and the numbers are recorded so nobody has to take it on trust. On genomes #0, #5, #12 and #30 the
+largest gap is 0.123 at the snout end of x, where Subsurf shrinks the reference's skin and
+the TS sweep keeps the node radius. Every other axis is ≤ 0.04. The extents are about
+6.3 × 4.8 × 3.8.
+
+### Acceptance criteria
+
+1. **The fixture holds the reference's own bounding box.**
+   - For each of the 32 genomes, `assetgen/dragon_vectors.py` places the whole dragon (`place()`,
+     at the origin, unrotated) and records the box over every vertex that belongs to a face.
+   - Faces only, because the Skin modifier leaves loose vertices.
+   - The fixture stays byte-identical on re-run.
+2. **`tests/dragon-parity.test.ts`**, for all 32 genomes:
+   - The limb anchors are exactly equal: each leg's root and foot, each wing's root, wrist
+     and finger tips, and each horn and crest root. They are the TS full graph's nodes
+     against the fixture's.
+   - `buildDragonArrays`' box is within 3 % of the reference's extent on every axis and side.
+   - The test also writes `artifacts/parity.json` with every gap.
+3. **`gate:parity` runs the mesh half for real.** No SKIP once the builder exists. It fails if
+   the test fails or is missing, and it keeps the M3d-`DONE` guard.
+4. `npm run gates` exits 0.
+
+---
+
 ## 2026-10-12 · decision · CLAUDE.md §1.5: parity compares the graph, not vertex counts
 
 **Asked and answered in session, by the owner.** §1.5 had `gate:parity` fail "if bounding box,
@@ -495,4 +532,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T14:56:14Z
