@@ -129,7 +129,7 @@ if (!entry) {
         const s = i / 400, u = 1 - s, w = [u * u, 2 * s * u, s * s];
         labs.push(linearToLab([0, 1, 2].map((c) => pal[r[0]][c] * w[0] + pal[r[1]][c] * w[1] + pal[r[2]][c] * w[2])));
       }
-      return { name: r.join('→'), kind: 'ramp', tol: RAMP_DE, labs };
+      return { name: r.join('→'), kind: 'ramp', tol: RAMP_DE, labs, optional: (roles.optional ?? []).includes(r.join('→')) };
     }),
   ];
   for (const l of Object.values(entry.lods ?? {})) {
@@ -150,7 +150,9 @@ if (!entry) {
     if (!cols.length) fail(`${l.file} has no vertex colours`);
     judges.forEach((j, k) => {
       if (tally[k].worst > j.tol) fail(`${l.file}: a ${j.kind} ${j.name} vertex is ΔE ${tally[k].worst.toFixed(2)} off it (> ${j.tol})`);
-      if (!tally[k].n) fail(`${l.file}: expected some ${j.kind} ${j.name} colours, found none`);
+      // A role with no vertices means a colour layer went missing, unless the generator
+      // says that role appears only on some seeds (`optional`, e.g. stratified's grass cap).
+      if (!tally[k].n && !j.optional) fail(`${l.file}: expected some ${j.kind} ${j.name} colours, found none`);
     });
   }
 }
