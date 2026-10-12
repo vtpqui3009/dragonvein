@@ -13,6 +13,28 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 9 · M2a — the TypeScript Rng matches Python stream for stream
+
+**Step**: `M2a`, the first step in reading order that is not `DONE` (M0 and M1 closed). Step 0
+pushed `de74d2d`.
+
+**Ownership**: `src/core/` is `core-builder`'s. The vector generator under `assetgen/` is
+`asset-builder`'s, and `tests/` is `integrator`'s. These are three directories, so one
+sequential owner does them in order: Python vectors, then the TS port, then the test.
+
+### Acceptance criteria
+
+| # | criterion | instrument |
+|---|---|---|
+| AC1 | `src/core/rng.ts` exports `Rng` with `next`, `range`, `int`, `pick` and `chance`, the same contract as `assetgen/genome.py` `Rng`, and imports nothing. | `npm run check:layers`, file |
+| AC2 | `assetgen/rng_vectors.py` writes `tests/fixtures/rng-vectors.json` from `genome.Rng`. Ten seeds include 0, -1, 2^32, 0xFFFFFFFF and 2^40+7, the edge cases of the `& 0xFFFFFFFF` mask and the zero-seed fallback. For each seed it records the state after seeding, the first 1000 `next()` values, and 1200 interleaved `range`/`int`/`pick`/`chance` calls. Re-running it is byte-identical. The fixture pins `genome.py`'s SHA-256. | script, `sha256sum` twice |
+| AC3 | A vitest test asserts **exact** equality (`===` on doubles, not closeness) between the TS stream and every fixture value. It is shown failing when the seeding uses plain `*` instead of `Math.imul`, which is the predicted trap. | `npm run test`, the deliberate-bug run |
+| AC4 | The test fails if `assetgen/genome.py` changed after the fixture was generated, so the two languages cannot drift silently. | `npm run test` |
+| AC5 | `npm run gates` exits 0, with `check:determinism` and `check:layers` included. | `npm run gates` |
+| AC6 | Critics score on a frozen tree. Nothing visual or runtime-facing changes; `src/core/rng.ts` is not yet imported by the game. | `FINDINGS.md` |
+
+---
+
 ## 2026-10-12 · decision · M0 and M1 closed
 
 Both milestones met `CLAUDE.md` §3.6 today, on the owner's evidence:
@@ -362,4 +384,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T09:32:43Z
