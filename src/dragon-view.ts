@@ -75,7 +75,11 @@ const fill = new THREE.DirectionalLight(0x7aa0ff, 0.70);
 fill.position.set(16, 8, -10);
 const rim = new THREE.DirectionalLight(0xff9044, 1.15);
 rim.position.set(6, 10, -22);
-scene.add(fill, rim, new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 0.86));
+// The game's cool fill comes in two halves (src/main.ts): one above the horizon and a
+// bounce from below. Without the bounce the far legs went near black (run 11, critic A3).
+const bounce = new THREE.DirectionalLight(0x9db9f2, 2.5);
+bounce.position.set(8, -8.5, -6.5);
+scene.add(fill, rim, bounce, new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 0.86));
 
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(400, 400),
@@ -125,9 +129,12 @@ const buildMs = performance.now() - t0;
 
 const camera = new THREE.PerspectiveCamera(turn ? 30 : 32, innerWidth / innerHeight, 0.1, 200);
 const target = new THREE.Vector3(0, turn ? 1.3 : 0, turn ? 0 : 1.2);
-const sheetPose = new THREE.Vector3(0, 19, 31);
+const sheetPose = new THREE.Vector3(0, 16, 26.5);
 const turnPose = new THREE.Vector3(-4.5, 4.2, 15.5);
-camera.position.copy(turn ? turnPose : sheetPose);
+// The sheet is framed for a 2.37:1 window; a narrower one backs the camera off so all
+// eight cells stay in view (a 360 px phone lost half of them: critic, cycle 2).
+const fit = turn ? 1 : Math.max(1, 2.37 / (innerWidth / innerHeight));
+camera.position.copy(turn ? turnPose : sheetPose).sub(target).multiplyScalar(fit).add(target);
 // `?cam=px,py,pz,tx,ty,tz` overrides the pose, for close-ups of a joint.
 const cam = (params.get('cam') ?? '').split(',').map(Number);
 if (cam.length === 6 && cam.every(Number.isFinite)) {
@@ -183,6 +190,15 @@ renderer.domElement.addEventListener('pointermove', (e) => {
   window.__dragonView!.setYaw(yaw);
 });
 const endDrag = () => { dragX = null; };
+// Wheel (and trackpad pinch, which browsers send as a ctrl+wheel) dollies the camera.
+renderer.domElement.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const k = Math.min(Math.max(1 + e.deltaY * 0.001, 0.8), 1.25);
+  const off = camera.position.clone().sub(target).multiplyScalar(k);
+  const d = off.length();
+  if (d > 2 && d < 90) camera.position.copy(target).add(off);
+  frame();
+}, { passive: false });
 renderer.domElement.addEventListener('pointerup', endDrag);
 renderer.domElement.addEventListener('pointercancel', endDrag);
 
