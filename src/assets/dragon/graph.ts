@@ -14,7 +14,10 @@
  * would differ on a tie (`pyMax`). Coordinates are the reference's: x forward (nose at +x,
  * tail at −x), y to the dragon's left, z up.
  *
- * Stages: `skeleton` + `addLimbs` (M3a). Wings and crown join at M3b.
+ * Stages, in the reference's `place()` order: `skeleton`, `addLimbs` (M3a), `addWings`,
+ * `addCrown` (M3b). Also here, because they are the same kind of pure arithmetic: the
+ * membrane polygons, the dorsal spike and tail ornament parameters (`membranePolys`,
+ * `spikeParams`, `ornamentParams`), which the reference hands to Blender primitives.
  */
 import { pyMax } from '../../core/py';
 import type { Phenotype } from '../../core/genome';
@@ -184,4 +187,169 @@ export function bodyGraph(p: Phenotype): { g: Graph; idx: Anchors } {
   const out = skeleton(p);
   addLimbs(out.g, out.idx, p);
   return out;
+}
+
+/** The whole skin graph: skeleton, limbs, wings, crown — `place()`'s order. */
+export function fullGraph(p: Phenotype): { g: Graph; idx: Anchors } {
+  const out = bodyGraph(p);
+  addWings(out.g, out.idx, p);
+  addCrown(out.g, out.idx, p);
+  return out;
+}
+
+/** Bone positions for one wing — `wing_nodes(p, s)`: the arm (4 nodes) and the finger tips. */
+export function wingNodes(p: Phenotype, s: number): { arm: [Vec3, number][]; tips: Vec3[] } {
+  const { wingSpan: WS, wingShape: SH, wingDroop: DR, bodyLength: BL } = p;
+  const NF = p.wingFingers;
+  const drop = -0.85 * DR;
+  const span = WS;
+  // broad (SH=0) = short + wide ; falcate (SH=1) = long + narrow
+  const out = lerp(1.15, 0.80, SH) * span;
+  const up = lerp(0.80, 1.35, SH) * span;
+  const arm: [Vec3, number][] = [
+    [[0.92 * BL, 0.26 * s, 1.22], 0.115 * span],
+    [[0.30 * BL, 1.00 * out * s, 2.00 * up + drop], 0.080 * span],
+    [[-0.35 * BL, 1.62 * out * s, 2.58 * up + drop], 0.055 * span],
+    [[-0.92 * BL, 2.10 * out * s, 2.88 * up + drop], 0.028 * span],
+  ];
+  const tips: Vec3[] = [];
+  for (let k = 0; k < NF; k++) {
+    const f = (k + 1) / (NF + 1);
+    tips.push([(-0.70 - 1.10 * f) * BL, (2.05 - 0.55 * f) * out * s, (2.20 - 0.80 * f) * up + drop]);
+  }
+  return { arm, tips };
+}
+
+/** `add_wings`: an arm from the shoulder, and a two-node finger from the wrist to each tip. */
+export function addWings(g: Graph, idx: Anchors, p: Phenotype): void {
+  for (const s of [1, -1]) {
+    const { arm, tips } = wingNodes(p, s);
+    const bones = g.chain(idx.shoulder, arm);
+    const wrist = bones[2]!;
+    const w2 = arm[2]![0];
+    for (const t of tips) {
+      const mid: Vec3 = [(t[0] + w2[0]) * 0.51, (t[1] + w2[1]) * 0.5, (t[2] + w2[2]) * 0.5];
+      g.chain(wrist, [[mid, 0.042 * p.wingSpan], [t, 0.018 * p.wingSpan]]);
+    }
+  }
+}
+
+/** `add_crown`: horn pairs and an odd centre horn, then the crest (frill, skull fin or antler). */
+export function addCrown(g: Graph, idx: Anchors, p: Phenotype): void {
+  const { hornCount: HC, hornLength: HL, hornCurve: HK, crestType: CT, headSize: HS } = p;
+  const [hx, hz] = idx.headPos;
+  const back = idx.headBack;
+  const pairs = Math.floor(Math.max(0, HC) / 2);
+  const odd = HC % 2;
+  for (let i = 0; i < pairs; i++) {
+    const f = (i + 1) / (pairs + 1);
+    for (const s of [1, -1]) {
+      const yaw = 0.16 + 0.26 * f;
+      g.chain(back, [
+        [[hx - 0.16 * HL, yaw * s * HS, hz + (0.56 + 0.30 * f) * HL * HS], 0.095 * HS],
+        [[hx - 0.16 * HL - 0.26 * HL * (1 - HK * 0.5), (yaw + 0.09) * s * HS, hz + (0.86 + 0.34 * f) * HL * HS], 0.056 * HS],
+        [[hx - 0.16 * HL - 0.48 * HL * (1 - HK * 0.8), (yaw + 0.14) * s * HS, hz + (1.02 + 0.26 * f) * HL * HS - 0.22 * HK * HL], 0.020 * HS],
+      ]);
+    }
+  }
+  if (odd) {
+    g.chain(back, [
+      [[hx - 0.10 * HL, 0, hz + 0.64 * HL * HS], 0.085 * HS],
+      [[hx - 0.28 * HL, 0, hz + 1.00 * HL * HS], 0.048 * HS],
+      [[hx - 0.46 * HL, 0, hz + 1.18 * HL * HS - 0.20 * HK * HL], 0.018 * HS],
+    ]);
+  }
+  if (CT === 1) { // frill
+    for (const s of [1, -1]) {
+      for (let k = 0; k < 3; k++) {
+        g.chain(back, [
+          [[hx - 0.22, (0.34 + 0.10 * k) * s * HS, hz + 0.18 - 0.10 * k], 0.085 * HS],
+          [[hx - 0.52 - 0.10 * k, (0.64 + 0.16 * k) * s * HS, hz + 0.10 - 0.22 * k], 0.028 * HS],
+        ]);
+      }
+    }
+  } else if (CT === 2) { // dorsal fin on the skull
+    for (let k = 0; k < 3; k++) {
+      g.chain(back, [
+        [[hx - 0.10 - 0.18 * k, 0, hz + 0.46 + 0.14 * k], 0.070 * HS],
+        [[hx - 0.26 - 0.20 * k, 0, hz + 0.80 + 0.10 * k], 0.024 * HS],
+      ]);
+    }
+  } else if (CT === 3) { // antler
+    for (const s of [1, -1]) {
+      const br = g.chain(back, [
+        [[hx - 0.18, 0.22 * s * HS, hz + 0.60 * HS], 0.075 * HS],
+        [[hx - 0.44, 0.40 * s * HS, hz + 0.96 * HS], 0.044 * HS],
+      ])[1]!;
+      for (const d of [-1, 1]) {
+        g.chain(br, [
+          [[hx - 0.70, (0.40 + 0.26 * d) * s * HS, hz + 1.22 * HS], 0.024 * HS],
+          [[hx - 0.92, (0.40 + 0.42 * d) * s * HS, hz + 1.40 * HS], 0.012 * HS],
+        ]);
+      }
+    }
+  }
+}
+
+/** `membrane_polys(p, s)`: the wing membrane's corners and faces, before Solidify and Subsurf. */
+export function membranePolys(p: Phenotype, s: number): { v: Vec3[]; f: number[][] } {
+  const { arm, tips } = wingNodes(p, s);
+  const BL = p.bodyLength;
+  const A1: Vec3 = [-0.95 * BL, 0.40 * s, 1.05];
+  const A2: Vec3 = [-0.20 * BL, 0.34 * s, 1.12];
+  const v: Vec3[] = [...arm.map((a) => a[0]), ...tips, A1, A2];
+  const nT = tips.length, iT = 4, iA1 = 4 + nT, iA2 = iA1 + 1;
+  const f: number[][] = [[0, 1, 2, iA2], [iA2, 2, iA1], [2, 3, iT]];
+  for (let k = 0; k < nT - 1; k++) f.push([2, iT + k, iT + k + 1]);
+  f.push([2, iT + nT - 1, iA1]);
+  return { v, f };
+}
+
+/** Membrane modifiers, as builder.py sets them. */
+export const MEMBRANE_THICKNESS = 0.034;
+
+/** A Blender primitive as the reference places it: built at the origin, scaled, rotated about Y, moved. */
+export type Primitive =
+  | { kind: 'cone'; vertices: number; radius: number; depth: number; location: Vec3; rotY: number; scale: Vec3 }
+  | { kind: 'ico'; subdivisions: number; radius: number; location: Vec3; rotY: number; scale: Vec3 };
+
+/** `torso_at(t, BM, CD)`: height and radius of the torso at normalised position t. */
+export function torsoAt(t: number, BM: number, CD: number): [number, number] {
+  for (let i = 0; i < TORSO_PROFILE.length - 1; i++) {
+    const a = TORSO_PROFILE[i]!, b = TORSO_PROFILE[i + 1]!;
+    if (a[0] <= t && t <= b[0]) {
+      const u = (t - a[0]) / (b[0] - a[0]);
+      const z = lerp(a[1], b[1], u), fr = lerp(a[2], b[2], u);
+      return [z, fr * BM * (0.2 < t && t < 0.8 ? CD : 1.0)];
+    }
+  }
+  const last = TORSO_PROFILE[TORSO_PROFILE.length - 1]!;
+  return [last[1], last[2] * BM];
+}
+
+/** Python `math.radians`: x * (pi / 180). */
+const radians = (deg: number) => deg * (Math.PI / 180.0);
+
+/** `spike_params(p)`: one six-sided cone per dorsal spike, sitting on the back. */
+export function spikeParams(p: Phenotype): Primitive[] {
+  const { spineCount: SC, spineHeight: SH2, bodyMass: BM, bodyLength: BL, chestDepth: CD } = p;
+  const out: Primitive[] = [];
+  for (let i = 0; i < SC; i++) {
+    const t = i / Math.max(1, SC - 1);
+    const x = lerp(-0.75 * BL, 0.95 * BL, t);
+    const [z, r] = torsoAt(t, BM, CD);
+    const h = (0.10 + r * 0.60) * SH2;
+    out.push({ kind: 'cone', vertices: 6, radius: r * 0.26, depth: h, location: [x, 0, z + r * 0.86 + h * 0.40], rotY: radians(-14), scale: [1, 1, 1] });
+  }
+  return out;
+}
+
+/** `ornament_params(p)`: the tail ornament, or null for tailTip "none". */
+export function ornamentParams(p: Phenotype): Primitive | null {
+  const TT = p.tailTip;
+  const x = -2.95 * p.tailLength * p.bodyLength;
+  if (TT === 0) return null;
+  if (TT === 1) return { kind: 'cone', vertices: 4, radius: 0.26, depth: 0.70, location: [x - 0.1, 0, 0.80], rotY: radians(-60), scale: [1, 0.22, 1] };
+  if (TT === 2) return { kind: 'cone', vertices: 3, radius: 0.30, depth: 0.56, location: [x - 0.14, 0, 0.60], rotY: radians(-96), scale: [1, 0.30, 1] };
+  return { kind: 'ico', subdivisions: 1, radius: 0.26, location: [x - 0.12, 0, 0.56], rotY: 0.0, scale: [1, 1, 1] };
 }

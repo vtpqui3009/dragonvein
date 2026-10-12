@@ -20,7 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { breed, wild, type Element, type Genome } from '../src/core/genome';
-import { bodyGraph } from '../src/assets/dragon/graph';
+import { bodyGraph, fullGraph, membranePolys, ornamentParams, spikeParams } from '../src/assets/dragon/graph';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel: string) => readFileSync(path.join(ROOT, rel));
@@ -51,8 +51,34 @@ const fx = JSON.parse(read('docs/fixtures/dragon-graphs.json').toString('utf8'))
   builderSha256: string;
   genomeSha256: string;
   stages: string[];
-  graphs: { gid: string; body: GraphRec }[];
+  graphs: { gid: string; body: GraphRec; full: Omit<GraphRec, 'idx' | 'points'>; parts: PartsRec }[];
 };
+interface PartsRec {
+  membrane: { side: number; v: number[][]; f: number[][] }[];
+  spikes: Record<string, unknown>[];
+  ornament: Record<string, unknown> | null;
+}
+
+/** Every number equal by Object.is, every other value equal; arrays and objects recursively. */
+function sameExactly(got: unknown, want: unknown, path = ''): string | null {
+  if (typeof want === 'number') return Object.is(got, want) ? null : `${path}: ${String(got)} vs ${want}`;
+  if (Array.isArray(want)) {
+    if (!Array.isArray(got) || got.length !== want.length) return `${path}: length ${JSON.stringify(got)?.slice(0, 40)} vs ${want.length}`;
+    for (let i = 0; i < want.length; i++) { const d = sameExactly(got[i], want[i], `${path}[${i}]`); if (d) return d; }
+    return null;
+  }
+  if (want && typeof want === 'object') {
+    if (!got || typeof got !== 'object') return `${path}: missing`;
+    const gk = Object.keys(got).sort(), wk = Object.keys(want).sort();
+    if (gk.join() !== wk.join()) return `${path}: keys ${gk} vs ${wk}`;
+    for (const k of wk) {
+      const d = sameExactly((got as Record<string, unknown>)[k], (want as Record<string, unknown>)[k], `${path}.${k}`);
+      if (d) return d;
+    }
+    return null;
+  }
+  return got === want ? null : `${path}: ${String(got)} vs ${String(want)}`;
+}
 
 function rebuild(): Genome[] {
   const out: Genome[] = [];
@@ -122,6 +148,38 @@ describe('32 body graphs (skeleton + add_limbs) match the reference exactly', ()
         expect(got.length, k).toBe(pt.length);
         got.forEach((c, j) => expect(Object.is(c, pt[j]), `${k}[${j}] ${c} vs ${pt[j]}`).toBe(true));
       }
+    });
+  });
+});
+
+describe('32 full graphs (+ add_wings, add_crown) match the reference exactly', () => {
+  const genomes = rebuild();
+  fx.graphs.forEach((want, i) => {
+    it(`#${i} ${want.gid}: ${want.full.v.length} nodes`, () => {
+      const { g } = fullGraph(genomes[i]!.phenotype);
+      const w = want.full;
+      expect(g.v.length).toBe(w.v.length);
+      expect(sameExactly(g.v, w.v, 'v')).toBeNull();
+      g.r.forEach((r, n) => {
+        const wr = w.r[n]!;
+        if (POW_RADII.has(n)) expect(ulps(r, wr), `tail radius ${n}`).toBeLessThanOrEqual(1);
+        else expect(Object.is(r, wr), `radius ${n} ${r} vs ${wr}`).toBe(true);
+      });
+      expect(g.e).toEqual(w.e);
+    });
+  });
+});
+
+describe('the parts Blender builds from primitives: parameters match the reference exactly', () => {
+  const genomes = rebuild();
+  fx.graphs.forEach((want, i) => {
+    it(`#${i} ${want.gid}: membranes, ${want.parts.spikes.length} spikes, ornament ${String(want.parts.ornament?.['kind'] ?? 'none')}`, () => {
+      const p = genomes[i]!.phenotype;
+      for (const m of want.parts.membrane) {
+        expect(sameExactly(membranePolys(p, m.side), { v: m.v, f: m.f }, `membrane ${m.side}`)).toBeNull();
+      }
+      expect(sameExactly(spikeParams(p), want.parts.spikes, 'spikes')).toBeNull();
+      expect(sameExactly(ornamentParams(p), want.parts.ornament, 'ornament')).toBeNull();
     });
   });
 });
