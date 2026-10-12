@@ -54,8 +54,8 @@ Take M2a, the first genome step and the start of the hook (CLAUDE.md §0).
   npm run build && npm run gate:perf -- --real-gpu`, then copy four fields from
   `artifacts/perf.json` into STATE.md §Real-GPU verification log (`docs/PERF_BUDGET.md`
   §Real-GPU verification). **`--real-gpu` is new**: before it, the documented command
-  always measured SwiftShader and could not pass anywhere. The only row is at `c429d4a`. It is the perf-critic's lead deduction every
-  round (7.4–7.9), and no run can supply it.
+  always measured SwiftShader and could not pass anywhere. A current-commit **sighting** was recorded on 2026-10-12 at `3ab6e84` (FPS 60, DRAWS
+  27). A full **verification** is still outstanding.
 - If run 7's session on the second account is still set to auto-continue, please archive
   it. Its plan is for M1a, which is DONE.
 

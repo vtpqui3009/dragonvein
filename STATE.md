@@ -210,6 +210,7 @@ that its record lives here. This is that record.
 | UTC date | commit | grade | machine / GPU | viewport | tier | `frameCostMs.p95` | verdict |
 |---|---|---|---|---|---|---|---|
 | 2026-10-10 | `c429d4a` | sighting | owner's machine, Chrome on Windows; GPU model not recorded | ~1365×610 browser window | auto-detected, not recorded | ~60 FPS sustained | PASS (ceiling only) |
+| 2026-10-12 | `3ab6e84` | sighting | owner's machine, Chrome on Windows; GPU model not recorded | ~1919×943 browser window (from the owner's screenshot) | default, `medium-equivalent` | ~60 FPS sustained | PASS (ceiling only) |
 
 **What that row does and does not establish.** The owner opened
 `https://vtpqui3009.github.io/dragonvein/` and read the overlay: build `v0.0.1+c429d4a`,
@@ -221,6 +222,14 @@ per `docs/PERF_BUDGET.md` §Two grades of evidence.
 
 It is also the first time any human has seen this build run, which is what `CLAUDE.md` §7
 requires before a milestone may be marked `DONE`.
+
+**Second row, 2026-10-12.** The owner opened the deployed page at HEAD and sent a screenshot
+of the overlay: build `v0.0.1+3ab6e84`, **FPS 60, DRAWS 27, TRIS 42268**. Draws and triangles
+match `gate:perf` exactly, so the deployed build is the measured build. That covers every
+M0 and M1 change, including the orbit camera (M0f) and the HUD reflow (M0e). It is a
+`sighting`: a ceiling at vsync with no percentile and no Potato row. A full `verification`
+is now possible with `npm run gate:perf -- --real-gpu` (`bc5a56e`), which did not exist
+before this date.
 
 The procedure for a full verification is four steps in `docs/PERF_BUDGET.md`
 §Real-GPU verification. `docs/ROADMAP.md` M16 accepts verifications only.
