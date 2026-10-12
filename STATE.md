@@ -13,6 +13,45 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 20 · M5b — three canopy tree generators
+
+**Step**: `M5b`, the first step in reading order that is not `DONE`. Step 0 pushed `72da549`.
+
+**Ownership**: `assetgen/flora/` (asset-builder), sequential.
+
+**The three**, from `docs/ASSET_PLAN.md` §B1, chosen to read as three tree *kinds* beside
+broadleaf:
+- `flora/conifer`, a tiered spire;
+- `flora/fanpalm`, a bare curved trunk under a crown of fronds;
+- `flora/windtwisted`, a gnarled, leaning trunk with a flag-shaped crown.
+
+The ancient giant goes to M5c, with the saplings.
+
+### Acceptance criteria
+
+1. **Each of the three** follows `flora/broadleaf.py`:
+   - `plan(seed)`, with the main silhouette axis stratified on the seed;
+   - the declarations (`FAMILY`, `NAME`, `BUDGET`, `PALETTE`, `PALETTE_ROLES`,
+     `METRIC_AXES`, `SHEET`);
+   - LOD0/1/2 strictly decreasing **on every seed 1–8**, within broadleaf's 6 000 / 2 000 /
+     500;
+   - 0 inward faces and 0 open edges at every LOD on every seed;
+   - colours only on the ART_BIBLE bark surface and foliage ramp, like broadleaf.
+
+   Each tree stands on a base at z = 0 with a vertical trunk axis, so `src/render/wind.ts`
+   can sway it by height.
+2. **Pipeline.** All three are registered.
+   - `--verify` is byte-identical.
+   - `--check` and `check:assets` are OK.
+   - The existing 27 files are unchanged.
+3. **Seen.** `artifacts/variants/{conifer,fanpalm,windtwisted}.png` and a turntable each.
+4. **Probed.** `variant-probe` passes for all three, and the nine existing generators still
+   pass.
+5. `npm run gates` exits 0.
+6. Art per generator is ≥ 8.0.
+
+---
+
 ## 2026-10-12 · run 19 · M5a DONE — wind vertex shader on 220 instanced trees
 
 **Step**: `M5a`, the first step in reading order that is not `DONE`. Step 0 pushed `743d96a`.
@@ -478,4 +517,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T21:08Z
