@@ -59,9 +59,14 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x5d6063);
-// The ground fades into the backdrop instead of ending at a hard horizon line.
+// The ground fades into the backdrop instead of ending at a hard horizon line. The
+// backdrop is a fogged sphere, not `scene.background`: the background skips tone mapping
+// and fog does not, so the two greys met in a visible seam.
 scene.fog = new THREE.Fog(0x5d6063, 40, 95);
+scene.add(new THREE.Mesh(
+  new THREE.SphereGeometry(150, 24, 12),
+  new THREE.MeshBasicMaterial({ color: 0x5d6063, side: THREE.BackSide }),
+));
 
 const sun = new THREE.DirectionalLight(0xfff1e2, 2.55);
 sun.position.set(-14, 22, 16);
