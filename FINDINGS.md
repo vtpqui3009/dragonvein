@@ -5,6 +5,68 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M3a — run 11, 2026-10-12 — cycle 2, at `dda79a2`
+
+**Scores: art-critic 7.2 · perf-critic 8.7 · gameplay-critic 9.0.** No blocking defect. Art is
+still below 8.0, so cycle 3, the last this run may take (CLAUDE.md §3.6).
+
+## perf-critic — 8.7 (all six lines)
+
+P1 2.0 · P2 1.8 · P3 1.6 · P4 1.2 · P5 1.2 · P6 0.9.
+
+- [major] P1 `STATE.md` real-GPU log: the newest row is the sighting at `3ab6e84`, before M2
+  and M3.
+- [major] No measured frame holds a dragon. `dragon-body.json` has build time and triangles,
+  but no draw calls, frame cost or heap for N bodies.
+- [minor] P3 is partial scope on the Node main thread (cold 28.12, max 10.6 ms, 5752 tris).
+- [minor] P4 `heap.bytesPerFrame 33893`; `uncorrectedBytesPerFrame 40957` is 3 B under the budget.
+- [minor] P1 `cpuFrameMs.max 17.2` lines up with a scavenge.
+- [minor] P6: no real-hardware Potato number. Advisory GPU drift 434 → 453 ms.
+
+SCORE_MACHINE: 8.7
+
+## art-critic — 7.2 (all nine lines)
+
+A1 0.8 · A2 0.6 · A3 0.9 · A4 1.0 · A5 0.9 · A6 1.0 · A7 1.0 · A8 0.7 · A9 0.3.
+
+- [major] A2 `dragon-body.png` cell D (gale): lit body samples at s ≈ 0.11, near white; H at
+  0.19 and C at 0.26 are under the bible's 0.35 floor on the lit surface.
+- [major] A4: one body plan in all 8 cells. Neck, tail, bulk and colour vary; stance, head and
+  toes do not.
+- [major] A3 `frame00.png` far legs (x 430–500, 570–630): near black. There is no readable fill
+  on the far side.
+- [major] A6 `shots/01-wide.png`: no creature in the game world.
+- [minor] A9: long, low, sprawling, with the head about 1/8 of body length, where the bible
+  asks for chunky and front-heavy with the head about 1/5.
+- [minor] A2 gradient: the belly underside runs orange → olive → teal on orange dragons.
+- [minor] A5/A8: a faceted crease at the front shoulder, and a hump at the back of the skull.
+- [minor] A1: the creatures fill about 12 % of the sheet.
+
+SCORE_MACHINE: 7.2
+
+## gameplay-critic — 9.0 (6.1 of 6.8; G2, G4 n/a)
+
+G1 1.9 · G3 1.3 · G5 1.5 · G6 1.4.
+
+- [minor] G2 advisory: G = A × B reads as a paler A with B's tail. Revisit at M3b and M9b.
+- [minor] Far-side legs near black (`?view=turn&i=6&cam=-3,0.3,8,0,0.9,0`). Self-shadow plus
+  weak fill, not flipped normals.
+- [minor] Viewer: labels overlap after a drag, the sheet does not refit at 360 px, and there is
+  no wheel or pinch zoom.
+- [minor] The helmet-like head, the shoulder hump and a ragged belly edge on the throat.
+- [minor] The game page still shows no dragon.
+
+SCORE_MACHINE: 9.0
+
+*Builder note on A9 and A4:* the proportions and the single body plan come from the reference
+graph, which the port reproduces exactly (tests/dragon-graph.test.ts). The head is 4 nodes ending
+0.52·snoutLength·headSize ahead of the skull. The legs are fixed four-node chains whose shape
+only legLength and legThickness move. Changing either is a change to `assetgen/dragon/builder.py`
+and to what the reference dragon is, which needs the owner (STATE.md run 11). It cannot be
+fixed in the TS skin while parity holds.
+
+---
+
 # M3a — run 11, 2026-10-12 — cycle 1, at `84ce145`
 
 **Scores: art-critic 7.4 · perf-critic 8.9 · gameplay-critic 8.7.** No blocking defect. Art is
