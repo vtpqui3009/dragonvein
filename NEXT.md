@@ -10,48 +10,48 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `b58251a`, the last commit of run 16 that changed
+Last updated: **2026-10-12** · at commit `3a2287f`, the last commit of run 17 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M4c — 2 more rock generators plus arches and floating shards** · `TODO`
+**M4d — arch and floating-shard landmark generators, each with a passing variant sheet** · `TODO`
 
-M4b closed in run 16 after one rework cycle. Final scores: art **8.5**, perf **8.2**,
-gameplay **9.2**. The art per-generator estimates were stratified 8.4, columnar 8.6 and
-boulders 8.1. Cycle 1 had boulders at 7.8 (smooth potatoes); cycle 2 added fracture planes,
-flat shading and a rockMid base.
+M4c closed in run 17 on its first pass: art **8.3** (shard 8.4, eroded 8.3), perf **8.5**,
+gameplay **9.0**. Run 17 split the old M4c in two (STATE.md run 17): M4c was the two
+remaining §C2 rocks, and M4d is the §C3 landmarks. `assetgen/terrain/` now has five rock
+kinds:
+- `stratified`, `columnar` and `boulders`;
+- `shard` (808/268/128);
+- `eroded` (500/182/72).
 
-There are now three rock generators in `assetgen/terrain/`, sharing `rockkit.py` (mesh
-accumulator, ramps, inward-face count, icosphere):
-- `stratified` (896/384/144);
-- `columnar` (470/304/105);
-- `boulders` (400/100/80).
+`rockkit.py` gained `vertex_normals`, `rock_tone` and `fractured_stone`; reuse them.
 
 ## The single next action
 
-Take M4c in `assetgen/terrain/`. `docs/ASSET_PLAN.md` §C2 still has **shard** and **eroded**
-left, and the step adds arches and floating shards on top of those.
+Take M4d in `assetgen/terrain/`: two landmark generators from `docs/ASSET_PLAN.md` §C3.
+- **`arch`**: a natural stone arch. It must be a closed, outward-wound genus-1 solid, so
+  count inward faces and open edges on every seed and LOD.
+- **`floating shards`**: sky-island fragments that hang in the air. Set
+  `SHEET["ground"] = False`, and give them no contact shadow. Read the island generator's
+  underside for the style.
 
-- **Check its size first** (ROADMAP §How big a step may be). Four kinds is more than M4b's
-  three and M4b needed a rework cycle. If it will not fit, split it into M4c (shard and
-  eroded) and M4d (arch and floating shards), record the split in STATE.md, and take the
-  first half.
-- **Copy the M4b pattern:**
-  - `plan(seed)`, `build(seed, lod)`, `metrics`, `inward_faces`;
-  - `FAMILY`, `NAME`, `SHEET`, `METRIC_AXES`, `PALETTE_ROLES`;
-  - register the generator in `build_all.py`;
-  - check that LODs strictly decrease on **every** seed, not only the committed one;
-  - check 0 inward faces at every LOD.
-- **What the art critic will look for** (FINDINGS M4b):
-  - Faceted, flat-shaded low-poly that matches concept 03. Smooth blobs are out of style.
-  - Rock that reads grey-brown. Base the colour on rockMid and keep dusk for faces that look
-    at the sky, or it reads as orange clay.
-  - No near-sibling seeds. Give each generator a second form language.
-  - Floating shards need no contact shadow, but a ground-plane sheet will look wrong for
-    them. Set `SHEET["ground"] = False`.
+Copy the M4c pattern:
+- the module declarations and `plan(seed)`;
+- LODs strictly decreasing on **every** seed 1–8;
+- flat shading;
+- the colour based on rockMid.
+
+Landmark budgets may differ from the prop budget. Check docs/PERF_BUDGET.md §Other budgets
+before choosing.
+
+**What the art critic keeps flagging** (FINDINGS M4b and M4c):
+- dusk dominance reads as orange clay; lean the rock towards rockMid and deep shadow;
+- dark vertical smears on tall shafts read as baked dirt;
+- near-sibling seeds;
+- LOD1 and LOD2 are never rendered, so check them yourself for holes.
 
 ## Open items that need the owner, not a run
 
@@ -76,8 +76,12 @@ left, and the step adds arches and floating shards on top of those.
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
-- Rocks (M4b):
-  - none of the new rocks is placed in the game (M5e);
+- Rocks (M4b, M4c):
+  - none of the five rock kinds is placed in the game (M5e). When they are, use one
+    `InstancedMesh` per kind: the perf critic notes P4 heap headroom is about 4 draws;
+  - shard reads as copper or wood splinters, and its smooth base blobs do not match the
+    faceted spikes;
+  - eroded has near-pairs (6/8, 4/7, 2/5) and sliver triangles on the caps;
   - columnar seeds 1, 2, 4 and 5 are flat pavements of similar height;
   - stratified has vertical smears and cloth-like ledge skirts, and reads warm;
   - boulders seeds 2/4 and 6/7 are near-pairs;
