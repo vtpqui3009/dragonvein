@@ -10,7 +10,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { breed, wild, type Element, type Genome } from '../src/core/genome';
-import { BELLY_THRESHOLD, bodyColours, buildDragonBody, hsv } from '../src/assets/dragon/builder';
+import { EYE_COLOUR, GLINT_COLOUR, bellyWeight, bodyColours, buildDragonBody, hsv } from '../src/assets/dragon/builder';
 import { paths } from '../src/assets/dragon/skin';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -102,27 +102,44 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (i, gm) => {
     expect(Buffer.from((again.getIndex()!.array as Uint32Array).buffer).equals(Buffer.from(index.buffer))).toBe(true);
   });
 
-  it('has a belly: the downward-facing surface takes the belly colour, the rest the scale colour', () => {
+  it('colours: a soft belly band under the spine, scale on the limbs, dark eyes with a highlight', () => {
     const { scale, belly } = bodyColours(gm.phenotype);
-    let nBelly = 0, nScale = 0, wrong = 0;
-    for (let k = 0; k < col.length; k += 3) {
-      const want = nrm[k + 1]! < BELLY_THRESHOLD ? belly : scale;
-      if (col[k] !== Math.fround(want[0]) || col[k + 1] !== Math.fround(want[1]) || col[k + 2] !== Math.fround(want[2])) wrong++;
-      if (want === belly) nBelly++; else nScale++;
-    }
-    expect(wrong, 'vertices with the wrong colour for their normal').toBe(0);
-    expect(nBelly).toBeGreaterThan(0);
-    expect(nScale).toBeGreaterThan(nBelly);
+    let wrong = 0, bellyVerts = 0, scaleVerts = 0;
+    const same = (v: number, c: readonly number[]) =>
+      col[v] === Math.fround(c[0]!) && col[v + 1] === Math.fround(c[1]!) && col[v + 2] === Math.fround(c[2]!);
+    body.parts.forEach((part, pi) => {
+      const kind = body.kinds[pi];
+      for (let t = part.start; t < part.start + part.count; t++) {
+        const v = index[t]! * 3;
+        if (kind === 'eye') { if (!same(v, EYE_COLOUR)) wrong++; continue; }
+        if (kind === 'glint') { if (!same(v, GLINT_COLOUR)) wrong++; continue; }
+        const w = kind === 'spine' ? bellyWeight(nrm[v + 1]!) : 0;
+        const want = [0, 1, 2].map((k) => scale[k]! + (belly[k]! - scale[k]!) * w);
+        if (!same(v, want)) wrong++;
+        if (w > 0.5) bellyVerts++; else scaleVerts++;
+      }
+    });
+    expect(wrong, 'vertices with the wrong colour for their part and normal').toBe(0);
+    expect(bellyVerts).toBeGreaterThan(0);
+    expect(scaleVerts).toBeGreaterThan(bellyVerts);
+    expect(body.kinds.filter((k) => k === 'eye')).toHaveLength(2);
+    expect(body.kinds.filter((k) => k === 'glint')).toHaveLength(2);
   });
 
-  it(`skins every node: one tube for the spine, one per leg, one per toe (${i})`, () => {
+  it('the belly band blends: no hard step between scale and belly', () => {
+    expect(bellyWeight(0)).toBe(0);
+    expect(bellyWeight(-1)).toBe(1);
+    for (let up = -0.5; up < -0.1; up += 0.01) expect(bellyWeight(up + 0.01) - bellyWeight(up)).toBeLessThanOrEqual(0.05);
+  });
+
+  it(`skins every node: one tube for the spine, one per leg, one per toe, plus the eyes (${i})`, () => {
     const ps = paths(body.graph, body.idx.tailTip);
     const covered = new Set(ps.flatMap((p) => p.nodes));
     expect(covered.size).toBe(body.graph.v.length);
     expect(ps[0]!.nodes).toContain(body.idx.nose);
     expect(ps[0]!.nodes).toContain(body.idx.hip);
     expect(ps.length).toBe(1 + 4 + 4 * gm.phenotype.toeCount);
-    expect(body.parts.length).toBe(ps.length);
+    expect(body.parts.length).toBe(ps.length + 4); // + two eyes and their highlights
   });
 });
 

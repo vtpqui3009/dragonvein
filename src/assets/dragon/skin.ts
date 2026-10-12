@@ -40,11 +40,15 @@ export interface SkinOptions {
   thinStepScale: number;
   /** A branch starts at this fraction of its parent node's radius. */
   branchRoot: number;
+  /** Ring orientation averages the curve over ± this many radii. */
+  tangentWindow: number;
+  /** A node thinner than both neighbours is raised to this fraction of their mean. */
+  pinchFill: number;
 }
 
 export const SKIN_LOD0: SkinOptions = {
-  ringStep: 0.11, segMain: 16, segLimb: 10, segThin: 6, thinRadius: 0.14,
-  capRings: 3, capRingsThin: 1, thinStepScale: 2, branchRoot: 0.8,
+  ringStep: 0.12, segMain: 16, segLimb: 10, segThin: 6, thinRadius: 0.14,
+  capRings: 3, capRingsThin: 1, thinStepScale: 2, branchRoot: 0.8, tangentWindow: 1.5, pinchFill: 0.92,
 };
 
 export interface SkinMesh {
@@ -183,6 +187,13 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
       else { pts.push(q); rad.push(g.r[id]!); }
     }
     if (pts.length < 2) return; // a lone node: nothing to sweep (the graph has none)
+    // Fill pinches: a node thinner than both neighbours is raised toward their mean, so the
+    // skin does not waist in where a thin neck meets a broad skull (run 11, critic D3).
+    // The graph keeps the reference's radii; only the skin laid over it is filled.
+    for (let i = 1; i < rad.length - 1; i++) {
+      const a = rad[i - 1]!, b = rad[i + 1]!;
+      if (rad[i]! < a && rad[i]! < b) rad[i] = Math.max(rad[i]!, ((a + b) / 2) * o.pinchFill);
+    }
 
     // Thickness is judged on the path's own nodes, not the root it borrows from its parent.
     const ownR = Math.max(...path.nodes.map((id) => g.r[id]!));
@@ -191,8 +202,27 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
     const capRings = thin ? o.capRingsThin : o.capRings;
     const st = sampleCurve(pts, rad, thin ? o.ringStep * o.thinStepScale : o.ringStep);
 
-    // Tangents by central difference, then parallel-transported frames.
-    const T: Vec3[] = st.map((_, i) => norm(sub(st[Math.min(i + 1, st.length - 1)]!.c, st[Math.max(i - 1, 0)]!.c)));
+    // Tangents over a window as wide as the tube is thick, then parallel-transported frames.
+    // A plain central difference turned each ring as fast as the curve turned, so where a
+    // thick tube bends sharply (neck into skull, the knee) neighbouring rings crossed on the
+    // inside of the bend and folded into a lip (run 11, critics D3 and A8). Averaging the
+    // direction over ±radius turns the rings gradually instead.
+    const S = [0];
+    for (let i = 1; i < st.length; i++) S.push(S[i - 1]! + len(sub(st[i]!.c, st[i - 1]!.c)));
+    const total = S[S.length - 1]!;
+    const at = (d: number): Vec3 => {
+      const x = Math.min(Math.max(d, 0), total);
+      let k = 1;
+      while (k < S.length - 1 && S[k]! < x) k++;
+      const a = st[k - 1]!.c, b = st[k]!.c, span = S[k]! - S[k - 1]!;
+      const u = span > 1e-12 ? (x - S[k - 1]!) / span : 0;
+      return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u];
+    };
+    const T: Vec3[] = st.map((s0, i) => {
+      const h = Math.max(s0.r * o.tangentWindow, 1e-4);
+      const t = sub(at(S[i]! + h), at(S[i]! - h));
+      return len(t) > 1e-9 ? norm(t) : norm(sub(st[Math.min(i + 1, st.length - 1)]!.c, st[Math.max(i - 1, 0)]!.c));
+    });
     const t0 = T[0]!;
     const up: Vec3 = Math.abs(t0[2]) < 0.9 ? [0, 0, 1] : [0, 1, 0];
     let nrm = norm(sub(up, scale(t0, dot(up, t0))));
@@ -253,6 +283,30 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
   const position = new Float32Array(pos);
   const index = new Uint32Array(idx);
   return { position, normal: vertexNormals(position, index), index, parts };
+}
+
+/** A closed UV sphere, outward-wound, as its own part. */
+export function sphere(c: Vec3, r: number, seg: number, rings: number): SkinMesh {
+  const pos: number[] = [c[0], c[1], c[2] - r];
+  for (let i = 1; i < rings; i++) {
+    const th = -Math.PI / 2 + (i / rings) * Math.PI;
+    for (let j = 0; j < seg; j++) {
+      const ph = (j / seg) * Math.PI * 2;
+      pos.push(c[0] + r * Math.cos(th) * Math.cos(ph), c[1] + r * Math.cos(th) * Math.sin(ph), c[2] + r * Math.sin(th));
+    }
+  }
+  pos.push(c[0], c[1], c[2] + r);
+  const at = (i: number, j: number) => 1 + i * seg + (j % seg);
+  const top = 1 + (rings - 1) * seg;
+  const idx: number[] = [];
+  for (let j = 0; j < seg; j++) idx.push(0, at(0, j + 1), at(0, j));
+  for (let i = 0; i < rings - 2; i++) {
+    for (let j = 0; j < seg; j++) idx.push(at(i, j), at(i, j + 1), at(i + 1, j + 1), at(i, j), at(i + 1, j + 1), at(i + 1, j));
+  }
+  for (let j = 0; j < seg; j++) idx.push(at(rings - 2, j), at(rings - 2, j + 1), top);
+  const position = new Float32Array(pos);
+  const index = new Uint32Array(idx);
+  return { position, normal: vertexNormals(position, index), index, parts: [{ start: 0, count: index.length }] };
 }
 
 function scale(a: Vec3, s: number): Vec3 { return [a[0] * s, a[1] * s, a[2] * s]; }
