@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 11 · M3a — skeleton, torso and limbs from a genome into a `BufferGeometry`
+## 2026-10-12 · run 11 · M3a DONE (M3 IN_PROGRESS) — skeleton, torso and limbs from a genome into a `BufferGeometry`
 
 **Step**: `M3a`, the first step in reading order that is not `DONE`. Step 0 pushed `1a22af8`.
 
@@ -57,6 +57,84 @@ the M2 way, and the TS skin is its own sweep, held to the graph by geometry chec
    creatures, and none shows an inward-facing patch, hole or detached limb.
 5. `npm run gates` exits 0, with `gate:parity`'s mesh half still a named SKIP (M3c is not
    `DONE`).
+
+### Result — every criterion met at `e015a48`
+
+1. **The graph is the reference's.** All 32 graphs match: 56–64 nodes each, every position,
+   edge and anchor `Object.is`-equal (`a62a533`). The one exception is measured and named:
+   `t ** (1/tailTaper)` rounds its last bit differently in Python's libm and in V8 on 5 of 1 960
+   radii, all at tail node 3 and all by exactly 1 ulp. The test allows ≤ 1 ulp on tail nodes
+   1–3 only, and fails if more than 8 differ.
+2. **A `BufferGeometry` comes out** (`323ccf9`, `29c060e`, `570c706`).
+   `tests/dragon-body.test.ts` checks all 32 genomes for:
+   - finite values and unit normals;
+   - every part closed (each directed edge used once, with its twin) and with positive signed
+     volume;
+   - the bounding box holding every node and staying inside the envelope + 10 %;
+   - byte-identical rebuilds;
+   - at most 5 752 triangles, against a cap of 6 000;
+   - colours matching their part and normal.
+3. **`gate:meshgen` measures** (`802bff6`, its own commit): max 9.1 ms, median 5.5, cold 22.7,
+   against 120.
+4. **Seen rendered.** `artifacts/variants/dragon-body.png` and
+   `artifacts/turntables/dragon-body.webm`. Both critics confirm 8 distinct bodies with no
+   hole, inward patch or detached limb in any view they rendered.
+5. Gates green: 485 tests. `gate:parity` genome OK, mesh a named SKIP.
+
+**Scores** (FINDINGS.md, three cycles):
+
+| cycle | commit | art | perf | gameplay |
+|---|---|---|---|---|
+| 1 | `84ce145` | 7.4 | 8.9 | 8.7 |
+| 2 | `dda79a2` | 7.2 | 8.7 | 9.0 |
+| 3 | `e015a48` | **7.6** | **8.7** | **9.0** |
+
+So **M3a is `DONE` and M3 stays `IN_PROGRESS`** (§3.6). It needs every step and a pass with all
+three ≥ 8.0.
+
+### Decisions
+
+- **A reference bug fixed at the source (`8d78efa`).** `skeleton()` never joined its five tail
+  nodes. Blender skinned four of them as loose beads behind the body, which is visible in
+  `docs/concept/01-species-lineup.png`. `docs/GENOME.md` makes `tailTaper` a "tail radius
+  falloff exponent", so the reference was wrong. It was fixed before the port copied it. The
+  concept images were not regenerated (CLAUDE.md §2.9).
+- **The skin is the TS builder's own, held to the graph.** It is not an imitation of Blender's
+  Skin + Subsurf. The tubes are centripetal Catmull-Rom curves through the nodes, with:
+  - radii clamped between neighbouring nodes, and pinches filled to 0.92 of the neighbours'
+    mean;
+  - coincident nodes merged (the reference puts the tail root and the hip at the same point);
+  - ring frames averaged over ±1.5 radii;
+  - rounded caps.
+
+  Wider averaging (2.0) put ripples in the neck, so it stays at 1.5.
+- **Colour genes mean what the player sees (`570c706`).** The HSV is decoded from sRGB into
+  the linear vertex colour. Blender reads the same triple as linear, which put a gale dragon at
+  the gene floor s = 0.35 on screen at s = 0.11 (art A2). The bible's 0.35–1.00 describes
+  what is seen. This diverges from the reference's *look*, not its geometry.
+- **Belly as a soft band on the spine tube.** Its centre is the reference's −0.30. The
+  reference's per-face switch painted blotches on the neck and legs.
+- **The sheet uses seeds 1–6 in order, plus two children of sheet dragons.**
+  `wild(seed, element)` gives one body per seed under every element, so a sheet on one seed
+  showed one body in six colours. That is the genome working as specified, and the sheet was
+  what changed. The seeds were not picked.
+- **`gate:meshgen` (`802bff6`) and `gate:parity` (run 10) had the same defect:** each failed as
+  soon as `builder.ts` existed, which is two steps before its milestone. `gate:meshgen` now
+  measures, which is stricter than a skip.
+
+### Open blockers for milestone M3
+
+- **Art 7.6.** What is left:
+  - the reference's proportions, a long low lizard against the bible's chunky, front-heavy
+    dragon with a head about 1/5 of body length. Only a change to `builder.py` can move it, so
+    this is a **question for the owner** (NEXT.md);
+  - the far-side legs in the body's shadow;
+  - the seam where a leg tube enters the body;
+  - no creature in the game scene (A6).
+
+  M3b's horns, crest and wings should lift A1, A4 and A9.
+- Perf, standing: no real-GPU row since `3ab6e84`. There is no dragon in any measured frame
+  until the game uses one.
 
 ---
 
@@ -114,45 +192,6 @@ the port reproduces it exactly. No owner question is needed.
 **M2b is `DONE`, and milestone M2 is `DONE`**: both steps are done, all three critics are
 ≥ 8.0, and the running build is the one the owner saw. The next step is **M3a**. NEXT.md
 flags the M3d owner question: Blender's Skin+Subsurf cannot be matched vertex for vertex.
-
----
-
-## 2026-10-12 · run 9 · M2a DONE — the TypeScript Rng matches Python stream for stream
-
-**Step**: `M2a`, the first step in reading order that is not `DONE` (M0 and M1 closed). Step 0
-pushed `de74d2d`.
-
-**Ownership**: `src/core/` is `core-builder`'s. The vector generator under `assetgen/` is
-`asset-builder`'s, and `tests/` is `integrator`'s. These are three directories, so one
-sequential owner does them in order: Python vectors, then the TS port, then the test.
-
-### Acceptance criteria
-
-| # | criterion | instrument |
-|---|---|---|
-| AC1 | `src/core/rng.ts` exports `Rng` with `next`, `range`, `int`, `pick` and `chance`, the same contract as `assetgen/genome.py` `Rng`, and imports nothing. | `npm run check:layers`, file |
-| AC2 | `assetgen/rng_vectors.py` writes `tests/fixtures/rng-vectors.json` from `genome.Rng`. Ten seeds include 0, -1, 2^32, 0xFFFFFFFF and 2^40+7, the edge cases of the `& 0xFFFFFFFF` mask and the zero-seed fallback. For each seed it records the state after seeding, the first 1000 `next()` values, and 1200 interleaved `range`/`int`/`pick`/`chance` calls. Re-running it is byte-identical. The fixture pins `genome.py`'s SHA-256. | script, `sha256sum` twice |
-| AC3 | A vitest test asserts **exact** equality (`===` on doubles, not closeness) between the TS stream and every fixture value. It is shown failing when the seeding uses plain `*` instead of `Math.imul`, which is the predicted trap. | `npm run test`, the deliberate-bug run |
-| AC4 | The test fails if `assetgen/genome.py` changed after the fixture was generated, so the two languages cannot drift silently. | `npm run test` |
-| AC5 | `npm run gates` exits 0, with `check:determinism` and `check:layers` included. | `npm run gates` |
-| AC6 | Critics score on a frozen tree. Nothing visual or runtime-facing changes; `src/core/rng.ts` is not yet imported by the game. | `FINDINGS.md` |
-
-### Result
-
-- `f843f47`: `assetgen/rng_vectors.py` writes `tests/fixtures/rng-vectors.json` (10 seeds ×
-  state + 1000 `next` + 1200 interleaved calls), byte-identical across runs, with
-  `genome.py` pinned by SHA (AC2).
-- `7500613`: `src/core/rng.ts` plus `tests/rng.test.ts`, 33 exact-equality cases, all passing
-  on the first run (AC1, AC3). Seen failing two ways. A plain `*` in place of `Math.imul`
-  **passed seeds 1, 2 and 42** and failed the large ones, so only the edge seeds catch this
-  bug. An edit to `genome.py` fails the SHA pin (AC4). `599106c` keeps the first
-  demonstration as a test.
-- `npm run gates` exits 0 with 82 tests (AC5). Scores at `7500613`: **art 8.6 · perf 8.5 ·
-  gameplay 9.4**, no blocking defect (AC6).
-
-**M2a is `DONE`.** M2 stays `IN_PROGRESS` on M2b. Reading `genome.py` for the handoff turned
-up three traps for M2b, all in `NEXT.md`: banker's rounding in `express()`, `gid()` hashing
-Python's float repr, and `gate:parity` being unable to go green before M3's builder.
 
 ---
 

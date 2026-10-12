@@ -94,10 +94,17 @@ at `3ab6e84`; M2's code is not yet imported by the game, so nothing visible chan
 
 | step | done when | status |
 |---|---|---|
-| **M3a** | **skeleton, torso and limbs build from a genome into a `BufferGeometry`** | **TODO** |
-| M3b | wings, crown, membrane and tail ornament; the creature reads as the Python one | TODO |
+| M3a | skeleton, torso and limbs build from a genome into a `BufferGeometry` | DONE |
+| **M3b** | **wings, crown, membrane and tail ornament; the creature reads as the Python one** | **TODO** |
 | M3c | built in a worker inside 120 ms on Medium; `gate:meshgen` green | TODO |
 | M3d | `gate:parity` green between the two builders on the fixed genome set | TODO |
+
+M3a closed on 2026-10-12 at `e015a48` (run 11), on its STATE.md criteria with gates green. The
+graph is identical to the reference on 32 genomes, and the skin is closed and outward-wound.
+`gate:meshgen` measures 9.1 ms max against 120. After three cycles the last pass scored art
+**7.6**, perf 8.7 and gameplay 9.0, so **M3 stays `IN_PROGRESS`** until a pass clears 8.0 in all
+three. The art deductions that remain are listed in FINDINGS.md, and the largest one, the
+reference's proportions, is with the owner (NEXT.md).
 
 ## M4 — Terrain assets
 

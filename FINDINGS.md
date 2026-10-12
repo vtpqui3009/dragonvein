@@ -5,6 +5,72 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M3a — run 11, 2026-10-12 — cycle 3, at `e015a48`
+
+**Scores: art-critic 7.6 · perf-critic 8.7 · gameplay-critic 9.0.** No blocking defect. This was
+the third and last cycle the run may take. **M3a closes on its acceptance criteria. M3 stays
+`IN_PROGRESS`**, with art below 8.0 (CLAUDE.md §3.6).
+
+## perf-critic — 8.7 (all six lines)
+
+P1 2.0 · P2 1.8 · P3 1.6 · P4 1.2 · P5 1.2 · P6 0.9.
+
+- [major] P1: the newest real-GPU row is the `3ab6e84` sighting. No verification-grade row exists.
+- [major] No measured frame holds a dragon. `dragon-body.json` has no draw, frame or heap
+  numbers for N bodies.
+- [minor] P3 is partial scope on the Node main thread (max 9.1, cold 22.74 ms; 5752 tris). In the
+  browser the sheet is 99.6 ms for 8.
+- [minor] P4 `heap.bytesPerFrame 34589` (34229 → 33893 → 34589 over the three cycles), and
+  uncorrected 39931 of 40 960.
+- [minor] P6: no real-hardware Potato number. Advisory GPU drift.
+
+SCORE_MACHINE: 8.7
+
+## art-critic — 7.6 (all nine lines)
+
+A1 1.0 · A2 0.8 · A3 0.9 · A4 1.2 · A5 0.9 · A6 1.0 · A7 1.0 · A8 0.5 · A9 0.3.
+
+- [major] A3/A5 `turntables/dragon-body.frame00.png` (430–450, 420–455), (565–590, 415–450): the
+  far-side feet and lower legs crush to near black and read as detached boxes.
+- [major] A8 `dragon-body.png` cell E chest and throat: a darker panel meets the neck with a
+  jagged, stepped edge, which reads as intersecting parts.
+- [major] A4 cells A, B, F: one pose and plan, differing mostly in hue. G reads as A recoloured
+  and H as C. The variation that does show is neck arc, tail, mass and snout.
+- [major] A6 `shots/01-wide.png`: no creature in the game. The satellite islands are sparse.
+- [minor] A5 `?view=turn&i=0&cam=0.6,0.5,2.2,0,0.25,0`: facets and a crease at the shoulder.
+- [minor] A2: lit D at s ≈ 0.28 and F at v ≈ 0.24 on screen. The genes are 0.35 and 0.30.
+- [minor] A9: slim, horizontal, small-headed bodies against the bible's chunky, front-heavy
+  ones with a head about 1/5 of body length. More than three values on G.
+- [minor] A3/A9 game frame: black island undersides, and a navy-to-orange sky against the
+  concept's pastel peach.
+
+SCORE_MACHINE: 7.6
+
+## gameplay-critic — 9.0 (4.7 of 5.2; G2, G4, G5 n/a)
+
+G1 2.1 · G3 1.2 · G6 1.4.
+
+- [major, G2 provisional] G = A × B reads as a recoloured A with a longer tail. The phenotypes
+  are neckLength 1.256 / 1.115 / 1.260 and hue 0.027 / 0.532 / 0.050 (A / B / G).
+- [major, G2 provisional] The sheet's second row is nearer the camera, so the children look
+  about 30 % larger than their parents.
+- [minor, G2 provisional] H reads as C with a longer neck. Horns, wings and crest are not drawn
+  until M3b, so resemblance cannot be fully judged yet.
+- [minor] The far-side legs are near black.
+- [minor] G6: two-finger pinch in `dragon.html` rotates instead of zooming.
+- [minor] G3: no input-latency measurement, and `gate:smoke` does not load `dragon.html`.
+- [minor] `startPreview`'s fetch poll failed from the critic's shell under proxy variables,
+  while curl reached the server.
+
+SCORE_MACHINE: 9.0
+
+*Builder note on G = A × B:* `breed` picks one allele per parent per gene, and the dominant
+one is expressed (`docs/GENOME.md` §Diploid). A child that expresses mostly one parent's
+dominant alleles is the genome working as specified, not a builder fault. G2 goes live at M9b,
+with horns, wings and crest in view.
+
+---
+
 # M3a — run 11, 2026-10-12 — cycle 2, at `dda79a2`
 
 **Scores: art-critic 7.2 · perf-critic 8.7 · gameplay-critic 9.0.** No blocking defect. Art is
@@ -190,56 +256,6 @@ G1 2.0 · G3 1.3 · G6 1.5.
 - [note] at M9b, G2 needs a render-level check that a child resembles its parents.
 
 SCORE_MACHINE: 9.2
-
----
-
-# M2a — run 9, 2026-10-12 — cycle 1, at `7500613`
-
-**Scores: art-critic 8.6 · perf-critic 8.5 · gameplay-critic 9.4.** No blocking defect. The step
-is pure logic: `src/core/rng.ts` is not yet imported by the game, so the frames are M1's.
-
-## perf-critic — 8.5 (7.0 of 8.2; P3 n/a)
-
-P1 2.0 · P2 1.8 · P4 1.2 · P5 1.2 · P6 0.8.
-
-- [major] P1: there is no verification-grade real-GPU row, only sightings (no GPU model, no
-  percentile, a 943-px viewport). Repro: `npm run gate:perf -- --real-gpu`.
-- [minor] P6: no real-hardware Potato evidence. `potato.gpuFrameMs.p95 261.55` is advisory.
-- [minor] P4: `heap.bytesPerFrame 32 610` is 80% of 40 960 at 27 draws. Heap churn, not P2,
-  will bind from M3 onward.
-- [minor] `unpaced.cpuFrameMs.p95 1160` is SwiftShader backpressure, unbudgeted by design.
-
-SCORE_MACHINE: 8.5
-
-## art-critic — 8.6 (all nine lines)
-
-A1 1.0 · A2 0.9 · A3 1.0 · A4 1.5 · A5 1.1 · A6 1.0 · A7 1.0 · A8 0.7 · A9 0.4.
-
-- [major] A6: no creatures, dragon, structures or ambient life in any shot. The world reads as a
-  diorama with no inhabitant.
-- [major] A9: no dragon, and the sky is dark navy to orange where the concept is pastel peach.
-  The island undersides are near-black where the concept has brown rock cones.
-- [minor] A3: the main island's underside (x 500–780, y 520–640) is a flat black wedge, and
-  there are no contact shadows under props on the deck.
-- [minor] A5: on seed 5 a branch stub lies at ground level.
-- [minor] A8: on seed 7 the trunk-base flare reads as a mesh cut.
-- [minor] A4: one leaf and bark colour and one lobe style across all seeds.
-- [minor] A6: the satellite islands are sparse.
-
-SCORE_MACHINE: 8.6
-
-## gameplay-critic — 9.4 (4.9 of 5.2; G2, G4, G5 n/a)
-
-G1 2.2 · G3 1.2 · G6 1.5.
-
-- [minor] G3: there is no input-to-frame latency in `playtest.log`.
-- [minor] G6: input is pointer and touch only, with no keyboard.
-- [minor] AC3: the evidence that `*` instead of `Math.imul` fails lived only in a commit message.
-  **Fixed** in `599106c`, a test pinning where the two diverge.
-- [minor] observation: nothing in this step is player-visible yet. G2 is the first line that
-  can test the hook.
-
-SCORE_MACHINE: 9.4
 
 ---
 
