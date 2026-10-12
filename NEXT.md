@@ -10,59 +10,60 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `ccb560e`, the last commit of run 7b that changed
-code. The close-out commit that wrote this file follows it, so `git log -1` being one or two
-docs commits ahead of that stamp is expected and not staleness.
+Last updated: **2026-10-12** · at commit `f7e5597`, the last commit of run 8 that changed
+code. The close-out commits that wrote this file follow it, so `git log -1` being a few docs
+commits ahead of that stamp is expected and not staleness.
 
 ---
 
 ## Current step
 
-**M1b — `assets:build` and `assets:render` run in CI and publish their artefacts** · `TODO`
+**M2a — `src/core/rng.ts` reproduces `assetgen/genome.py`'s stream exactly, proven on a
+fixed vector** · `TODO`
 
-M1a closed at `ccb560e` on all eight of its criteria (STATE.md run 7), with art **8.65**,
-perf **7.4** and gameplay **9.6**. A4 went live and scored 1.4 / 1.6. Run 7 built the
-B1 broadleaf generator and ran out of usage mid-fix. Run 7b took it over in the owner's
-own session and closed it. **M1 the milestone stays `IN_PROGRESS`**: M1b is open, and perf
-is held below 8.0 by the same two owner items that hold M0.
+M1b closed at `f7e5597` on its criteria, with art **8.7**, perf **7.4** and gameplay
+**8.7**. The Assets workflow now builds, `--verify`s, `--check`s, renders and probes on
+GitHub. Run `38216089403` rebuilt every `.glb` on an Ubuntu runner, and the SHA-256s matched
+the committed bytes, so CLAUDE.md §1.2 holds across two machines. **Every M1 step is
+`DONE`. M1 the milestone stays `IN_PROGRESS`**, held by perf < 8.0 (the owner items below),
+exactly as M0 is.
 
 ## The single next action
 
-Take M1b. It is CI wiring, so `integrator` owns it (`.github/`, `tools/`).
+Take M2a, the first genome step and the start of the hook (CLAUDE.md §0).
 
-- **`.github/workflows/assets.yml` already exists but is stale.** It runs the old
-  `assetgen/render_proof.py`. M1b points it at `python3 -I assetgen/build_all.py --verify`
-  (the byte-for-byte proof, CLAUDE.md §1.2), `npm run assets:render`, and
-  `node tools/variant-probe.mjs flora/broadleaf`, then uploads `artifacts/variants/` and
-  `artifacts/turntables/`. Its trigger is `assetgen/**` only. Add `public/assets/**`, so a
-  hand-edited binary also triggers the proof.
-- Costs measured here: `bpy` installs in ~1 min, the full sheet and 36-frame turntable take
-  **3 min 16 s** on 4 CPU cores, and `--verify` takes under a minute.
-- **The real risk is the Ubuntu runner.** `--verify` proves two processes on one machine
-  agree. CI is a different machine, and the committed hashes were built in this container.
-  If the runner's bpy produces different bytes, that is a real §1.2 finding to record, not
-  something to paper over. A reasonable answer is to have CI rebuild and compare against
-  MANIFEST, and to fail loudly with both hashes.
-- `*.github.io` is blocked here, and so is reading Actions logs without the GitHub MCP
-  tools. Check whether those tools are connected before relying on seeing a CI run.
+- `assetgen/genome.py` `class Rng` is **xorshift128** on `float` output. `src/core/rng.ts` must
+  match it **stream-for-stream** (CLAUDE.md §2.1). `src/core/` does not exist yet, so M2a
+  creates it, owned by `core-builder`, and it imports nothing (`docs/ARCHITECTURE.md`).
+- The trap is integer width. Python ints are unbounded; JS bitwise ops are 32-bit signed.
+  Mask with `>>> 0` everywhere, and compare the two languages on the raw uint32 state as
+  well as the float.
+- Proof shape: Python writes a fixed vector (several seeds, the first ~1000 outputs, plus
+  `range`, `int`, `pick` and `chance`) to a committed JSON fixture. A vitest test reads it
+  and asserts exact equality. Make the fixture generator a script, so it is reproducible,
+  not hand-pasted.
+- `check:determinism` must keep passing. `src/core/` may not use `Math.random` or `Date.now`.
+- This is pure logic, with nothing visual. The critics will score unchanged frames.
 
 ## Open items that need the owner, not a run
 
 - **Closing M0 and M1** needs a real-GPU verification row (`docs/PERF_BUDGET.md`
   §Real-GPU verification, four steps, plus `?tier=potato`) and a human sighting of the
-  current build. The only row is at `c429d4a`. This is the perf-critic's lead deduction
-  every round, at 7.4–7.9.
-- **Two sessions, one branch.** Run 7 (second account) was set to auto-continue when its
-  usage reset. If it resumes, it holds a stale plan for M1a, which is now DONE. Please
-  archive that session, or turn off its auto-continue.
+  current build. The only row is at `c429d4a`. It is the perf-critic's lead deduction every
+  round (7.4–7.9), and no run can supply it.
+- If run 7's session on the second account is still set to auto-continue, please archive
+  it. Its plan is for M1a, which is DONE.
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
-- Broadleaf: there is no per-seed colour or value variation; seeds 6 and 8 are the weakest
-  visual pair; a branch stub on seed 5; the root flare reads as a plate on seeds 5 and 7.
-- The broadleaf is not yet placed in the island scene, so A6 cannot move until a step
-  does that. Per-frame heap is 33–35 kB of 40 kB, so placing it must be instanced.
-- G3: input-to-presented-frame latency is unmeasured.
+- Broadleaf: no per-seed colour or value variation; a branch stub on seed 5; the root slab
+  on seed 7; seed labels overlap two trunk bases; the turntable is short (36 frames at 18
+  fps, which is 2 s).
+- The satellite islets are nearly bare, and nothing lives on the island yet (A6).
+- G3: input-to-frame latency is unmeasured.
+- The Assets job logs a harmless "Draco is not available" error from bpy, because the
+  build deliberately exports without Draco. Also, Actions warns that Node 20 actions are
+  deprecated (`actions/*@v4`).
 
 ## Standing hazards — every run hits these
 

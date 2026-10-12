@@ -67,13 +67,13 @@ nothing listens to proves nothing, are in `docs/archive/STATE-2026-10.md` run 4
 | step | done when | status |
 |---|---|---|
 | M1a | one generator goes end to end: script → LOD0/1/2 `.glb` → 8-seed variant sheet → turntable → `MANIFEST.json` | DONE |
-| **M1b** | **`assets:build` and `assets:render` run in CI and publish their artefacts** | **TODO** |
+| M1b | `assets:build` and `assets:render` run in CI and publish their artefacts | DONE |
 
 ## M2 — Genome in TypeScript
 
 | step | done when | status |
 |---|---|---|
-| M2a | `src/core/rng.ts` reproduces `assetgen/genome.py`'s stream exactly, proven on a fixed vector | TODO |
+| **M2a** | **`src/core/rng.ts` reproduces `assetgen/genome.py`'s stream exactly, proven on a fixed vector** | **TODO** |
 | M2b | `src/core/genome.ts` expresses, breeds and mutates identically; `gate:parity` green on 32 fixed genomes | TODO |
 
 ## M3 — Runtime dragon mesh
