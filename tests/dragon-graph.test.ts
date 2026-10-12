@@ -31,7 +31,7 @@ function ulps(a: number, b: number): number {
   const bits = new BigInt64Array(new Float64Array([a, b]).buffer);
   return Math.abs(Number(bits[0]! - bits[1]!));
 }
-/** Tail nodes whose radius goes through `pow` — see the header. Node 0 is t = 0, 4 is t = 1. */
+/** Tail nodes whose radius goes through `pow` — see the header. Node 0 is t = 0; t = 1 is the hip. */
 const POW_RADII = new Set([1, 2, 3]);
 
 type Recipe =
@@ -102,11 +102,12 @@ describe('the graph fixture is current', () => {
 });
 
 describe('the pow exception stays as narrow as measured', () => {
-  it('the tail is nodes 0-4, so POW_RADII names tail nodes and nothing else', () => {
+  it('the tail is nodes 0-3, so POW_RADII names tail nodes and nothing else', () => {
     for (const { body } of fx.graphs) {
       expect(body.idx['tailTip']).toBe(0);
-      // the tail is the chain 0-1-2-3-4, then 4 -> hip
-      expect(body.e.slice(0, 5)).toEqual([[0, 1], [1, 2], [2, 3], [3, 4], [4, body.idx['hip']]]);
+      // the tail is the chain 0-1-2-3, then 3 -> hip (the hip is its fifth node)
+      expect(body.idx['hip']).toBe(4);
+      expect(body.e.slice(0, 4)).toEqual([[0, 1], [1, 2], [2, 3], [3, 4]]);
     }
   });
   it('at most 1 ulp, and only where the libm differs: most tail radii are still exact', () => {

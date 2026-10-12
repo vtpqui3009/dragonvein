@@ -86,11 +86,11 @@ export function skeleton(p: Phenotype): { g: Graph; idx: Anchors } {
   const { headSize: HS, snoutLength: SL } = p;
   const g = new Graph();
 
-  // --- tail: 5 nodes, tapering toward the tip ---
+  // --- tail: 4 nodes tapering toward the tip, then the hip as its fifth (builder.py) ---
   const tailRootX = -0.75 * BL;
   const tipX = -2.95 * TL * BL;
   const tail: number[] = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 4; i++) {
     const t = i / 4.0;
     const x = lerp(tipX, tailRootX, t);
     const z = lerp(0.50, 0.86, t) + 0.06 * Math.sin(t * Math.PI);
@@ -106,7 +106,7 @@ export function skeleton(p: Phenotype): { g: Graph; idx: Anchors } {
     const r = fr * BM * (0.2 < fx && fx < 0.8 ? CD : 1.0);
     const n = g.node([x, 0, fz], r);
     torso.push(n);
-    g.e.push([i === 0 ? tail[4]! : torso[i - 1]!, n]);
+    g.e.push([i === 0 ? tail[3]! : torso[i - 1]!, n]);
   });
 
   // --- neck: quadratic arc whose rise is driven by neckArc ---

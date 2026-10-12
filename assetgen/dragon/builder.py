@@ -39,11 +39,14 @@ def skeleton(p):
     HS,SL    = p["headSize"],p["snoutLength"]
     g=Graph(); idx={}
 
-    # --- tail: 5 nodes, tapering toward the tip ---
+    # --- tail: 4 nodes tapering toward the tip, then the hip as its fifth ---
+    # The fifth tail node used to sit exactly on the hip. Blender's Skin modifier collapses
+    # a chain behind a zero-length edge to nothing, so the reference tail rendered as a
+    # floating ornament (STATE.md run 12). The t = 1 point is the hip, so the chain ends there.
     tail_root_x = -0.75*BL
     tip_x = -2.95*TL*BL
     tail=[]
-    for i in range(5):
+    for i in range(4):
         t=i/4.0
         x=lerp(tip_x,tail_root_x,t)
         z=lerp(0.50,0.86,t)+0.06*math.sin(t*math.pi)
