@@ -5,9 +5,12 @@ soft, lumpy rock the set needs beside the hard edges of the butte and the column
 silhouette axis, `heap`, is stratified on the seed and runs from a low scatter of a few
 broad stones (0) to a tall stacked cairn (1).
 
-Each boulder is an icosphere pushed out of round by a sum of sine fields, squashed, and
-sunk a little into the ground so it sits. `plan(seed)` draws every boulder; LODs change only
-the icosphere's subdivision (2 / 1 / 0), so the pile is the same pile at every LOD.
+Each boulder is an icosphere pushed out of round by a sum of sine fields, grooved by
+ridged cracks, chopped by 4-8 fracture planes into broken facets, squashed, and sunk a
+little into the ground so it sits. Flat-shaded, so the fracture facets read.
+`plan(seed)` draws every boulder; LODs change the icosphere's subdivision (1 / 0 / 0) and
+LOD2 keeps the biggest boulders (at most four, always one fewer than the pile has), so the
+pile is the same pile at every LOD and each LOD is cheaper than the one above.
 Colours: the rock ramp, pale where a face looks up at the sky, deep where it faces the
 ground.
 """
@@ -37,7 +40,12 @@ PARAMS = {
     "squash": (0.45, 0.95, "vertical scale of a boulder"),
     "rough": (0.12, 0.34, "how far the sine fields push the surface, in radii"),
 }
-_LOD = {0: 2, 1: 1, 2: 0}
+#: (icosphere subdivision, boulders kept). Flat-shaded, a once-subdivided icosphere chopped
+#: by fracture planes reads as broken stone with big facets, as the concept's rocks do;
+#: smooth-shaded at subdivision 2 the cuts vanished into a potato (art critic, run 16).
+#: LOD2 keeps the biggest boulders only, since a pile's silhouette is its big stones, and
+#: always drops at least one so it stays cheaper than LOD1 on a four-boulder pile.
+_LOD = {0: (1, 99), 1: (0, 99), 2: (0, 4)}
 
 
 def _p(name, t):
@@ -55,12 +63,15 @@ def plan(seed):
     rough = _p("rough", r.range(0.0, 1.0))
     boulders = []
     for i in range(count):
-        rad = size * shrink ** i * r.range(0.85, 1.12)
+        rad = size * max(0.34, shrink ** i) * r.range(0.85, 1.12)
         sq = min(1.0, squash_base * r.range(0.85, 1.15) * (0.85 + 0.3 * heap))
         fields = [(r.range(1.5, 4.5), _unit3(r), r.range(0.0, 2.0 * math.pi), r.range(0.4, 1.0))
                   for _ in range(4)]
         # Ridged fields cut grooves: weathering cracks, so a boulder is not a smooth lump.
         cracks = [(r.range(4.0, 8.0), _unit3(r), r.range(0.0, 2.0 * math.pi)) for _ in range(2)]
+        # Fracture planes chop the round off: each pushes the surface back onto a flat face,
+        # so a boulder has broken facets like the concept's rocks, not a potato's skin.
+        cuts = [(_unit3(r), r.range(0.62, 0.86)) for _ in range(r.int(4, 8))]
         yaw = r.range(0.0, 2.0 * math.pi)
         tone = r.range(0.0, 1.0)
         ang = r.range(0.0, 2.0 * math.pi)
@@ -72,13 +83,13 @@ def plan(seed):
             # heap lays boulders beside each other instead.
             host = boulders[min(len(boulders) - 1, int(pick * len(boulders)))]
             climb = heap
-            out = host["r"] * (1.05 - 0.55 * climb) + rad * (0.75 - 0.35 * climb)
+            out = host["r"] * (0.95 - 0.55 * climb) + rad * (0.55 - 0.30 * climb)
             hx = host["pos"][0] + out * math.cos(ang)
             hy = host["pos"][1] + out * math.sin(ang)
             hz = rad * sq * 0.82 + climb * (host["pos"][2] + host["r"] * host["sq"] * 0.55)
             pos = (hx, hy, hz)
         boulders.append({"r": rad, "sq": sq, "pos": pos, "fields": fields, "cracks": cracks,
-                         "yaw": yaw, "tone": tone})
+                         "cuts": cuts, "yaw": yaw, "tone": tone})
     return {"heap": heap, "boulders": boulders, "rough": rough}
 
 
@@ -95,6 +106,12 @@ def _shape(b, rough, d):
                           for f, u, ph, amp in b["fields"]) / 2.0
     k -= rough * 0.45 * sum((1.0 - abs(math.sin(f * (d[0] * u[0] + d[1] * u[1] + d[2] * u[2]) + ph))) ** 4
                             for f, u, ph in b["cracks"])
+    # Fracture planes: a point beyond a cut plane is pulled back onto it. The minimum over
+    # the cuts keeps the shape star-shaped about the centre, so faces stay outward.
+    for n, off in b["cuts"]:
+        dn = d[0] * n[0] + d[1] * n[1] + d[2] * n[2]
+        if dn > 1e-6:
+            k = min(k, off / dn)
     c, s = math.cos(b["yaw"]), math.sin(b["yaw"])
     x, y, z = d[0] * k * b["r"], d[1] * k * b["r"], d[2] * k * b["r"] * b["sq"]
     x, y = c * x - s * y, s * x + c * y
@@ -108,17 +125,22 @@ def build(seed, lod=0, params=None):
     pl = plan(int(seed))
     if params:
         pl.update(params)
-    verts, faces = K.icosphere(_LOD[lod])
+    sub, keep = _LOD[lod]
+    if lod == 2:
+        keep = max(1, min(keep, len(pl["boulders"]) - 1))
+    verts, faces = K.icosphere(sub)
     m = K.Mesh()
-    for b in pl["boulders"]:
+    for b in sorted(pl["boulders"], key=lambda q: -q["r"])[:keep]:
         base = len(m.v)
         for d in verts:
             # Up-facing pale, ground-facing deep: the direction's z stands in for the normal.
-            t = 0.30 + 0.16 * b["tone"] + 0.50 * K.smooth(0.5 - 0.6 * d[2])
+            # Rock mid on the flanks, a warm dusk lift only where a face looks at the sky,
+            # deep shadow underneath; each boulder its own shade, so a pile has value range.
+            t = 0.52 + 0.14 * b["tone"] + 0.36 * K.smooth(0.5 - 0.7 * d[2]) - 0.28 * max(0.0, d[2])
             m.vert(_shape(b, pl["rough"], d), K.ramp(K.ROCK, t))
         for a, bb, c in faces:
             m.face((base + a, base + bb, base + c))
-    ob = m.to_object(f"{NAME}_s{int(seed)}_lod{lod}", NAME)
+    ob = m.to_object(f"{NAME}_s{int(seed)}_lod{lod}", NAME, smooth_shade=False)
     ob["seed"] = int(seed)
     ob["lod"] = lod
     return ob

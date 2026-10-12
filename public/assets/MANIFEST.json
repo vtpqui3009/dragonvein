@@ -73,18 +73,18 @@
       "lods": {
         "lod0": {
           "file": "terrain/boulders.lod0.glb",
-          "tris": 1600,
-          "sha256": "a6820f49376dbd59d4e2e419e2278381d770a03e867a8747354c34b85bc7f161"
+          "tris": 400,
+          "sha256": "e5aca942d8b00c98336206e36325716955b756ea87a9cf532fe4b76b3fe4d59c"
         },
         "lod1": {
           "file": "terrain/boulders.lod1.glb",
-          "tris": 400,
-          "sha256": "d28b7726469d961a934f9fec0c468ebfa8cd3ab238a4c8c0f647739e5099c2b8"
+          "tris": 100,
+          "sha256": "22b1f0a965825ecbb1bc1024f937f23d73aac7302c50bb3605d1554c5cb1a293"
         },
         "lod2": {
           "file": "terrain/boulders.lod2.glb",
-          "tris": 100,
-          "sha256": "e4f729915372dec548a3513bedc3216a76e89fc51bd786a54745af0b7f83943a"
+          "tris": 80,
+          "sha256": "546d50de3d25843932467adb5ee37c6bf818bd6b55ebdfd9fdd8c7df80bbcfb1"
         }
       }
     },
