@@ -16,6 +16,8 @@
  * rendered sheet. Render pixels are albedo times light, and the rig adds key, fill and rim
  * on purpose. The bytes are what the game draws with, so the bytes are what must be
  * on-palette. Per `docs/RUBRIC.md` §A2:
+ *   - every colour the manifest declares must be within ΔE 12 of an ART_BIBLE §Palette entry,
+ *     so the check below is not circular;
  *   - bark is a surface, so every bark vertex must sit within ΔE 12 of the manifest's bark;
  *   - foliage is a gradient between palette stops (dark -> mid -> light), so it is
  *     judged on staying on that ramp, not on its midpoints being palette entries.
@@ -83,6 +85,23 @@ const entry = manifest.assets?.[id];
 if (!entry) {
   fail(`${id} is not in public/assets/MANIFEST.json`);
 } else {
+  // The manifest's palette is the generator's own declaration, so checking the bytes against
+  // it alone is circular (art-critic, M1a). Every declared colour must itself be a
+  // docs/ART_BIBLE.md §Palette entry, within the same ΔE 12 a surface gets.
+  const bible = [...readFileSync('docs/ART_BIBLE.md', 'utf8')
+    .matchAll(/^\| ([^|]+?) \| `(#[0-9a-fA-F]{6})`/gm)]
+    .map(([, label, hex]) => ({ label, hex, lab: linearToLab(hexToLinear(hex)) }));
+  if (!bible.length) fail('docs/ART_BIBLE.md §Palette yielded no colours to check against');
+  for (const [k, hex] of Object.entries(entry.palette ?? {})) {
+    const lab = linearToLab(hexToLinear(hex));
+    const near = bible.reduce((best, b) => {
+      const d = deltaE(lab, b.lab);
+      return d < best.d ? { d, b } : best;
+    }, { d: Infinity, b: null });
+    console.log(`A2  manifest ${k} ${hex}: nearest ART_BIBLE entry is ${near.b?.label} ${near.b?.hex} ` +
+      `(ΔE ${near.d.toFixed(1)})`);
+    if (near.d > SURFACE_DE) fail(`manifest palette ${k} ${hex} is ΔE ${near.d.toFixed(1)} from every ART_BIBLE entry`);
+  }
   const pal = Object.fromEntries(Object.entries(entry.palette ?? {}).map(([k, v]) => [k, hexToLinear(v)]));
   for (const k of ['bark', 'canopyDark', 'canopyMid', 'canopyLight']) {
     if (!pal[k]) fail(`MANIFEST.json ${id}.palette has no ${k}`);
