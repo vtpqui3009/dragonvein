@@ -5,6 +5,57 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M1b — run 8, 2026-10-12 — cycle 1, at `f7e5597`
+
+**Scores: art-critic 8.7 · perf-critic 7.4 · gameplay-critic 8.7.** No blocking defect. The
+step changes no runtime code or scene. All three critics scored unchanged frames and assets,
+and the CI evidence came from Actions run `38216089403`.
+
+## perf-critic — 7.4 (6.1 of 8.2; P3 n/a)
+
+P1 1.5 · P2 1.8 · P4 1.0 · P5 1.2 · P6 0.6.
+
+- [major] P1: the real-GPU log has nothing newer than the M0 `sighting` at `c429d4a`. Owner only.
+- [major] P1: advisory SwiftShader `frameCostMs.p95 536.79` is at the top of the 423–547 spread,
+  with no scene change since M0d.
+- [major] P4: `heap.bytesPerFrame 33 282` (`uncorrectedBytesPerFrame 40 696`) vs 40 960.
+  Placing flora will need instancing and no new per-frame allocation.
+- [minor] P6: `potato.frameCostMs.p95 270.383` is advisory, and there is no Potato hardware row.
+- [minor] `tier.configured=false` ("Medium minus post"). P3 is unmeasured until M3c.
+
+SCORE_MACHINE: 7.4
+
+## art-critic — 8.7 (all nine lines)
+
+A1 1.0 · A2 1.0 · A3 1.0 · A4 1.5 · A5 1.1 · A6 1.0 · A7 1.0 · A8 0.7 · A9 0.4.
+
+- [minor] A6 `01-wide.png` (620, 70) and (1040, 200): the satellite islets are nearly bare discs.
+- [minor] A6/A9: no creature or dragon in frame. The concept's focal subject is not live yet.
+- [minor] A4 `variants/broadleaf.png`: bark and canopy colour are identical across the 8 seeds.
+- [minor] A8/A5: a branch stub under seed 5's canopy, and a flat root slab on seed 7.
+- [minor] A8 `turntables/broadleaf.webm` frames 0–1: a pale streak under the trunk base,
+  which looks like a ground-plane artefact of the render rig.
+- [minor] A8: the seed labels overlap the trunk bases of seeds 1 and 6.
+- [minor] the turntable is 36 frames at 18 fps, i.e. 2 s at 512². That is short for judging
+  facets and LODs.
+- [minor] A3 `01-wide.png`: tree-on-ground cast shadows are not legible on the hero island.
+
+SCORE_MACHINE: 8.7
+
+## gameplay-critic — 8.7 (4.5 of 5.2; G2, G4, G5 n/a)
+
+G1 2.0 · G3 1.0 · G6 1.5.
+
+- [minor] G3: pointer-to-frame latency is never timed in `playtest.log`.
+- [minor] G3: SwiftShader cadence (`frameMs 2133`, FPS 5) means sub-100 ms visual feedback
+  cannot be confirmed here. That needs the real-GPU check.
+- [minor] `07-context-lost-360.png` has no in-world cue beyond the HUD line.
+- [minor] the smoke script labels shot 04 "gameplay rubric G5", but G5 goes live at M8a.
+
+SCORE_MACHINE: 8.7
+
+---
+
 # M1a — run 7b, 2026-10-12 — cycle 1, at `2adc4f1`
 
 **Scores: art-critic 8.65 · perf-critic 7.4 · gameplay-critic 9.6.** No blocking defect from
@@ -67,63 +118,6 @@ SCORE_MACHINE: 9.6
 Reports for closed steps live in [`docs/archive/FINDINGS-2026-10.md`](docs/archive/FINDINGS-2026-10.md),
 whole and unedited. This file keeps the two newest scoring rounds, whose defect lists are the
 current open set. When a step closes, move the round two places below it to the archive.
-
----
-
-# M0f — run 6, 2026-10-11 — cycle 1, at `c6995c4`
-
-**Scores: art-critic 8.3 · perf-critic 7.8 · gameplay-critic 8.8 (from 6.7).** No
-blocking defect from any critic. G6 went from 0.5 to 1.5 / 1.6.
-
-Before the fix, the new drill against the previous build failed every G6 assertion. It also
-found a defect nobody had listed: on a `hasTouch` context, a pinch zoomed the **page** to
-`visualViewport.scale 5`.
-
-## perf-critic — 7.8 (6.4 of 8.2; P3 n/a)
-
-P1 1.8 · P2 1.8 · P4 1.0 · P5 1.2 · P6 0.6.
-
-- [major] P1: no real-GPU verification at this milestone. The only row is a `sighting` at
-  `c429d4a`. **Only the owner can supply this**; see `docs/PERF_BUDGET.md` §Real-GPU verification.
-- [major] P1: the SwiftShader `frameCostMs.p95` drifts across runs: 423 → 495 → 547 ms at
-  identical draws and tris. It is advisory. *Builder note:* 27 draws and 42 268 tris have
-  been unchanged since M0d, and M0e/M0f changed no geometry, material or shadow setting,
-  so the drift is the container. A next run could test that by running `gate:perf` three
-  times on one commit.
-- [major] P4: `heap.bytesPerFrame 33 632` vs 40 960. It was 31 565 at M0e and 34 944 at M0d,
-  so this is within the run-to-run spread. `applyOrbit` returns early without input.
-- [minor] P6: no Potato row on real hardware.
-- [minor] `tier.configured=false`, which is "Medium minus post".
-
-SCORE_MACHINE: 7.8
-
-## art-critic — 8.3 (7.0 of 8.4; A4 n/a)
-
-A1 1.0 · A2 0.8 · A3 1.0 · A5 1.1 · A6 1.1 · A7 0.9 · A8 0.7 · A9 0.4. The critic found
-that every reachable orbit pose still lands on a composed frame.
-
-- [minor] A6 `09-orbit-mouse.png`: at dist 23 the frame is mostly sky.
-- [minor] A5/A6 `09` (0–135, 590–720): two satellites overlap on screen, cropped by the frame edge.
-- [minor] A8 `01-wide.png` (990–1005, 30–90), (510–525, 115–150): thin black shards read as glitches.
-- [minor] A2 `01-wide.png` (180–285, 545–625): a yellow-olive satellite side.
-- [minor] A3: the satellites have no contact shadow.
-- [minor] A9: the sky is darker than the concept's pastel.
-
-SCORE_MACHINE: 8.3
-
-## gameplay-critic — 8.8 (4.6 of 5.2; G2, G4, G5 n/a)
-
-G1 1.9 · G3 1.2 · G6 1.5.
-
-- [minor] G3: input-to-presented-frame latency is not measured. Only CPU cost is credited.
-- [minor] G6: pinch-in and wheel-up are not asserted on their own; only the wheel flood covers them.
-- [minor] G6: these edge cases are untested: a pinch ending into a one-finger drag, a third
-  finger, and a release outside the window.
-- [minor] G1: the arc is narrow (az −15..105, pitch 6..22). This is deliberate until the far
-  side is dressed.
-- [minor] There is no keyboard orbit, which is not in M0f's scope.
-
-SCORE_MACHINE: 8.8
 
 ---
 

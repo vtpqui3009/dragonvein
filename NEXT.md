@@ -37,7 +37,9 @@ Take M2a, the first genome step and the start of the hook (CLAUDE.md §0).
   creates it, owned by `core-builder`, and it imports nothing (`docs/ARCHITECTURE.md`).
 - The trap is integer width. Python ints are unbounded; JS bitwise ops are 32-bit signed.
   Mask with `>>> 0` everywhere, and compare the two languages on the raw uint32 state as
-  well as the float.
+  well as the float. The seeding does `(s * 0x85EBCA6B) & 0xFFFFFFFF`. In JS that must be
+  `Math.imul(s, 0x85EBCA6B) >>> 0`, because a plain `*` loses the low bits once the product
+  passes 2^53.
 - Proof shape: Python writes a fixed vector (several seeds, the first ~1000 outputs, plus
   `range`, `int`, `pick` and `chance`) to a committed JSON fixture. A vitest test reads it
   and asserts exact equality. Make the fixture generator a script, so it is reproducible,

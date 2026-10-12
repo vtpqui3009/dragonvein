@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 8 · M1b — the asset pipeline runs in CI
+## 2026-10-12 · run 8 · M1b DONE — the asset pipeline runs in CI (M1 IN_PROGRESS on perf)
 
 **Step**: `M1b`, the first step in reading order that is not `DONE`. Step 0 pushed
 `4851904`.
@@ -39,6 +39,26 @@ unpinned.
 | AC5 | `npm run gates` exits 0. | `npm run gates` |
 | AC6 | Critics score on a frozen tree. Nothing visual changes in this step; the scores are recorded as they come. | `FINDINGS.md` |
 
+
+### Result
+
+- `d34bb94`: `build_all.py --check` passes on the real tree. On a copy with one byte of lod1
+  flipped it fails, printing the committed, fresh and MANIFEST hashes (AC1).
+  `assetgen/requirements.txt` pins `bpy==5.2.2` (AC2).
+- `f7e5597`: `assets.yml` now runs, in order, `--verify`, `--check`, `check:assets`,
+  `render_all`, `variant-probe` per MANIFEST asset, and the dragon proofs. It triggers on
+  `public/assets/**` as well (AC3).
+- **Actions run `38216089403` (job `114701047119`) succeeded at `f7e5597`** (AC4). The Ubuntu
+  runner built `a2495328…`, `8252b2c8…` and `8c6dcee6…`: identical to the committed bytes and
+  MANIFEST, so §1.2 is proven across two machines. The sheet rendered in 39 s and the
+  36-frame turntable in 115 s. The probe passed. Artifact `asset-renders` (id 11732548099)
+  holds 6 files.
+- `npm run gates` exits 0 (AC5): cpu p95 1.7 ms, heap 33 282 B/frame, code bundle 145.89 kB.
+- Scores at `f7e5597` (AC6): **art 8.7 · perf 7.4 · gameplay 8.7**, no blocking defect.
+
+**M1b is `DONE`.** Every M1 step is now `DONE`. **M1 stays `IN_PROGRESS`**, held only by perf
+< 8.0, whose deductions are the owner's real-GPU row (§3.6). The next step is **M2a**.
+
 ---
 
 ## 2026-10-12 · run 7b · M1a DONE — taken over from run 7 (out of usage) and closed
@@ -46,7 +66,8 @@ unpinned.
 Run 7 (`session_015wGqRT1h1SMvdiguFdACAU`, the owner's second account) ran out of usage
 after `b0177f3`. Its asset-builder was mid-way through the apex fix, and that uncommitted
 work was lost with the container. The owner confirmed it had stopped. Run 7b continues
-M1a from `b0177f3`, against run 7's acceptance criteria below, unchanged.
+M1a from `b0177f3`, against run 7's acceptance criteria, unchanged (now in
+`docs/archive/STATE-2026-10.md`, run 7).
 
 - `7e2d2dd`: the "truncated apex" (A8) was inward-wound lobe side quads, about half the
   faces of every mesh. It is fixed, with 0 inward faces over seeds 1–8 × LOD0–2.
@@ -70,71 +91,6 @@ M1a from `b0177f3`, against run 7's acceptance criteria below, unchanged.
 - **If run 7 auto-resumes** (its UI showed "auto-continue at 2:01 PM" local), its push will
   be refused as non-fast-forward. It must re-read `NEXT.md` and `STATE.md` rather than merge
   its stale plan over this.
-
----
-
-## 2026-10-12 · run 7 · M1a — the first generator goes end to end
-
-**Step taken:** M1a, the first step in reading order that is not `DONE`. Every M0 step is
-`DONE`; M0 the milestone stays `IN_PROGRESS` on the two owner items, which no container can
-close.
-
-**Generator chosen:** `B1 broadleaf` from `docs/ASSET_PLAN.md` §B — not invented. B1 is the
-natural first because `src/main.ts` already stands three hand-built tree archetypes on the
-M0 island (instanced cones and cylinders, lines ~934–1000), so the art-critic gets a direct
-before/after against a real authored mesh rather than scoring a generator in a vacuum.
-
-**Scope note, written before building.** `CLAUDE.md` §4b.4 asks a run to say so if a step is
-too big. M1a is six artefacts behind one row (generator, LOD chain, variant sheet,
-turntable, manifest, and the gate that enforces §1.2). It is being taken whole because the
-turntable — the one piece that looked like it could not fit — costs minutes, not hours:
-`asset-env` measured Cycles CPU at 0.8 s for a 320×240/16-sample still, so 36 frames at
-modest resolution with denoising is a single-digit-minute render. If that estimate is wrong
-the split is generator + LODs + variant sheet first, turntable + manifest + gate second, and
-this entry is where that gets recorded.
-
-### Acceptance criteria
-
-Each is checkable by a named command or a named artefact. Nothing here is scored by opinion
-except A4, which is the art-critic's to judge and is the reason the step exists.
-
-1. **The generator is the source of truth.** `assetgen/flora/broadleaf.py` builds a
-   broadleaf canopy tree from `(seed, lod)` alone. No wall-clock, no unseeded `random`.
-   Check: `grep -nE 'time\.|datetime|random\.(?!Random)' assetgen/flora/broadleaf.py` finds
-   nothing, and `python3 -I assetgen/build_all.py` exits 0.
-2. **LOD0/1/2 exist and are a real chain.** `npm run assets:build` writes
-   `public/assets/flora/broadleaf.lod{0,1,2}.glb`. Triangle counts strictly decrease
-   (LOD0 > LOD1 > LOD2) and LOD0 is inside the budget the manifest declares.
-   Check: `npm run check:assets` prints all three counts and exits 0; it exits 1 if the
-   chain is not monotonic or the budget is exceeded.
-3. **Byte-for-byte, proven not asserted** (`CLAUDE.md` §1.2). `python3 -I
-   assetgen/build_all.py --verify` builds the full set twice into two scratch directories,
-   in two separate processes, and compares SHA-256 per file. Exits 1 on any drift.
-4. **`MANIFEST.json` names the script and pins the bytes.**
-   `public/assets/MANIFEST.json` carries, per asset id, the generating script, the triangle
-   budget, and the SHA-256 of each committed `.glb`. `npm run check:assets` fails if a
-   committed binary's hash does not match its manifest entry — so a hand-edited or
-   stale-rebuilt binary cannot ship. This is the cheap always-on half of §1.2; `--verify`
-   above is the half that needs `bpy`.
-5. **The 8-seed variant sheet reads as eight trees.** `npm run assets:render` writes
-   `artifacts/variants/broadleaf.png`, 8 seeds side by side. Backed by a number, not only
-   an eye: `node tools/variant-probe.mjs flora/broadleaf` reports per-seed silhouette
-   metrics (height, canopy width, trunk lean, branch count, canopy area) and fails if any
-   two seeds sit within 8% on *every* axis. Rubric A4 goes live at this step and is
-   `blocking` — if the 8 read as one object the generator is fixed, never the seed list
-   (`ops/build-prompt.md`).
-6. **Turntable.** `artifacts/turntables/broadleaf.webm`, a full revolution, ≥ 24 frames,
-   LOD0. An asset no critic has seen rendered is not done (`CLAUDE.md` §1.4).
-7. **Palette discipline.** Canopy surfaces inside ΔE 12 of `foliage dark/mid/light` and the
-   trunk inside ΔE 12 of a bark value declared in the manifest, measured on the variant
-   sheet by `tools/variant-probe.mjs`. Three values per asset, per `ART_BIBLE.md`
-   §Direction.
-8. **`npm run gates` exits 0**, with `check:assets` now doing real work rather than
-   returning early on an empty directory.
-
-**Ownership** (`CLAUDE.md` §2.4): `assetgen/` is `asset-builder`'s; `tools/` and the
-`MANIFEST.json` wiring are the integrator's. Two directories, so they run **sequentially** —
-asset-builder first, then integrator against the bytes it produced. No parallel fan-out.
 
 ---
 
