@@ -9,14 +9,16 @@
  *      assetgen/genome_vectors.py — with every allele, phenotype value, rarity and id
  *      exactly equal. The assertions live in tests/genome.test.ts; this gate runs that
  *      file alone so `gate:parity` fails on its own when the genome drifts.
- *   2. Mesh (due at M3d). Both dragon builders build those genomes and must agree on
- *      bounding box, vertex count and limb-anchor positions (CLAUDE.md §1.5). ROADMAP puts
- *      that comparison in M3d, whose done-when is "gate:parity green between the two
- *      builders". Until the comparison exists this half is a named SKIP, and it FAILS if
- *      docs/ROADMAP.md marks M3d `DONE` without it, so M3d cannot close on a skip.
- *      It used to become required as soon as M3c was `DONE` (run 10). That would have
- *      turned `main` red at M3c's own close-out and left it red for the next run, until
- *      M3d wrote the comparison (STATE.md run 13).
+ *   2. Mesh (live from M3d). Both dragon builders build those genomes and must agree, by
+ *      CLAUDE.md §1.5 as the owner amended it on 2026-10-12 (STATE.md decision entry):
+ *      - the skin graphs are equal, exactly (tests/dragon-graph.test.ts);
+ *      - the limb anchors are equal, exactly (tests/dragon-parity.test.ts);
+ *      - the bounding boxes are within 3 % of the reference's extent (the same file).
+ *      Vertex counts are not compared: Blender's Skin + Subsurf and the TS sweep tessellate
+ *      the same graph differently by design. The reference's numbers come from
+ *      docs/fixtures/dragon-graphs.json, written by assetgen/dragon_vectors.py.
+ *      There was a SKIP until M3d wrote this. It was keyed first to the builder existing,
+ *      then to M3c, then to M3d (runs 10 and 13), and it is gone now.
  *
  * Before M2b the whole gate SKIPped until *both* files existed, which meant the genome
  * half — the half that could be checked — could not go green before M3 (STATE.md run 10).
@@ -33,6 +35,17 @@ const BUILDER_TS = 'src/assets/dragon/builder.ts';
 
 let failed = false;
 
+/** Run these test files alone with the project's own vitest. */
+function runVitest(files) {
+  const require = createRequire(import.meta.url);
+  const manifestPath = require.resolve('vitest/package.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const bin = path.join(path.dirname(manifestPath),
+    typeof manifest.bin === 'string' ? manifest.bin : manifest.bin['vitest']);
+  const run = spawnSync(process.execPath, [bin, 'run', ...files, '--reporter=dot'], { encoding: 'utf8' });
+  return { status: run.status, out: `${run.stdout ?? ''}${run.stderr ?? ''}` };
+}
+
 // --- 1. genome --------------------------------------------------------------------------
 if (!existsSync(GENOME_TS)) {
   console.log(`gate:parity genome SKIP — ${GENOME_TS} does not exist yet (M2b).`);
@@ -41,15 +54,8 @@ if (!existsSync(GENOME_TS)) {
     'does not, so nothing proves it matches assetgen/genome.py.');
   failed = true;
 } else {
-  const require = createRequire(import.meta.url);
-  const manifestPath = require.resolve('vitest/package.json');
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  const bin = path.join(path.dirname(manifestPath),
-    typeof manifest.bin === 'string' ? manifest.bin : manifest.bin['vitest']);
-  const run = spawnSync(process.execPath, [bin, 'run', GENOME_TEST, '--reporter=dot'], {
-    encoding: 'utf8',
-  });
-  const out = `${run.stdout ?? ''}${run.stderr ?? ''}`;
+  const run = runVitest([GENOME_TEST]);
+  const out = run.out;
   const count = JSON.parse(readFileSync(FIXTURE, 'utf8')).genomes?.length ?? 0;
   if (run.status === 0) {
     console.log(`gate:parity genome OK — ${count} fixed genomes (${FIXTURE}) rebuilt by ` +
@@ -63,23 +69,30 @@ if (!existsSync(GENOME_TS)) {
 }
 
 // --- 2. mesh ----------------------------------------------------------------------------
-/** True once docs/ROADMAP.md marks `step` DONE — the roadmap is the record of where we are. */
-function stepDone(step) {
-  if (!existsSync('docs/ROADMAP.md')) return false;
-  const row = readFileSync('docs/ROADMAP.md', 'utf8').split('\n')
-    .find((l) => l.replace(/\*/g, '').startsWith(`| ${step} |`));
-  return Boolean(row && /\|\s*\**DONE\**\s*\|\s*$/.test(row));
-}
+const MESH_TESTS = ['tests/dragon-graph.test.ts', 'tests/dragon-parity.test.ts'];
+const GRAPHS = 'docs/fixtures/dragon-graphs.json';
 if (!existsSync(BUILDER_TS)) {
   console.log(`gate:parity mesh SKIP — ${BUILDER_TS} does not exist yet (M3a).`);
-} else if (!stepDone('M3d')) {
-  console.log(`gate:parity mesh SKIP — the builder comparison is M3d's to write (docs/ROADMAP.md); ` +
-    'this gate fails if M3d is marked DONE without it.');
-} else {
-  console.error('gate:parity mesh FAIL — docs/ROADMAP.md marks M3d DONE, but the comparison is NOT ' +
-    `IMPLEMENTED: build the genomes in ${FIXTURE} with both dragon builders and compare bounding box, ` +
-    'vertex count and limb-anchor positions within tolerance (CLAUDE.md §1.5).');
+} else if (!existsSync(GRAPHS) || MESH_TESTS.some((t) => !existsSync(t))) {
+  console.error(`gate:parity mesh FAIL — ${BUILDER_TS} exists, but ${GRAPHS} or one of ` +
+    `${MESH_TESTS.join(', ')} does not, so nothing proves the two builders agree.`);
   failed = true;
+} else {
+  const run = runVitest(MESH_TESTS);
+  if (run.status === 0) {
+    let margin = '';
+    try {
+      const pj = JSON.parse(readFileSync('artifacts/parity.json', 'utf8'));
+      margin = ` Worst box gap ${(pj.worstGapFraction * 100).toFixed(2)} % of extent ` +
+        `(${pj.worstGenome}), against ${(pj.boxTolerance * 100).toFixed(0)} %.`;
+    } catch { /* the numbers are a courtesy; the tests are the gate */ }
+    console.log(`gate:parity mesh OK — the TS and Blender dragon builders agree on the fixed genomes: ` +
+      `skin graphs and limb anchors exactly, bounding boxes within tolerance.${margin}`);
+  } else {
+    console.error(run.out);
+    console.error(`gate:parity mesh FAIL — the two dragon builders disagree. See ${MESH_TESTS.join(', ')}.`);
+    failed = true;
+  }
 }
 
 process.exit(failed ? 1 : 0);
