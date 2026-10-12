@@ -7,8 +7,10 @@
  * A4 — "8 seeds read as one object" is blocking. The art-critic judges the sheet by eye;
  * this backs the eye with the generator's own silhouette metrics, written next to the
  * sheet by `assetgen/render_all.py` (`artifacts/variants/<name>.metrics.json`). Two seeds
- * fail as a pair when they sit within 8% of each other on *every* axis: height, canopy
+ * fail as a pair when they sit within 8% of each other on *every* axis. The axes are the
+ * generator's own `METRIC_AXES`, recorded in that file. broadleaf's are height, canopy
  * width, trunk lean, branch count and side-view canopy area (STATE.md run 7, criterion 5).
+ * The island's are width, depth, relief, roughness and taper (run 15).
  * The metrics carry the generator's SHA-256, and the probe refuses a file written by an
  * older generator, because a stale pass is worse than no pass.
  *
@@ -18,9 +20,12 @@
  * on-palette. Per `docs/RUBRIC.md` §A2:
  *   - every colour the manifest declares must be within ΔE 12 of an ART_BIBLE §Palette entry,
  *     so the check below is not circular;
- *   - bark is a surface, so every bark vertex must sit within ΔE 12 of the manifest's bark;
- *   - foliage is a gradient between palette stops (dark -> mid -> light), so it is
- *     judged on staying on that ramp, not on its midpoints being palette entries.
+ *   - a surface (broadleaf's bark) is one colour: its vertices sit within ΔE 12 of it;
+ *   - a ramp (broadleaf's canopy, the island's grass and rock) is a gradient between three
+ *     palette stops, judged on staying within ΔE 3 of that line, not on its midpoints
+ *     being palette entries.
+ * Which colours are surfaces and which are ramps is the generator's `PALETTE_ROLES`,
+ * carried in MANIFEST.json as `paletteRoles`. Without it, broadleaf's roles apply.
  *
  * Exits 1 on any failure. It is a reader, not part of `npm run gates`, because the sheet
  * it reads is produced by `npm run assets:render`, which needs Blender.
@@ -36,11 +41,15 @@ if (!id) {
   process.exit(2);
 }
 const name = id.split('/').pop();
-const AXES = ['height', 'canopyWidth', 'trunkLean', 'branches', 'canopyArea'];
+/** broadleaf's axes. A generator may declare its own (`METRIC_AXES`), written into its metrics file. */
+const AXES_DEFAULT = ['height', 'canopyWidth', 'trunkLean', 'branches', 'canopyArea'];
+/** broadleaf's colour roles. A generator may declare its own (`PALETTE_ROLES`, in MANIFEST.json). */
+const ROLES_DEFAULT = { surfaces: ['bark'], ramps: [['canopyDark', 'canopyMid', 'canopyLight']] };
 const SAME_WITHIN = 0.08;
 const SURFACE_DE = 12;
 /** Foliage must stay this close to the dark->mid->light ramp: quantisation, not taste. */
 const RAMP_DE = 3;
+let AXES = AXES_DEFAULT;
 
 let failures = 0;
 const fail = (msg) => { console.error(`FAIL  ${msg}`); failures++; };
@@ -56,7 +65,8 @@ if (!existsSync(metricsPath)) {
     fail(`${metricsPath} was written by an older ${m.script} — re-render before probing`);
   }
   const seeds = m.seeds;
-  console.log(`A4  ${id}: ${seeds.length} seeds`);
+  AXES = Array.isArray(m.axes) && m.axes.length ? m.axes : AXES_DEFAULT;
+  console.log(`A4  ${id}: ${seeds.length} seeds, axes ${AXES.join(', ')}`);
   console.log(`    ${'seed'.padEnd(5)}${AXES.map((a) => a.padStart(12)).join('')}`);
   for (const s of seeds) {
     console.log(`    ${String(s.seed).padEnd(5)}${AXES.map((a) => String(s[a]).padStart(12)).join('')}`);
@@ -103,47 +113,45 @@ if (!entry) {
     if (near.d > SURFACE_DE) fail(`manifest palette ${k} ${hex} is ΔE ${near.d.toFixed(1)} from every ART_BIBLE entry`);
   }
   const pal = Object.fromEntries(Object.entries(entry.palette ?? {}).map(([k, v]) => [k, hexToLinear(v)]));
-  for (const k of ['bark', 'canopyDark', 'canopyMid', 'canopyLight']) {
-    if (!pal[k]) fail(`MANIFEST.json ${id}.palette has no ${k}`);
+  const roles = entry.paletteRoles ?? ROLES_DEFAULT;
+  for (const k of [...roles.surfaces, ...roles.ramps.flat()]) {
+    if (!pal[k]) fail(`MANIFEST.json ${id}.palette has no ${k}, which paletteRoles names`);
   }
-  if (pal.bark && pal.canopyDark && pal.canopyMid && pal.canopyLight) {
-    // The ramp exactly as the generator defines it: a quadratic Bezier through the three
-    // stops, in linear light. Sampled finely enough that sampling error is << RAMP_DE.
-    const ramp = [];
-    for (let i = 0; i <= 400; i++) {
-      const s = i / 400;
-      const u = 1 - s;
-      const w = [u * u, 2 * s * u, s * s];
-      ramp.push(linearToLab([0, 1, 2].map((c) =>
-        pal.canopyDark[c] * w[0] + pal.canopyMid[c] * w[1] + pal.canopyLight[c] * w[2])));
-    }
-    const barkLab = linearToLab(pal.bark);
-    const darkLab = linearToLab(pal.canopyDark);
-    const lightLab = linearToLab(pal.canopyLight);
-    for (const l of Object.values(entry.lods ?? {})) {
-      const cols = vertexColours(readGlb(readFileSync(path.join('public/assets', l.file))));
-      let bark = 0; let leaf = 0; let barkWorst = 0; let rampWorst = 0;
-      let nearDark = Infinity; let nearLight = Infinity;
-      for (const c of cols) {
-        const lab = linearToLab(c);
-        const dBark = deltaE(lab, barkLab);
-        let dRamp = Infinity;
-        for (const r of ramp) dRamp = Math.min(dRamp, deltaE(lab, r));
-        if (dBark < dRamp) { bark++; barkWorst = Math.max(barkWorst, dBark); }
-        else {
-          leaf++; rampWorst = Math.max(rampWorst, dRamp);
-          nearDark = Math.min(nearDark, deltaE(lab, darkLab));
-          nearLight = Math.min(nearLight, deltaE(lab, lightLab));
-        }
+  // Each surface is one colour; each ramp is the generator's own curve: a quadratic Bezier
+  // through its three stops, in linear light, sampled finely enough that sampling error is
+  // << RAMP_DE. A vertex belongs to whichever role it is nearest, and is held to that
+  // role's tolerance.
+  const judges = [
+    ...roles.surfaces.filter((k) => pal[k]).map((k) => ({ name: k, kind: 'surface', tol: SURFACE_DE, labs: [linearToLab(pal[k])] })),
+    ...roles.ramps.filter((r) => r.every((k) => pal[k])).map((r) => {
+      const labs = [];
+      for (let i = 0; i <= 400; i++) {
+        const s = i / 400, u = 1 - s, w = [u * u, 2 * s * u, s * s];
+        labs.push(linearToLab([0, 1, 2].map((c) => pal[r[0]][c] * w[0] + pal[r[1]][c] * w[1] + pal[r[2]][c] * w[2])));
       }
-      console.log(`A2  ${l.file}: ${cols.length} vertex colours — bark ${bark} (worst ΔE ${barkWorst.toFixed(1)} ` +
-        `from bark), foliage ${leaf} (worst ΔE ${rampWorst.toFixed(2)} off the dark→mid→light ramp; ` +
-        `ramp reaches ΔE ${nearDark.toFixed(1)} of dark and ${nearLight.toFixed(1)} of light)`);
-      if (!cols.length) fail(`${l.file} has no vertex colours`);
-      if (barkWorst > SURFACE_DE) fail(`${l.file}: a bark vertex is ΔE ${barkWorst.toFixed(1)} from bark (> ${SURFACE_DE})`);
-      if (rampWorst > RAMP_DE) fail(`${l.file}: a foliage vertex is ΔE ${rampWorst.toFixed(2)} off the palette ramp (> ${RAMP_DE})`);
-      if (!bark || !leaf) fail(`${l.file}: expected both bark and foliage colours (bark ${bark}, foliage ${leaf})`);
+      return { name: r.join('→'), kind: 'ramp', tol: RAMP_DE, labs };
+    }),
+  ];
+  for (const l of Object.values(entry.lods ?? {})) {
+    const cols = vertexColours(readGlb(readFileSync(path.join('public/assets', l.file))));
+    const tally = judges.map(() => ({ n: 0, worst: 0 }));
+    for (const c of cols) {
+      const lab = linearToLab(c);
+      let best = -1, bestD = Infinity;
+      judges.forEach((j, k) => {
+        let d = Infinity;
+        for (const r of j.labs) d = Math.min(d, deltaE(lab, r));
+        if (d < bestD) { bestD = d; best = k; }
+      });
+      if (best >= 0) { tally[best].n++; tally[best].worst = Math.max(tally[best].worst, bestD); }
     }
+    console.log(`A2  ${l.file}: ${cols.length} vertex colours — ` + judges.map((j, k) =>
+      `${j.kind} ${j.name} ${tally[k].n} (worst ΔE ${tally[k].worst.toFixed(2)}, limit ${j.tol})`).join('; '));
+    if (!cols.length) fail(`${l.file} has no vertex colours`);
+    judges.forEach((j, k) => {
+      if (tally[k].worst > j.tol) fail(`${l.file}: a ${j.kind} ${j.name} vertex is ΔE ${tally[k].worst.toFixed(2)} off it (> ${j.tol})`);
+      if (!tally[k].n) fail(`${l.file}: expected some ${j.kind} ${j.name} colours, found none`);
+    });
   }
 }
 
