@@ -129,6 +129,22 @@ const sheets = existsSync(VARIANTS) ? readdirSync(VARIANTS).filter((f) => f.ends
 const turntables = existsSync(TURNTABLES)
   ? readdirSync(TURNTABLES).filter((f) => f.endsWith('.webm')).sort() : [];
 const dataUri = (p, type) => `data:${type};base64,${readFileSync(p).toString('base64')}`;
+/**
+ * Variant sheets are 1–2 MB PNGs each, and five generators' worth pushed the page past the
+ * limit (run 16). On the page they are re-encoded as JPEG, which is plenty to judge
+ * silhouettes by; the PNGs in artifacts/variants/ stay the critics' source. Without ffmpeg
+ * the PNG is embedded as before.
+ */
+const sheetUri = (p) => {
+  const jpg = path.join(OUT_DIR, 'sheets', path.basename(p, '.png') + '.jpg');
+  try {
+    mkdirSync(path.dirname(jpg), { recursive: true });
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', p, '-q:v', '4', jpg]);
+    return dataUri(jpg, 'image/jpeg');
+  } catch {
+    return dataUri(p, 'image/png');
+  }
+};
 
 const sha = git('rev-parse', '--short', 'HEAD');
 const subject = git('log', '-1', '--format=%s');
@@ -272,7 +288,7 @@ figcaption b { font: 600 12px var(--mono); color: var(--ink); }
   <section aria-labelledby="look-h">
     <h2 id="look-h">What it looks like</h2>
     ${sheets.map((f) => `<figure>
-      <img alt="${esc(f)} variant sheet" src="${dataUri(path.join(VARIANTS, f), 'image/png')}">
+      <img alt="${esc(f)} variant sheet" src="${sheetUri(path.join(VARIANTS, f))}">
       <figcaption><b>${esc(f)}</b> 8-seed variant sheet, LOD0 (rubric A4: eight seeds must read as eight objects)</figcaption>
     </figure>`).join('')}
     <div class="shots">${turntables.map((f) => `
