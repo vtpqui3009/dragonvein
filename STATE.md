@@ -13,6 +13,53 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 12 · M3b — wings, crown, membrane and tail ornament
+
+**Step**: `M3b`, the first step in reading order that is not `DONE`. Step 0 pushed `e80255c`.
+
+**Ownership**: `assetgen/` vectors and the reference sheet (asset-builder), then
+`src/assets/dragon/` (mesh-builder), then `tools/`, `tests/` and the viewer (integrator). One
+sequential owner, in that order.
+
+**Shape of the work.** The reference's remaining stages split two ways. `add_wings` and
+`add_crown` extend the skin graph, so they port exactly, the M3a way. `membrane`,
+`dorsal_spikes` and `tail_ornament` are Blender primitives and modifiers. Their *parameters*
+(polygon corners, cone centres, radii, depths, rotations, scales) are pure math, and those port
+exactly. The meshes are rebuilt in TS and held to the reference's world-space vertices
+within float32 tolerance.
+
+### Acceptance criteria
+
+1. **The full graph is the reference's.** `docs/fixtures/dragon-graphs.json` gains a `full`
+   stage: `skeleton` → `add_limbs` → `add_wings` → `add_crown`, in `place()`'s order, for all
+   32 genomes. `tests/dragon-graph.test.ts` compares it exactly, with the same single named
+   `pow` exception.
+2. **The non-graph parts are the reference's.** The fixture holds, per genome:
+   - the membrane polygons (corners and faces) before its modifiers;
+   - each dorsal spike's and the tail ornament's primitive parameters;
+   - each part's world-space vertices as Blender builds them.
+
+   TS reproduces the parameters exactly, and its primitive vertices match Blender's within
+   1e-5. The membrane, after Solidify and simple Subsurf, matches Blender's bounding box per
+   wing within 1e-4.
+3. **A whole dragon comes out.** `buildDragon(genome)` returns one indexed `BufferGeometry`
+   with body, wings, membrane, horns or crest, spikes, tail ornament and eyes, coloured by
+   the reference's `mats()` (scale, belly, membrane, horn). `tests/dragon-body.test.ts`
+   checks the same properties as M3a on all 32 genomes: finite, every part closed and
+   outward, inside the full graph envelope plus primitives grown by 10 %, deterministic.
+   It also checks a cap of ≤ 12 000 triangles.
+4. **It reads as the Python one.** The same 8 sheet genomes are rendered twice, at the same
+   ortho camera:
+   - by Blender through `builder.py`'s `place()`, into
+     `artifacts/variants/dragon-reference.png` (`assetgen/dragon_sheet.py`);
+   - by the TS builder in `dragon.html`, into `artifacts/variants/dragon-full.png`.
+
+   Side by side, each cell is recognisably the same creature: wings, horn count, crest type,
+   spine row and tail ornament agree.
+5. `gate:meshgen` builds the whole dragon and stays under 120 ms. `npm run gates` exits 0.
+
+---
+
 ## 2026-10-12 · run 11 · M3a DONE (M3 IN_PROGRESS) — skeleton, torso and limbs from a genome into a `BufferGeometry`
 
 **Step**: `M3a`, the first step in reading order that is not `DONE`. Step 0 pushed `1a22af8`.
@@ -463,4 +510,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T11:55:41Z
