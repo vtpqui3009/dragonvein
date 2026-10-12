@@ -183,6 +183,26 @@ export class Genome {
     return sha1Hex(`{${body}}${this.element.join('|')}`).slice(0, 10);
   }
 
+  /**
+   * The inverse of `toJSON`, for a genome that crossed a thread or a save. The stored
+   * `gid` is not trusted: it is recomputed, and a mismatch throws, because a genome whose
+   * alleles do not hash to its id was corrupted on the way.
+   */
+  static fromJSON(j: GenomeJson): Genome {
+    const gm = new Genome();
+    for (const k of GENE_NAMES) {
+      const pair = j.g[k];
+      if (!pair) throw new Error(`Genome.fromJSON: gene ${k} missing`);
+      gm.g[k] = [{ value: pair[0][0], dominant: pair[0][1] }, { value: pair[1][0], dominant: pair[1][1] }];
+    }
+    for (const e of j.element) if (!(ELEMENTS as readonly string[]).includes(e)) throw new Error(`Genome.fromJSON: element ${e}`);
+    gm.element = [j.element[0] as Element, j.element[1] as Element];
+    gm.generation = j.generation;
+    gm.lineage = j.lineage;
+    if (gm.gid() !== j.gid) throw new Error(`Genome.fromJSON: gid ${gm.gid()} does not match ${j.gid}`);
+    return gm;
+  }
+
   toJSON(): GenomeJson {
     const g = {} as GenomeJson['g'];
     for (const k of GENE_NAMES) {
