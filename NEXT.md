@@ -10,71 +10,73 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `e015a48`, the last commit of run 11 that changed
+Last updated: **2026-10-12** · at commit `4679aa6`, the last commit of run 12 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M3b — wings, crown, membrane and tail ornament; the creature reads as the Python one** · `TODO`
+**M3c — built in a worker inside 120 ms on Medium; `gate:meshgen` green** · `TODO`
 
-M3a closed in run 11 at `e015a48`, after three critic cycles: art **7.6**, perf **8.7**,
-gameplay **9.0**. `src/assets/dragon/` builds a genome into a `BufferGeometry`:
-- the reference skin graph (`graph.ts`) is identical to `builder.py`'s on the 32 fixed
-  genomes, with one named 1-ulp `pow` exception;
-- `skin.ts` sweeps it into closed, outward-wound tubes;
-- the eyes are where the reference puts them.
+M3b closed in run 12 at `4679aa6`. Its second cycle scored art **8.1**, perf **8.2** and gameplay
+**9.0**, the first pass on M3 with all three at 8.0 or above. `buildDragon(genome)` builds the
+whole creature:
+- the full skin graph, exact to `builder.py` on 32 genomes;
+- membranes, spikes and tail ornament held to Blender's own vertices;
+- eyes;
+- material groups for skin, membrane and horn.
 
-`dragon.html` shows it and `tools/dragon-sheet.mjs` renders it. **Milestone M3 is `IN_PROGRESS`.**
+`artifacts/variants/dragon-full.png` and `dragon-reference.png` match cell for cell.
+**Milestone M3 is `IN_PROGRESS`** until M3c and M3d are done.
 
 ## The single next action
 
-Take M3b in `src/assets/dragon/`. The reference is `add_wings`, `membrane`, `add_crown`,
-`dorsal_spikes` and `tail_ornament` in `assetgen/dragon/builder.py`.
+Take M3c: move `buildDragon` into a Web Worker, and measure it in the browser on the Medium tier.
 
-- **Port the graph stages exactly**, the M3a way. Add `wings` and `crown` stages to
-  `assetgen/dragon_vectors.py` (the fixture's `stages` list) and extend
-  `tests/dragon-graph.test.ts`. `wing_nodes`, `membrane` and `torso_at` are pure math too.
-- **The membrane, spikes and tail ornament are not skin-graph parts.** The reference builds
-  them as Blender primitives (`primitive_cone_add`, `ico_sphere`), plus Solidify and Subsurf
-  on the membrane. Build them in TS as their own closed parts. `builder.ts`'s `merge()` and
-  part `kinds` already carry per-part colour. The membrane colour is `mats()["memb"]`, the
-  horn colour `mats()["horn"]`.
-- **Run 11's colour decision:** the genes' HSV is decoded from sRGB (`bodyColours`), so the
-  screen shows the genes, where Blender reads them as linear. Keep that for the new parts.
-- **Triangle budget:** the body is at max 5752. `tests/dragon-body.test.ts` caps the body at
-  6 000, and M3b needs its own cap written into STATE.md first. Perf's P4 heap headroom is
-  only about 6 kB, and none of this is in the frame loop yet. Keep it that way.
-- **Fixes the critics left on M3a** (FINDINGS.md, M3a cycle 3):
-  - The far-side legs render near black. They sit in the body's sun shadow, and no fill reaches
-    their camera-facing side. This happens under the game's own rig.
-  - A jagged seam where a leg tube pierces the body (A8). A blend at the joint would fix it.
-  - The sheet's second row sits nearer the camera, so children look bigger than their
-    parents. Put a child beside its parents at one scale.
-  - Two-finger pinch in `dragon.html` rotates instead of zooming.
+- **The builder's output is already plain typed arrays** (`skin.ts` `SkinMesh`, `merge()` in
+  `builder.ts`). Transfer `position`, `normal`, `color` and `index` buffers plus `groups`,
+  `parts` and `kinds` from the worker, and assemble the `BufferGeometry` on the main thread.
+  `vite.config.ts` already has `worker: { format: 'es' }`. `src/assets/` may import `three`,
+  but the worker should not need it: split the typed-array build from the `BufferGeometry`
+  wrapper.
+- **`gate:meshgen`** times Node's main thread today (max 18.97 ms, cold 39.88). M3c's
+  criterion is the worker in the browser on Medium. Build that measurement (a page or
+  `dragon.html` mode, driven by Playwright) and make the gate enforce it, including the cold
+  first build, which is 31.2 ms in the browser today. Never raise the 120 ms budget.
+- **Perf asks (FINDINGS.md, M3b cycle 2):** a dragon's draw calls (3 groups each), frame
+  cost and heap are unmeasured in any frame. The frame loop's heap is about 33 kB of 40 kB.
+  Keep the worker hand-off allocation-light.
+- `gate:parity`'s mesh half becomes required the moment ROADMAP marks M3c `DONE`. M3d
+  builds it, and the vertex-count question below is for the owner then.
 
 ## Open items that need the owner, not a run
 
-- **The reference dragon's proportions (decide before M3b's art round).** Both art rounds
-  flag a long, low lizard with the head about 1/8 of body length, where
-  `docs/ART_BIBLE.md` §Proportions asks for "chunky and front-heavy: head roughly 1/5 of
-  body length". The TS port copies `assetgen/dragon/builder.py`'s graph exactly, so only a
-  change to the reference can fix it. Should the reference be re-proportioned to the
-  bible? Run 11 fixed one reference bug on its own authority (the tail, `8d78efa`), but
-  this one is a design call.
-- A verification-grade real-GPU row, when convenient (M16 requires it). On a GPU machine run
-  `npm ci && npx playwright install chromium && npm run build && npm run gate:perf -- --real-gpu`
-  with a 1920×1080 window, note the GPU model, and run once more with `?tier=potato`. Also
-  open `dragon.html` on the deployed site and say whether the dragons look right to you.
+- **Proportions (raised in run 11, still open).** Art no longer blocks on it now that wings
+  and horns read, but critics keep noting a long, low body against
+  `docs/ART_BIBLE.md`'s "chunky, front-heavy, head about 1/5". Only a change to
+  `assetgen/dragon/builder.py` can move it. Should the reference be re-proportioned?
+- **For M3d, coming soon:** CLAUDE.md §1.5 has `gate:parity` compare *vertex count* between
+  the builders. Blender's Skin + Subsurf (about 20 000 vertices) and the TS sweep (about
+  5 000) cannot agree by construction. Graph equality (proven) plus bounding box and anchors
+  within tolerance is the reachable form. M3d will bring the numbers and ask.
+- A verification-grade real-GPU row, when convenient (M16 requires it). Run
+  `npm run gate:perf -- --real-gpu` on a GPU machine at 1920×1080, and once with
+  `?tier=potato`. Also open `dragon.html` on the deployed site and say whether the dragons look
+  right to you.
 - If run 7's session on the second account is still set to auto-continue, please archive it.
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
-- No dragon or creature in the game scene yet (A6); the satellite islets are bare.
-- Broadleaf: no per-seed colour variation, the seed 5 stub, the seed 7 root slab.
-- G3: input-to-frame latency is unmeasured. `gate:smoke` does not load `dragon.html`.
-- Perf P4: `heap.bytesPerFrame` 34 589 of 40 960. The frame loop still allocates.
+- Art:
+  - Umbra dragons render at V about 0.2, under the bible's 0.28 value floor (the genes are 0.30).
+  - The shadow sides still go dark.
+  - The membranes are flat fills, and a lower wing panel crosses the tail. This is the
+    reference's geometry.
+  - The tail ornament is the same blade on every tailTip-2 dragon.
+- No dragon or creature in the game scene yet (A6). `gate:smoke` does not load `dragon.html`.
+- G2 advisory: the children lean towards one parent. Revisit at M9b.
+- Broadleaf minors, G3 input latency unmeasured, perf P4 heap headroom.
 
 ## Standing hazards — every run hits these
 
@@ -106,7 +108,9 @@ Take M3b in `src/assets/dragon/`. The reference is `add_wings`, `membrane`, `add
   https://claude.ai/artifact/Pgkt22EifnK5hUzmXqssoj (see `run-closeout`). Its "Needs you"
   box is §Open items below, verbatim.
 - `node tools/dragon-sheet.mjs` (after `npm run build`): the runtime dragon sheet and
-  turntable, `artifacts/variants/dragon-body.png` and `artifacts/turntables/dragon-body.webm`.
+  turntable, `artifacts/variants/dragon-full.png` (+ `.json`, per-dragon build times) and
+  `artifacts/turntables/dragon-full.webm`. `LIBGL_ALWAYS_SOFTWARE=1 python3 -I
+  assetgen/dragon_sheet.py` renders the same 8 through Blender to `dragon-reference.png` (≈1 min).
   `dragon.html?view=turn&i=K&cam=px,py,pz,tx,ty,tz` gives a close-up of any joint.
 - `node tools/variant-probe.mjs <family/name>`: A4 spread and A2 palette numbers for an
   asset, after `npm run assets:render`. It reads the shipped `.glb` bytes.
