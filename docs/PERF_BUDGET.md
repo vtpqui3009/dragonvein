@@ -191,11 +191,21 @@ GPU, viewport, tier, and the `frameCostMs.p95` observed.
 The procedure, so the row means the same thing every time:
 
 1. Check out the commit under test on a machine with a real GPU.
-2. `npm ci && npm run build && npm run gate:perf`
+2. `npm ci && npx playwright install chromium && npm run build && npm run gate:perf -- --real-gpu`
 3. Confirm `artifacts/perf.json` reports `softwareRenderer: false` and
-   `frameBudgetEnforced: true` — otherwise the run measured SwiftShader again and the row
-   is worthless.
+   `frameBudgetEnforced: true` — otherwise the run measured a software rasteriser and the
+   row is worthless. In `--real-gpu` mode the gate fails on its own if that happens.
 4. Copy `renderer`, `viewport`, `tier.name` and `frameCostMs.p95` into the row.
+
+**`--real-gpu` is required.** Until 2026-10-12 this procedure said plain `npm run gate:perf`,
+and that command always launched Chromium with `--use-angle=swiftshader`: correct for CI,
+but it meant step 3 could never pass on any machine, which is why the log below holds only
+a sighting. `--real-gpu` (or `DRAGONVEIN_REAL_GPU=1`) drops the SwiftShader flags and opens
+a visible browser window, because headless Chromium can fall back to a software rasteriser
+even where a GPU exists. Leave the window alone for the ~4 minutes it measures; anything
+else using the GPU contaminates the number. Off Linux, `rasteriserCap` declines (it reads
+`/proc`), which only means the main-thread tail is not enforced — the frame-cost line is
+what this run is for.
 
 An empty log is the honest state until someone runs step 2 on a GPU. It is not a
 formality: `docs/ROADMAP.md` M16 is the milestone that has to pass this on Potato through

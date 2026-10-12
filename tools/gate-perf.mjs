@@ -186,6 +186,19 @@ const IDLE_BASELINE_MS = 6_000;                   // long enough for 24 heap sam
 const UNPACED_WINDOW_MS = 4000;                   // the cadence pass needs no more
 const VSYNC_TICK_MS = 1000 / 60;
 const SWIFTSHADER = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'];
+/**
+ * `npm run gate:perf -- --real-gpu` (or DRAGONVEIN_REAL_GPU=1): the owner's verification
+ * mode, docs/PERF_BUDGET.md §Real-GPU verification. Without it this gate always forces
+ * SwiftShader, which is right for CI and the containers but meant that the documented
+ * procedure could never produce `softwareRenderer: false` even on a machine with a GPU.
+ * Here the browser is launched headed (headless Chromium may fall back to a software
+ * rasteriser) with the platform's own ANGLE backend, and a run that still lands on a
+ * software rasteriser fails rather than recording a SwiftShader number as a verification.
+ */
+const REAL_GPU = process.argv.includes('--real-gpu') || process.env.DRAGONVEIN_REAL_GPU === '1';
+const LAUNCH = REAL_GPU
+  ? { headless: false, args: ['--ignore-gpu-blocklist'] }
+  : { headless: true, args: SWIFTSHADER };
 const UNPACED = ['--disable-gpu-vsync', '--disable-frame-rate-limit'];
 
 // Before anything else, and before anything that can throw: the evidence directories.
@@ -405,7 +418,9 @@ function summariseHeap(kb, frames, windowMs, baseline, loopTicks) {
 async function measure({
   url, extraArgs, errors, targetSamples, windowMs, sampleHeap = false, viewport = VIEWPORT,
 }) {
-  const browser = await pw.chromium.launch({ args: [...SWIFTSHADER, ...extraArgs] });
+  const browser = await pw.chromium.launch({
+    headless: LAUNCH.headless, args: [...LAUNCH.args, ...extraArgs],
+  });
   try {
     const page = await browser.newPage({ viewport });
     page.on('pageerror', (e) => errors.push(String(e)));
@@ -661,6 +676,7 @@ try {
     softwareRenderer: paced.software,
     frameBudgetEnforced: !paced.software,
     rasteriserCap: paced.cap,
+    realGpuRequested: REAL_GPU,
     mainThreadTailEnforced: enforceTail,
     mainThreadTailNote: enforceTail
       ? 'cpuFrameMs.p95 is enforced: nothing shares a core with the main thread, and the ' +
@@ -798,6 +814,10 @@ try {
     fail.push(`triangles ${report.triangles} > ${BUDGET.triangles} — check LOD selection and culling`);
   }
   if (errors.length) fail.push(`page errors:\n  ${errors.join('\n  ')}`);
+  if (REAL_GPU && (report.softwareRenderer || report.potato?.softwareRenderer)) {
+    fail.push(`--real-gpu was requested but the renderer is "${report.renderer}" — a software ` +
+      'rasteriser. This run is not a verification. Check chrome://gpu for a blocklisted driver.');
+  }
   if (report.sampleCount.cpuFrameMs === 0) {
     fail.push('no frame-cost samples: the page rendered no frame during the collection window');
   }
