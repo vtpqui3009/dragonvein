@@ -38,8 +38,10 @@ export interface SkinOptions {
   capRingsThin: number;
   /** Thin tubes (toes) space their rings this many times wider. */
   thinStepScale: number;
-  /** A branch starts at this fraction of its parent node's radius. */
+  /** A branch starts at this fraction of its parent node's radius... */
   branchRoot: number;
+  /** ...but at most this multiple of its own first node's radius. */
+  branchCap: number;
   /** Ring orientation averages the curve over ± this many radii. */
   tangentWindow: number;
   /** A node thinner than both neighbours is raised to this fraction of their mean. */
@@ -48,7 +50,7 @@ export interface SkinOptions {
 
 export const SKIN_LOD0: SkinOptions = {
   ringStep: 0.12, segMain: 16, segLimb: 10, segThin: 6, thinRadius: 0.14,
-  capRings: 3, capRingsThin: 1, thinStepScale: 2, branchRoot: 0.8, tangentWindow: 1.5, pinchFill: 0.92,
+  capRings: 3, capRingsThin: 1, thinStepScale: 2, branchRoot: 0.8, branchCap: 1.25, tangentWindow: 1.5, pinchFill: 0.92,
 };
 
 export interface SkinMesh {
@@ -175,8 +177,11 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
     const pts: Vec3[] = [];
     const rad: number[] = [];
     if (path.from !== null) {
+      // A branch grows out of its parent's centre, at a fraction of the parent's radius but
+      // no more than branchCap times its own first node: a horn rooted at 0.8 of the skull's
+      // radius would be a second skull (run 12).
       pts.push(g.v[path.from]!);
-      rad.push(g.r[path.from]! * o.branchRoot);
+      rad.push(Math.min(g.r[path.from]! * o.branchRoot, g.r[path.nodes[0]!]! * o.branchCap));
     }
     for (const id of path.nodes) {
       // Coincident nodes merge, keeping the larger radius. The reference puts the tail
@@ -313,7 +318,7 @@ function scale(a: Vec3, s: number): Vec3 { return [a[0] * s, a[1] * s, a[2] * s]
 function add(a: Vec3, b: Vec3): Vec3 { return [a[0] + b[0], a[1] + b[1], a[2] + b[2]]; }
 
 /** Area-weighted vertex normals. Tubes share no vertex, so each stays smooth on its own. */
-function vertexNormals(p: Float32Array, index: Uint32Array): Float32Array {
+export function vertexNormals(p: Float32Array, index: Uint32Array): Float32Array {
   const nrm = new Float32Array(p.length);
   for (let i = 0; i < index.length; i += 3) {
     const a = index[i]! * 3, b = index[i + 1]! * 3, c = index[i + 2]! * 3;

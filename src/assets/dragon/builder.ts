@@ -7,8 +7,10 @@
  * the belly as a soft band under the spine (see BELLY_FROM), and the eyes are placed where
  * the reference's `place()` puts them.
  *
- * Stages present: skeleton, torso and limbs (M3a). Wings, membrane, crown and tail
- * ornament join at M3b; the worker and the 120 ms budget are M3c's.
+ * `buildDragon` is the whole creature (M3b): the full skin graph (skeleton, limbs, wings,
+ * crown), eyes, wing membranes, dorsal spikes and tail ornament (./parts.ts).
+ * `buildDragonBody` is M3a's subset: skeleton, torso, limbs and eyes. The worker and the
+ * 120 ms budget are M3c's.
  *
  * Axes: the graph is the reference's Blender frame (x forward, y left, z up). The geometry
  * is three.js's (y up): (x, y, z) → (x, z, −y), a rotation, so winding survives it. The
@@ -16,7 +18,8 @@
  */
 import { BufferAttribute, BufferGeometry } from 'three';
 import type { Genome, Phenotype } from '../../core/genome';
-import { bodyGraph, type Anchors, type Graph } from './graph';
+import { bodyGraph, fullGraph, membranePolys, ornamentParams, spikeParams, type Anchors, type Graph } from './graph';
+import { membraneMesh, primitiveMesh } from './parts';
 import { SKIN_LOD0, skinGraph, sphere, type SkinMesh, type SkinOptions } from './skin';
 
 export interface DragonBody {
@@ -69,6 +72,15 @@ export function bodyColours(p: Phenotype): { scale: [number, number, number]; be
   return { scale: toLinear(hsv(H, S, V)), belly: toLinear(hsv(H + HSh, S * 0.60, Math.min(0.95, V + 0.34))) };
 }
 
+/** The reference's membrane and horn colours (`mats`), decoded from sRGB like the body's. */
+export function partColours(p: Phenotype): { memb: [number, number, number]; horn: [number, number, number] } {
+  const { hue: H, hueShift: HSh, saturation: S, value: V } = p;
+  return {
+    memb: toLinear(hsv(H + HSh * 1.6, S * 0.85, Math.min(0.92, V + 0.22))),
+    horn: toLinear(hsv(H + 0.5 * HSh, S * 0.30, Math.min(0.96, V + 0.46))),
+  };
+}
+
 /** builder.py `mats`: the eye and its highlight. */
 export const EYE_COLOUR: [number, number, number] = [0.03, 0.04, 0.07]; // linear, as builder.py gives it
 export const GLINT_COLOUR: [number, number, number] = [1, 1, 1];
@@ -87,11 +99,21 @@ export function bellyWeight(up: number): number {
   return t * t * (3 - 2 * t);
 }
 
-export type PartKind = 'spine' | 'limb' | 'eye' | 'glint';
+export type PartKind = 'spine' | 'limb' | 'eye' | 'glint' | 'membrane' | 'spike' | 'ornament';
 
+/** Skeleton, torso, limbs and eyes: M3a's subset. */
 export function buildDragonBody(genome: Genome, opts: SkinOptions = SKIN_LOD0): DragonBody {
+  return build(genome, false, opts);
+}
+
+/** The whole dragon: the full skin graph, eyes, membranes, spikes and tail ornament. */
+export function buildDragon(genome: Genome, opts: SkinOptions = SKIN_LOD0): DragonBody {
+  return build(genome, true, opts);
+}
+
+function build(genome: Genome, full: boolean, opts: SkinOptions): DragonBody {
   const p = genome.phenotype;
-  const { g, idx } = bodyGraph(p);
+  const { g, idx } = full ? fullGraph(p) : bodyGraph(p);
   const skin = skinGraph(g, idx.tailTip, opts);
 
   // Eyes sit on the skull node, exactly where builder.py's `place` puts them.
@@ -101,6 +123,12 @@ export function buildDragonBody(genome: Genome, opts: SkinOptions = SKIN_LOD0): 
   for (const s of [1, -1]) {
     extras.push({ mesh: sphere([ex + 0.10 * HS, 0.215 * HS * s, ez + 0.13 * HS], 0.112 * HS, 12, 6), kind: 'eye' });
     extras.push({ mesh: sphere([ex + 0.17 * HS, 0.258 * HS * s, ez + 0.17 * HS], 0.038 * HS, 6, 4), kind: 'glint' });
+  }
+  if (full) {
+    for (const side of [1, -1]) extras.push({ mesh: membraneMesh(membranePolys(p, side)), kind: 'membrane' });
+    for (const c of spikeParams(p)) extras.push({ mesh: primitiveMesh(c), kind: 'spike' });
+    const orn = ornamentParams(p);
+    if (orn) extras.push({ mesh: primitiveMesh(orn), kind: 'ornament' });
   }
   const kinds: PartKind[] = skin.parts.map((_, i) => (i === 0 ? 'spine' : 'limb'));
   const merged = merge([skin, ...extras.map((e) => e.mesh)]);
@@ -117,6 +145,7 @@ export function buildDragonBody(genome: Genome, opts: SkinOptions = SKIN_LOD0): 
   }
 
   const { scale, belly } = bodyColours(p);
+  const { memb, horn } = partColours(p);
   const col = new Float32Array(pos.length);
   const index = merged.index;
   merged.parts.forEach((part, pi) => {
@@ -125,6 +154,8 @@ export function buildDragonBody(genome: Genome, opts: SkinOptions = SKIN_LOD0): 
       const v = index[t]! * 3;
       let c: readonly number[];
       if (kind === 'eye') c = EYE_COLOUR;
+      else if (kind === 'membrane') c = memb;
+      else if (kind === 'spike' || kind === 'ornament') c = horn;
       else if (kind === 'glint') c = GLINT_COLOUR;
       else if (kind === 'limb') c = scale;
       else {
