@@ -97,7 +97,7 @@ at `3ab6e84`; M2's code is not yet imported by the game, so nothing visible chan
 | M3a | skeleton, torso and limbs build from a genome into a `BufferGeometry` | DONE |
 | M3b | wings, crown, membrane and tail ornament; the creature reads as the Python one | DONE |
 | M3c | built in a worker inside 120 ms on Medium; `gate:meshgen` green | DONE |
-| **M3d** | **`gate:parity` green between the two builders on the fixed genome set** | **TODO** |
+| M3d | `gate:parity` green between the two builders on the fixed genome set | DONE |
 
 M3a closed on 2026-10-12 at `e015a48` (run 11), on its STATE.md criteria with gates green. The
 graph is identical to the reference on 32 genomes, and the skin is closed and outward-wound.
@@ -119,11 +119,20 @@ page at its default settings while it renders. The worst round trip is 26.7–31
 120. The worker's one-off warm-up (about 70 ms) runs before any hatch, and is reported, not
 hidden. Its failure path was fixed after the pass (`c011d0c`).
 
+M3d closed on 2026-10-12 at `aaa19c7` (run 14). `gate:parity` compares the builders under
+CLAUDE.md §1.5 as the owner amended it that day: skin graphs and limb anchors exactly, and
+bounding boxes within 3 % (worst 2.04 %). Vertex counts are no longer compared. The pass scored
+art 7.4, perf 8.15 and gameplay 8.5.
+
+**M3 the milestone is `IN_PROGRESS`.** Every step is `DONE`, but the last pass has art at 7.4,
+and no human has seen the dragons running (CLAUDE.md §7). Both are with the owner (NEXT.md):
+a sighting of `dragon.html`, and the reference-design questions behind the art score.
+
 ## M4 — Terrain assets
 
 | step | done when | status |
 |---|---|---|
-| M4a | island generator — shape, size, biome, edge erosion, underside — with a passing variant sheet | TODO |
+| **M4a** | **island generator — shape, size, biome, edge erosion, underside — with a passing variant sheet** | **TODO** |
 | M4b | 3 cliff/rock generators, each with a passing variant sheet | TODO |
 | M4c | 2 more rock generators plus arches and floating shards | TODO |
 

@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 14 · M3d — `gate:parity` green between the two builders
+## 2026-10-12 · run 14 · M3d DONE (M3 IN_PROGRESS) — `gate:parity` green between the two builders
 
 **Step**: `M3d`, the first step in reading order that is not `DONE`. Step 0 pushed `c5c46fa`.
 
@@ -47,6 +47,42 @@ the TS sweep keeps the node radius. Every other axis is ≤ 0.04. The extents ar
 3. **`gate:parity` runs the mesh half for real.** No SKIP once the builder exists. It fails if
    the test fails or is missing, and it keeps the M3d-`DONE` guard.
 4. `npm run gates` exits 0.
+
+### Result — every criterion met at `aaa19c7`
+
+1. The fixture gains `placed`: Blender's box over the face vertices of the whole placed dragon,
+   for all 32 genomes, byte-identical on re-run (`3a7e450`).
+2. `tests/dragon-parity.test.ts` (`c869d47`, labelled in `8f73e84`):
+   - limb anchors are exact, 40–58 per genome, `anchorMaxGap` 0;
+   - boxes are within 3 %, worst 2.04 % on `f14f60d77d`, at the snout end of x.
+3. `gate:parity`'s mesh half runs (`aaa19c7`). It is OK at 3 %, and fails with exit 1 at 1 %.
+4. Gates are green with 936 tests.
+
+**Scores:** art **7.4**, perf **8.15**, gameplay **8.5**. **M3d is `DONE`. M3 stays
+`IN_PROGRESS`**: art is under 8.0 on the last pass, and there is no human sighting of the
+dragons yet.
+
+### Decisions
+
+- **CLAUDE.md §1.5 amended by the owner** (the decision entry below): parity compares graphs,
+  anchors and boxes, not vertex counts.
+- **No rework cycle.** M3d changed no pixel. The art deductions are:
+  - flank shading in the viewer;
+  - the reference's wing pose and the membrane crossing the tail;
+  - the body plan;
+  - no dragon in the game.
+
+  Each is either the reference's design (an owner question) or a later milestone's (M7
+  wings, the game scene). Re-scoring an unchanged look is the score-fishing the dispatcher
+  ruling forbids.
+- **The tolerance was chosen on a stated principle, and the measurement is on record**
+  (criteria above). The margin is 2.04 % against 3 %.
+
+### Open for milestone M3 (owner)
+
+- A sighting of `dragon.html` on the deployed site.
+- Whether the reference dragon should be re-designed: spread wings, no wing–tail crossing, a
+  chunkier front-heavy body.
 
 ---
 
@@ -148,119 +184,6 @@ rendering. That is where a hatch will happen, on the CI runner's SwiftShader hos
 
 CLAUDE.md §1.5's vertex-count comparison cannot hold between Skin + Subsurf (about 20 000
 vertices) and the TS sweep (about 5 000). That is the owner's call (NEXT.md).
-
----
-
-## 2026-10-12 · run 12 · M3b DONE (M3 IN_PROGRESS) — wings, crown, membrane and tail ornament
-
-**Step**: `M3b`, the first step in reading order that is not `DONE`. Step 0 pushed `e80255c`.
-
-**Ownership**: `assetgen/` vectors and the reference sheet (asset-builder), then
-`src/assets/dragon/` (mesh-builder), then `tools/`, `tests/` and the viewer (integrator). One
-sequential owner, in that order.
-
-**Shape of the work.** The reference's remaining stages split two ways. `add_wings` and
-`add_crown` extend the skin graph, so they port exactly, the M3a way. `membrane`,
-`dorsal_spikes` and `tail_ornament` are Blender primitives and modifiers. Their *parameters*
-(polygon corners, cone centres, radii, depths, rotations, scales) are pure math, and those port
-exactly. The meshes are rebuilt in TS and held to the reference's world-space vertices
-within float32 tolerance.
-
-### Acceptance criteria
-
-1. **The full graph is the reference's.** `docs/fixtures/dragon-graphs.json` gains a `full`
-   stage: `skeleton` → `add_limbs` → `add_wings` → `add_crown`, in `place()`'s order, for all
-   32 genomes. `tests/dragon-graph.test.ts` compares it exactly, with the same single named
-   `pow` exception.
-2. **The non-graph parts are the reference's.** The fixture holds, per genome:
-   - the membrane polygons (corners and faces) before its modifiers;
-   - each dorsal spike's and the tail ornament's primitive parameters;
-   - each part's world-space vertices as Blender builds them.
-
-   TS reproduces the parameters exactly, and its primitive vertices match Blender's within
-   1e-5. The membrane, after Solidify and simple Subsurf, matches Blender's bounding box per
-   wing within 1e-4.
-3. **A whole dragon comes out.** `buildDragon(genome)` returns one indexed `BufferGeometry`
-   with body, wings, membrane, horns or crest, spikes, tail ornament and eyes, coloured by
-   the reference's `mats()` (scale, belly, membrane, horn). `tests/dragon-body.test.ts`
-   checks the same properties as M3a on all 32 genomes: finite, every part closed and
-   outward, inside the full graph envelope plus primitives grown by 10 %, deterministic.
-   It also checks a cap of ≤ 12 000 triangles.
-4. **It reads as the Python one.** The same 8 sheet genomes are rendered twice, at the same
-   ortho camera:
-   - by Blender through `builder.py`'s `place()`, into
-     `artifacts/variants/dragon-reference.png` (`assetgen/dragon_sheet.py`);
-   - by the TS builder in `dragon.html`, into `artifacts/variants/dragon-full.png`.
-
-   Side by side, each cell is recognisably the same creature: wings, horn count, crest type,
-   spine row and tail ornament agree.
-5. `gate:meshgen` builds the whole dragon and stays under 120 ms. `npm run gates` exits 0.
-
-### Result — every criterion met at `4679aa6`
-
-1. **The full graph is exact** (`8fed67b`, then `df81a56`). Every graph has 84–110 nodes. On
-   all 32 genomes the positions, radii and edges are `Object.is`-equal, under the one named
-   `pow` exception.
-2. **The primitive parts are exact** in parameters: membrane polygons, spike and ornament
-   cones and icosphere. Their world vertices are within 1e-5 of Blender's, and the membrane
-   bounding boxes after Solidify and Subsurf are within 1e-4 (`tests/dragon-full.test.ts`).
-3. **A whole dragon:** `buildDragon` (`b9becca`, `5c8cc3a`). On all 32 genomes every part is
-   closed and outward (welded by position), the mesh is inside its envelope and
-   deterministic, triangles reach at most 9 294 against the 12 000 cap, and the material
-   groups cover every triangle once.
-4. **It reads as the Python one.** Compare `artifacts/variants/dragon-full.png` with
-   `dragon-reference.png`, same cells and same ortho camera. Both critics confirm all 8 cells
-   agree on wings, horn count, crest, spike row, tail ornament and silhouette. The
-   differences are material.
-5. `gate:meshgen` times the whole dragon: max 18.97 ms, cold 39.88, in Node. The browser's
-   cold first build is 31.2 ms. Gates are green with 773 tests.
-
-**Scores**
-
-| cycle | commit | art | perf | gameplay |
-|---|---|---|---|---|
-| 1 | `027727f` | 7.5 | 8.4 | 8.7 |
-| 2 | `4679aa6` | **8.1** | **8.2** | **9.0** |
-
-**M3b is `DONE`. M3 stays `IN_PROGRESS`**, because M3c and M3d remain.
-
-### Decisions
-
-- **The reference tail was invisible, and the cause was found and fixed at the source
-  (`df81a56`).** Run 11 joined the tail into a chain, but its fifth node sat exactly on the hip.
-  Blender 5.2's Skin modifier collapses the whole chain behind a zero-length edge to zero
-  thickness. Measured on a test chain:
-  - 2r cross-sections normally;
-  - 0.0 at every node with a coincident node;
-  - 2r again once that node moves 0.02.
-
-  The chain now ends at the hip, which is the tail's t = 1 point. Run 11's TS skin had already
-  merged coincident nodes, so only the reference changed.
-- **Refactor before port (`8ce3b88`).** `membrane_polys`,
-  `spike_params` and `ornament_params` expose the reference's pure maths. A hash of every
-  world vertex of 8 placed dragons was identical before and after.
-- **Primitives are rebuilt where Blender puts them.** A cone's base ring starts at +Y and runs
-  clockwise. The icosphere is Blender 5's plain icosahedron. The transform is T·R·S.
-  Membranes are solidified along Blender's angle-weighted vertex normals, so the bounding
-  boxes match. That proves the offsets without imitating Subsurf's topology.
-- **Branch roots are capped at 1.25× the branch's own first radius.** Horns no longer swell
-  out of the skull.
-- **The sheet is orthographic.** Every cell is at one scale, and it matches the reference
-  sheet's camera.
-- **Viewer lighting.** The membrane is matte (roughness 0.85; it read as glass), and the studio
-  hemisphere is 1.25 against the game's 0.86. Both are in `src/dragon-view.ts` only; the
-  game's rig is untouched.
-
-### Open, carried to FINDINGS.md
-
-- Perf:
-  - no dragon in any measured frame;
-  - the cold build runs on the main thread (M3c);
-  - the real-GPU log predates M2.
-- Art:
-  - umbra renders under the bible's value floor;
-  - no creature in the game scene.
-- Owner: proportions, and M3d's vertex-count question (NEXT.md).
 
 ---
 
