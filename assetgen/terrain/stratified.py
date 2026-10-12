@@ -23,7 +23,10 @@ ASSET_ID = f"{FAMILY}/{NAME}"
 SEED_FOR_COMMITTED = 1
 BUDGET = dict(K.PROP_BUDGET)
 PALETTE = dict(K.PALETTE)
-PALETTE_ROLES = {"surfaces": [], "ramps": [list(K.GRASS), list(K.ROCK)]}
+#: The grass ramp is the cap, which only some seeds carry, so the probe must not demand it
+#: on the committed seed; it is still held to ΔE 3 wherever it appears.
+PALETTE_ROLES = {"surfaces": [], "ramps": [list(K.GRASS), list(K.ROCK)],
+                 "optional": ["→".join(K.GRASS)]}
 METRIC_AXES = ["width", "height", "layers", "slenderness", "ledge"]
 SHEET = {"widthKey": "width", "topKey": "height", "bottomKey": None, "rx": 72.0, "ground": True}
 

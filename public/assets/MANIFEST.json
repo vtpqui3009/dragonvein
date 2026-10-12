@@ -210,6 +210,9 @@
             "rockMid",
             "deepShadow"
           ]
+        ],
+        "optional": [
+          "grassDark\u2192grassMid\u2192grassLight"
         ]
       },
       "lods": {
