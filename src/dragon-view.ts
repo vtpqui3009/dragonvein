@@ -115,11 +115,15 @@ interface Placed { mesh: THREE.Mesh; label: HTMLDivElement; anchor: THREE.Vector
 const placed: Placed[] = [];
 const labels = document.getElementById('labels')!;
 let tris = 0;
+/** Each dragon's build, in ms, in build order; the first is the cold one. */
+const buildTimes: number[] = [];
 const t0 = performance.now();
 const shown = turn ? [pick] : SHEET.map((_, i) => i);
 shown.forEach((gi, k) => {
   const gm = genomes[gi]!;
+  const tb = performance.now();
   const body = buildDragon(gm);
+  buildTimes.push(performance.now() - tb);
   tris += body.geometry.getIndex()!.count / 3;
   const mesh = new THREE.Mesh(body.geometry, materials);
   mesh.castShadow = true;
@@ -190,12 +194,13 @@ function frame(): void {
 
 declare global {
   interface Window {
-    __dragonView?: { ready: boolean; buildMs: number; tris: number; setYaw(rad: number): void };
+    __dragonView?: { ready: boolean; buildMs: number; buildTimes: number[]; tris: number; setYaw(rad: number): void };
   }
 }
 window.__dragonView = {
   ready: true,
   buildMs,
+  buildTimes,
   tris,
   setYaw(rad: number) {
     for (const p of placed) p.mesh.parent!.rotation.y = rad;

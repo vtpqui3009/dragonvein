@@ -48,7 +48,9 @@ try {
   };
 
   const sheet = await open('', { width: 1800, height: 760 });
-  const stats = await sheet.evaluate(() => ({ buildMs: window.__dragonView.buildMs, tris: window.__dragonView.tris }));
+  const stats = await sheet.evaluate(() => ({
+    buildMs: window.__dragonView.buildMs, buildTimes: window.__dragonView.buildTimes, tris: window.__dragonView.tris,
+  }));
   await sheet.screenshot({ path: 'artifacts/variants/dragon-full.png' });
   console.log(`sheet: artifacts/variants/dragon-full.png — 8 dragons, ${stats.tris} tris, built in ${stats.buildMs.toFixed(0)} ms`);
 
@@ -70,6 +72,12 @@ try {
 
   writeFileSync('artifacts/variants/dragon-full.json', `${JSON.stringify({
     sheetGenomes: 8, sheetTris: stats.tris, sheetBuildMs: Math.round(stats.buildMs * 10) / 10,
+    // Per dragon, in the browser's main thread on SwiftShader's host CPU. The budget is
+    // 120 ms per bred dragon (CLAUDE.md §2.3); the first build is the cold one.
+    perDragonMs: stats.buildTimes.map((t) => Math.round(t * 10) / 10),
+    perDragonMaxMs: Math.round(Math.max(...stats.buildTimes) * 10) / 10,
+    firstDragonMs: Math.round(stats.buildTimes[0] * 10) / 10,
+    budgetMsPerDragon: 120,
     turntable: { slot: TURN_PICK, frames: TURN_FRAMES, fps: TURN_FPS },
     renderer: 'SwiftShader (headless)', errors,
   }, null, 2)}\n`);
