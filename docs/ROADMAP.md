@@ -47,11 +47,13 @@ for why the two sub-8 scores are not M0e's to move).
 M0f closed on 2026-10-11 at `c6995c4`: gameplay-critic 6.7 → **8.8** (G6 0.5 → 1.5),
 art 8.3, perf 7.8.
 
-**M0 the milestone is still `IN_PROGRESS`, and no run can close it.** Every step is `DONE`.
-What remains is the perf-critic at 7.8, whose deductions need a real-GPU verification row
-(`docs/PERF_BUDGET.md` §Real-GPU verification). `CLAUDE.md` §7 also forbids marking a
-milestone `DONE` that no human has seen running. Both belong to the owner. Runs move on to
-M1a in the meantime, per "take the first step that is not `DONE`".
+**M0 the milestone is `DONE` — closed 2026-10-12** together with M1, under `CLAUDE.md` §3.6.
+Every step is `DONE`. The last pass scored art **8.7** and gameplay **8.7** at `f7e5597`, and
+perf **8.4** at `634c4d7`. No runtime file changed between those commits (`git diff
+f7e5597 634c4d7 --stat -- src public` is empty). The owner saw the deployed build run at
+`3ab6e84` (STATE.md §Real-GPU verification log, `CLAUDE.md` §7). The perf score cleared
+8.0 on the first current-commit sighting. A full `verification` (`gate:perf --real-gpu`)
+is still outstanding, and M16 will require it.
 
 *History, kept for the record:* **M0 the milestone does not close with M0e alone.** The gameplay-critic sits at 6.9 and
 cannot rise without input existing, because §When each rubric line goes live puts **G6
@@ -68,6 +70,14 @@ nothing listens to proves nothing, are in `docs/archive/STATE-2026-10.md` run 4
 |---|---|---|
 | M1a | one generator goes end to end: script → LOD0/1/2 `.glb` → 8-seed variant sheet → turntable → `MANIFEST.json` | DONE |
 | M1b | `assets:build` and `assets:render` run in CI and publish their artefacts | DONE |
+
+**M1 the milestone is `DONE` — closed 2026-10-12**, on the same pass as M0: art 8.7, perf 8.4,
+gameplay 8.7, with every step `DONE`. The Assets workflow reproduced the committed `.glb`
+bytes on a GitHub runner (run `38216089403`). §Definition of done for an asset milestone holds for
+its one generator, `flora/broadleaf`: (1) the 8-seed sheet reads as 8 trees (variant-probe:
+most-alike pair 26.1% apart; art A4 1.5/1.6); (2) LOD0/1/2 = 3186/936/342 tris against
+6000/2000/500 (`check:assets`, counted from the bytes); (3) listed in MANIFEST.json with
+`assetgen/flora/broadleaf.py`; (4) art-critic 8.65, then 8.7.
 
 ## M2 — Genome in TypeScript
 

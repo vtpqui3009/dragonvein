@@ -13,6 +13,28 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · decision · M0 and M1 closed
+
+Both milestones met `CLAUDE.md` §3.6 today, on the owner's evidence:
+
+- **Every step is `DONE`** in both M0 (a–f) and M1 (a–b).
+- **All three critics are ≥ 8.0 on the last pass**: art 8.7 and gameplay 8.7 at `f7e5597`
+  (M1b round), and perf **8.4** at `634c4d7`. The perf re-score was driven by new evidence,
+  not a re-roll. Its lead deduction had been "the real-GPU log is stale", and the owner then
+  sent a current-commit sighting. `git diff f7e5597 634c4d7 --stat -- src public` is empty,
+  so all three scores describe the same running build.
+- **A human has seen it run** (§7): the owner's screenshot of `v0.0.1+3ab6e84`, recorded in
+  §Real-GPU verification log below.
+
+Still open, and named so it is not mistaken for done: a verification-grade real-GPU row
+(`gate:perf --real-gpu`, made possible by `bc5a56e`) and a real-hardware Potato number.
+`docs/ROADMAP.md` M16 requires both. Perf's P4 headroom (98.5% uncorrected) is the forward
+risk for every step that adds a draw call.
+
+**Next step: M2a.**
+
+---
+
 ## 2026-10-12 · run 8 · M1b DONE — the asset pipeline runs in CI (M1 IN_PROGRESS on perf)
 
 **Step**: `M1b`, the first step in reading order that is not `DONE`. Step 0 pushed

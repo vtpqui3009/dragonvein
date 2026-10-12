@@ -24,9 +24,9 @@ fixed vector** · `TODO`
 M1b closed at `f7e5597` on its criteria, with art **8.7**, perf **7.4** and gameplay
 **8.7**. The Assets workflow now builds, `--verify`s, `--check`s, renders and probes on
 GitHub. Run `38216089403` rebuilt every `.glb` on an Ubuntu runner, and the SHA-256s matched
-the committed bytes, so CLAUDE.md §1.2 holds across two machines. **Every M1 step is
-`DONE`. M1 the milestone stays `IN_PROGRESS`**, held by perf < 8.0 (the owner items below),
-exactly as M0 is.
+the committed bytes, so CLAUDE.md §1.2 holds across two machines. **M0 and M1 the milestones
+are both `DONE`** (2026-10-12): the owner's current-commit sighting took perf to 8.4, beside
+art 8.7 and gameplay 8.7.
 
 ## The single next action
 
@@ -49,13 +49,11 @@ Take M2a, the first genome step and the start of the hook (CLAUDE.md §0).
 
 ## Open items that need the owner, not a run
 
-- **Closing M0 and M1.** The owner's sighting of the current build is recorded (2026-10-12,
-  `3ab6e84`, FPS 60, DRAWS 27), so a human has seen it run (CLAUDE.md §7). Still
-  outstanding is a full **verification**: on a machine with a GPU, run `npm ci && npx
-  playwright install chromium && npm run build && npm run gate:perf -- --real-gpu`, then
-  copy four fields from `artifacts/perf.json` into STATE.md §Real-GPU verification log.
-  `--real-gpu` is new (`bc5a56e`). Before it, the documented command always measured
-  SwiftShader and could not pass anywhere.
+- **M0 and M1 are `DONE`** (2026-10-12): the owner's sighting at `3ab6e84` lifted perf to
+  8.4. Still worth doing when convenient, because M16 will require it: a verification-grade
+  row. On a GPU machine, run `npm ci && npx playwright install chromium && npm run build &&
+  npm run gate:perf -- --real-gpu` with a 1920×1080 window, note the GPU model, and run once
+  more with `?tier=potato` for P6.
 - If run 7's session on the second account is still set to auto-continue, please archive
   it. Its plan is for M1a, which is DONE.
 
