@@ -10,41 +10,48 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `b27bc4d`, the last commit of run 15 that changed
+Last updated: **2026-10-12** · at commit `b58251a`, the last commit of run 16 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M4b — 3 cliff/rock generators, each with a passing variant sheet** · `TODO`
+**M4c — 2 more rock generators plus arches and floating shards** · `TODO`
 
-M4a closed in run 15 on its first pass: art **8.3**, perf **8.2**, gameplay **9.2**.
-`assetgen/terrain/island.py` builds floating islands from a seed:
-- deck, cliff strata and a tapering underside, varied in shape, size, biome, erosion and
-  underside;
-- LODs 5760/1536/280, byte-reproducible;
-- `variant-probe` passes (the most alike pair is 30.6 % apart, and every vertex is within ΔE
-  0.14 of its ramp).
+M4b closed in run 16 after one rework cycle. Final scores: art **8.5**, perf **8.2**,
+gameplay **9.2**. The art per-generator estimates were stratified 8.4, columnar 8.6 and
+boulders 8.1. Cycle 1 had boulders at 7.8 (smooth potatoes); cycle 2 added fracture planes,
+flat shading and a rockMid base.
 
-The pipeline is now generic. Generators declare `SHEET`, `METRIC_AXES` and `PALETTE_ROLES`,
-and `render_all.py` and `variant-probe` read them.
+There are now three rock generators in `assetgen/terrain/`, sharing `rockkit.py` (mesh
+accumulator, ramps, inward-face count, icosphere):
+- `stratified` (896/384/144);
+- `columnar` (470/304/105);
+- `boulders` (400/100/80).
 
 ## The single next action
 
-Take M4b in `assetgen/terrain/`: three cliff/rock generators. `docs/ASSET_PLAN.md` §C2 names
-five: stratified, columnar, boulder pile, shard, eroded. Pick three that read as three
-different rock *kinds*.
+Take M4c in `assetgen/terrain/`. `docs/ASSET_PLAN.md` §C2 still has **shard** and **eroded**
+left, and the step adds arches and floating shards on top of those.
 
-- **Copy the island's pattern:** `plan(seed)` first, `build(seed, lod)`, `metrics`,
-  `inward_faces`, and the declarations. Register each in `build_all.py`'s `GENERATORS`.
-  `render_all.py` and the probe need no change unless the sheet framing does.
-- **One step, three generators.** If a run cannot fit all three with sheets and critics,
-  say so in STATE.md and split it (§How big a step may be). Push after each generator.
-- **The art critic's M4a notes apply here too:**
-  - a sheet camera that hides the top surface (consider `SHEET["rx"]` per generator);
-  - biome or kind must read at sheet scale, not only in the metrics;
-  - no contact shadow on floating things.
+- **Check its size first** (ROADMAP §How big a step may be). Four kinds is more than M4b's
+  three and M4b needed a rework cycle. If it will not fit, split it into M4c (shard and
+  eroded) and M4d (arch and floating shards), record the split in STATE.md, and take the
+  first half.
+- **Copy the M4b pattern:**
+  - `plan(seed)`, `build(seed, lod)`, `metrics`, `inward_faces`;
+  - `FAMILY`, `NAME`, `SHEET`, `METRIC_AXES`, `PALETTE_ROLES`;
+  - register the generator in `build_all.py`;
+  - check that LODs strictly decrease on **every** seed, not only the committed one;
+  - check 0 inward faces at every LOD.
+- **What the art critic will look for** (FINDINGS M4b):
+  - Faceted, flat-shaded low-poly that matches concept 03. Smooth blobs are out of style.
+  - Rock that reads grey-brown. Base the colour on rockMid and keep dusk for faces that look
+    at the sky, or it reads as orange clay.
+  - No near-sibling seeds. Give each generator a second form language.
+  - Floating shards need no contact shadow, but a ground-plane sheet will look wrong for
+    them. Set `SHEET["ground"] = False`.
 
 ## Open items that need the owner, not a run
 
@@ -69,6 +76,12 @@ different rock *kinds*.
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
+- Rocks (M4b):
+  - none of the new rocks is placed in the game (M5e);
+  - columnar seeds 1, 2, 4 and 5 are flat pavements of similar height;
+  - stratified has vertical smears and cloth-like ledge skirts, and reads warm;
+  - boulders seeds 2/4 and 6/7 are near-pairs;
+  - boulders seed 1 tilts with a slightly lifted edge.
 - Island:
   - biome does not read at sheet scale;
   - the sheet's low camera hides terraces and bites;
