@@ -2041,6 +2041,13 @@ declare global {
       readonly distanceMin: number; readonly distanceMax: number;
     };
   }) | undefined;
+  var __dragonveinMeshgen: ((recipes: (
+    | { op: 'wild'; seed: number; element: import('./core/genome').Element | null }
+    | { op: 'breed'; a: number; b: number; seed: number })[]) => Promise<{
+    gid: string; workerMs: number; roundTripMs: number; assembleMs: number; triangles: number;
+    /** The one-off spawn and warm-up before the first build (DragonMesher.ready). */
+    startupMs: number; warmMs: number;
+  }[]>) | undefined;
   var __dragonveinStats: (() => {
     /** null while the WebGL context is lost: there is no frame to report. */
     drawCalls: number | null; triangles: number | null;
@@ -2102,6 +2109,38 @@ globalThis.__dragonveinCamera = () => ({
   distance: orbit.distance,
   limits: ORBIT_LIMITS,
 });
+
+/**
+ * Read by `gate:meshgen` (M3c): build each recipe's dragon through the mesh worker while
+ * this page renders at its default settings, one at a time, and report every timing. The
+ * mesher and the genome code load on first call, so the game does not pay for them at boot.
+ */
+globalThis.__dragonveinMeshgen = async (recipes) => {
+  const [{ DragonMesher }, { wild, breed }] = await Promise.all([
+    import('./assets/dragon/mesher'), import('./core/genome'),
+  ]);
+  type G = ReturnType<typeof wild>;
+  const genomes: G[] = [];
+  for (const r of recipes) {
+    genomes.push(r.op === 'wild' ? wild(r.seed, r.element ?? undefined) : breed(genomes[r.a]!, genomes[r.b]!, r.seed));
+  }
+  const mesher = new DragonMesher();
+  const startup = await mesher.ready(); // as the game would, while idle and before any hatch
+  const out = [];
+  try {
+    for (const gm of genomes) {
+      const r = await mesher.build(gm);
+      out.push({
+        gid: gm.gid(), workerMs: r.workerMs, roundTripMs: r.roundTripMs, assembleMs: r.assembleMs,
+        triangles: r.body.geometry.getIndex()!.count / 3, startupMs: startup.startupMs, warmMs: startup.warmMs,
+      });
+      r.body.geometry.dispose();
+    }
+  } finally {
+    mesher.dispose();
+  }
+  return out;
+};
 
 globalThis.__dragonveinPerf = {
   counts: () => ({
