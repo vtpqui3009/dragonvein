@@ -10,42 +10,48 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `f7e5597`, the last commit of run 8 that changed
-code. The close-out commits that wrote this file follow it, so `git log -1` being a few docs
-commits ahead of that stamp is expected and not staleness.
+Last updated: **2026-10-12** · at commit `599106c`, the last commit of run 9 that changed
+code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M2a — `src/core/rng.ts` reproduces `assetgen/genome.py`'s stream exactly, proven on a
-fixed vector** · `TODO`
+**M2b — `src/core/genome.ts` expresses, breeds and mutates identically; `gate:parity` green on
+32 fixed genomes** · `TODO`
 
-M1b closed at `f7e5597` on its criteria, with art **8.7**, perf **7.4** and gameplay
-**8.7**. The Assets workflow now builds, `--verify`s, `--check`s, renders and probes on
-GitHub. Run `38216089403` rebuilt every `.glb` on an Ubuntu runner, and the SHA-256s matched
-the committed bytes, so CLAUDE.md §1.2 holds across two machines. **M0 and M1 the milestones
-are both `DONE`** (2026-10-12): the owner's current-commit sighting took perf to 8.4, beside
-art 8.7 and gameplay 8.7.
+M2a closed at `7500613` (art **8.6**, perf **8.5**, gameplay **9.4**). `src/core/rng.ts`
+matches `genome.Rng` bit for bit on 10 seeds × 2200 values (`tests/rng.test.ts`, fixture
+from `assetgen/rng_vectors.py`). M0 and M1 are `DONE`; M2 is open on M2b.
 
 ## The single next action
 
-Take M2a, the first genome step and the start of the hook (CLAUDE.md §0).
+Take M2b. Reuse the M2a pattern: Python writes a fixture, TypeScript must match it exactly
+(`tests/rng.test.ts` is the model), and the fixture pins `genome.py`'s SHA. **Three traps,
+each already found by reading `assetgen/genome.py`:**
 
-- `assetgen/genome.py` `class Rng` is **xorshift128** on `float` output. `src/core/rng.ts` must
-  match it **stream-for-stream** (CLAUDE.md §2.1). `src/core/` does not exist yet, so M2a
-  creates it, owned by `core-builder`, and it imports nothing (`docs/ARCHITECTURE.md`).
-- The trap is integer width. Python ints are unbounded; JS bitwise ops are 32-bit signed.
-  Mask with `>>> 0` everywhere, and compare the two languages on the raw uint32 state as
-  well as the float. The seeding does `(s * 0x85EBCA6B) & 0xFFFFFFFF`. In JS that must be
-  `Math.imul(s, 0x85EBCA6B) >>> 0`, because a plain `*` loses the low bits once the product
-  passes 2^53.
-- Proof shape: Python writes a fixed vector (several seeds, the first ~1000 outputs, plus
-  `range`, `int`, `pick` and `chance`) to a committed JSON fixture. A vitest test reads it
-  and asserts exact equality. Make the fixture generator a script, so it is reproducible,
-  not hand-pasted.
-- `check:determinism` must keep passing. `src/core/` may not use `Math.random` or `Date.now`.
-- This is pure logic, with nothing visual. The critics will score unchanged frames.
+1. **Rounding.** `express()` returns `round(v)` for `i`/`e` genes. That is Python's
+   banker's rounding: `round(2.5) == 2`, `round(3.5) == 4`. `Math.round(2.5)` is 3. Port
+   round-half-to-even, and put .5 cases in the fixture.
+2. **`gid()` hashes `json.dumps(...)`** with `round(v, 5)` and `sort_keys=True`. Python
+   prints `1.0`, `1e-05` and `", "` / `": "` separators; JS `JSON.stringify` prints `1`,
+   `0.00001` and no spaces. A naive port gives every dragon a different id. Either
+   reproduce Python's float repr exactly, or record in `STATE.md` and ask the owner whether
+   the id format may change. `docs/GENOME.md` is locked by CLAUDE.md §7: a run may not
+   edit it to fit the port, so if it specifies the id, the port follows it.
+   SHA-1 is in `node:crypto` for tests, but `src/core` may import nothing, so the runtime
+   needs its own hash or an injected one.
+3. **`gate:parity` cannot go green as written.** `tools/gate-parity.mjs` SKIPs until *both*
+   `src/core/genome.ts` and `src/assets/dragon/builder.ts` exist, and then exits 1 "NOT
+   IMPLEMENTED". M2b ships only the genome, and the builder is M3. M2b should make
+   `gate:parity` check the genome level now (phenotype, breed and mutate outputs on 32 fixed
+   genomes) and leave the mesh comparison to M3c, as a gate change in its own commit
+   (CLAUDE.md §2.7). `docs/fixtures/genomes.json`, which the gate's message names, does not
+   exist yet.
+
+Also note that `breed()` consumes the Rng in a fixed order (`r.chance` per allele, then
+mutation, then element). The fixture's interleaved-call test from M2a is what catches a
+port that draws in a different order.
 
 ## Open items that need the owner, not a run
 

@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 9 · M2a — the TypeScript Rng matches Python stream for stream
+## 2026-10-12 · run 9 · M2a DONE — the TypeScript Rng matches Python stream for stream
 
 **Step**: `M2a`, the first step in reading order that is not `DONE` (M0 and M1 closed). Step 0
 pushed `de74d2d`.
@@ -32,6 +32,23 @@ sequential owner does them in order: Python vectors, then the TS port, then the 
 | AC4 | The test fails if `assetgen/genome.py` changed after the fixture was generated, so the two languages cannot drift silently. | `npm run test` |
 | AC5 | `npm run gates` exits 0, with `check:determinism` and `check:layers` included. | `npm run gates` |
 | AC6 | Critics score on a frozen tree. Nothing visual or runtime-facing changes; `src/core/rng.ts` is not yet imported by the game. | `FINDINGS.md` |
+
+### Result
+
+- `f843f47`: `assetgen/rng_vectors.py` writes `tests/fixtures/rng-vectors.json` (10 seeds ×
+  state + 1000 `next` + 1200 interleaved calls), byte-identical across runs, with
+  `genome.py` pinned by SHA (AC2).
+- `7500613`: `src/core/rng.ts` plus `tests/rng.test.ts`, 33 exact-equality cases, all passing
+  on the first run (AC1, AC3). Seen failing two ways. A plain `*` in place of `Math.imul`
+  **passed seeds 1, 2 and 42** and failed the large ones, so only the edge seeds catch this
+  bug. An edit to `genome.py` fails the SHA pin (AC4). `599106c` keeps the first
+  demonstration as a test.
+- `npm run gates` exits 0 with 82 tests (AC5). Scores at `7500613`: **art 8.6 · perf 8.5 ·
+  gameplay 9.4**, no blocking defect (AC6).
+
+**M2a is `DONE`.** M2 stays `IN_PROGRESS` on M2b. Reading `genome.py` for the handoff turned
+up three traps for M2b, all in `NEXT.md`: banker's rounding in `express()`, `gid()` hashing
+Python's float repr, and `gate:parity` being unable to go green before M3's builder.
 
 ---
 
@@ -102,39 +119,6 @@ unpinned.
 
 **M1b is `DONE`.** Every M1 step is now `DONE`. **M1 stays `IN_PROGRESS`**, held only by perf
 < 8.0, whose deductions are the owner's real-GPU row (§3.6). The next step is **M2a**.
-
----
-
-## 2026-10-12 · run 7b · M1a DONE — taken over from run 7 (out of usage) and closed
-
-Run 7 (`session_015wGqRT1h1SMvdiguFdACAU`, the owner's second account) ran out of usage
-after `b0177f3`. Its asset-builder was mid-way through the apex fix, and that uncommitted
-work was lost with the container. The owner confirmed it had stopped. Run 7b continues
-M1a from `b0177f3`, against run 7's acceptance criteria, unchanged (now in
-`docs/archive/STATE-2026-10.md`, run 7).
-
-- `7e2d2dd`: the "truncated apex" (A8) was inward-wound lobe side quads, about half the
-  faces of every mesh. It is fixed, with 0 inward faces over seeds 1–8 × LOD0–2.
-- `3a30882`: `check:assets` pins every binary by SHA-256, reads triangle counts from the
-  bytes, and enforces the LOD chain and budgets (criteria 2 and 4). Four new failing-case tests.
-- `2adc4f1`: `tools/variant-probe.mjs` covers A4 spread and A2 on the shipped bytes (criteria
-  5 and 7). It was seen failing on a doctored tree.
-- Full sheet plus 36-frame turntable: 3 min 16 s. **All eight criteria hold**, and
-  `npm run gates` exits 0 (criterion 8).
-- Scores at `2adc4f1`: **art 8.65 · perf 7.4 · gameplay 9.6**, no blocking defect.
-  **M1a is `DONE`** per §3.6. The step closes on its criteria, and M1 stays open on M1b
-  and on perf.
-- Two instrument defects the critics found were fixed in their own commits after the round,
-  without re-scoring:
-  - `cc0ced2`: `gate:perf` counted the copied `.glb` files against the code bundle.
-    232 674 → 145 890 B; assets are now reported separately; the budget is unchanged.
-  - `ccb560e`: variant-probe's bark check was circular. The declared palette is now
-    checked against ART_BIBLE (bark is ΔE 6.8 from `rock mid`).
-- Rotated out to `docs/archive/`: runs 5 and 6, the 2026-10-11 tooling entry, and the
-  M0e critic round.
-- **If run 7 auto-resumes** (its UI showed "auto-continue at 2:01 PM" local), its push will
-  be refused as non-fast-forward. It must re-read `NEXT.md` and `STATE.md` rather than merge
-  its stale plan over this.
 
 ---
 

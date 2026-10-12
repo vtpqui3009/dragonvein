@@ -83,8 +83,8 @@ most-alike pair 26.1% apart; art A4 1.5/1.6); (2) LOD0/1/2 = 3186/936/342 tris a
 
 | step | done when | status |
 |---|---|---|
-| **M2a** | **`src/core/rng.ts` reproduces `assetgen/genome.py`'s stream exactly, proven on a fixed vector** | **TODO** |
-| M2b | `src/core/genome.ts` expresses, breeds and mutates identically; `gate:parity` green on 32 fixed genomes | TODO |
+| M2a | `src/core/rng.ts` reproduces `assetgen/genome.py`'s stream exactly, proven on a fixed vector | DONE |
+| **M2b** | **`src/core/genome.ts` expresses, breeds and mutates identically; `gate:parity` green on 32 fixed genomes** | **TODO** |
 
 ## M3 — Runtime dragon mesh
 
