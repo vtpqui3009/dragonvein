@@ -12,7 +12,7 @@
 | `src/audio/` | audio-builder | `core` |
 | `src/content/` | content-builder | `core` |
 | `assetgen/` | asset-builder | python only |
-| `src/main.ts`, `tools/`, config | integrator | anything |
+| `src/main.ts`, `src/dragon-view.ts` + `dragon.html` (the dragon viewer), `tools/`, config | integrator | anything |
 
 `src/sim/` must never import `three`, `render`, `ui` or `audio`.
 `src/ui/` must never import `three` or `render`; it talks through events.

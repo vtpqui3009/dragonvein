@@ -18,7 +18,11 @@ export default defineConfig({
     // The emitted JS is byte-identical either way; only the `.map` files and that one
     // comment differ.
     sourcemap: 'hidden',
-    rollupOptions: { output: { manualChunks: { three: ['three'] } } },
+    // dragon.html is the runtime dragon viewer (src/dragon-view.ts, tools/dragon-sheet.mjs).
+    rollupOptions: {
+      input: { main: 'index.html', dragon: 'dragon.html' },
+      output: { manualChunks: { three: ['three'] } },
+    },
   },
   worker: { format: 'es' },
 });
