@@ -5,6 +5,82 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M3a — run 11, 2026-10-12 — cycle 1, at `84ce145`
+
+**Scores: art-critic 7.4 · perf-critic 8.9 · gameplay-critic 8.7.** No blocking defect. Art is
+below 8.0, so the step is reworked (cycle 2).
+
+## perf-critic — 8.9 (all six lines)
+
+P1 2.0 · P2 1.8 · P3 1.8 · P4 1.2 · P5 1.2 · P6 0.9.
+
+- [major] P1: the real-GPU log's newest row is the sighting at `3ab6e84`, which predates M2 and
+  M3. Ask the owner for a sighting or `gate:perf -- --real-gpu` once a dragon is in the game.
+- [major] The measured frame holds no dragon: `drawCalls 27`, `triangles 42268` equal the
+  `3ab6e84` sighting. Dragon draw, frame and heap cost in the scene are unmeasured.
+- [minor] P3 is measured on partial scope (`meshgen.json` stages: skeleton, torso, limbs) on
+  the Node main thread. M3b and M3c must re-measure. Max 7.52 ms of 120.
+- [minor] P4: `heap.bytesPerFrame 34229` of 40 960, leaving about 6.7 kB.
+- [minor] The advisory SwiftShader GPU term rose (`gpuFrameMs.p50 434`), unattributed. Main-thread
+  cost reproduced (`cpuFrameMs.p95 1.6`).
+- [minor] P6: no real-hardware Potato number.
+
+SCORE_MACHINE: 8.9
+
+## art-critic — 7.4 (all nine lines)
+
+A1 0.9 · A2 0.8 · A3 1.1 · A4 1.0 · A5 0.9 · A6 1.0 · A7 1.0 · A8 0.4 · A9 0.3.
+
+- [major] A4 `variants/dragon-body.png`: one body plan in eight paints. The variation is
+  scale, tail length and neck thickness, with nothing in head shape, stance or mass.
+- [major] A4 `dragon-body.png` #30: cropped by the right edge, and deep violet although its
+  elements are tide and gale. Three of the eight cells are purple.
+- [major] A6 `shots/01-wide.png`: still no dragon or creature in the world.
+- [major] A8/A5 `dragon-body.png` #0 neck base, `frame00.png` (620–720, 270–330): a hard
+  shading step and crease where neck meets torso. The head sits on the neck like a helmet
+  with a stepped jaw rim. Faceted, patchy shading on the chest. Creases at shoulder and
+  elbow. Read as major, not as the A8 "any seam" blocking case.
+- [major] A9 vs `concept/01-species-lineup.png`: no eyes or face, a small bulb head (about
+  1/6 of body length against the bible's 1/5), long and low like a monitor lizard.
+- [minor] A2 #4 stone and #6 gale read nearly grey and near-white (lit s ≈ 0.18, 0.23).
+- [minor] A2/A3: the viewer floor and backdrop greys are off-palette (tooling).
+- [minor] A3 `01-wide.png`: flat black island underside; carried over.
+- [minor] A1: at 25 % the shadow blob weighs as much as the dragon, and with no wings or
+  horns the silhouette does not read as a dragon.
+
+*Builder note:* #30's hue is its genes, not a mixing fault. Its parents #26 and #29 express hue
+0.545 and 0.875, and #30 inherits phenotype hue 0.765 through `circ_mean` along the short
+arc. `src/core/genome.ts` equals `genome.py` on all 32 genomes (`gate:parity`). #6 gale's
+genome saturation is 0.350, exactly the bible's floor, and #4 stone's is 0.521. The lit
+readings are lower than the genes.
+
+SCORE_MACHINE: 7.4
+
+## gameplay-critic — 8.7 (5.9 of 6.8; G2, G4 n/a)
+
+G1 1.5 · G3 1.3 · G5 1.6 · G6 1.5.
+
+- [major] D1 `dragon-body.png` #0, #8, #10: identical bodyLength, bodyMass, neckLength,
+  legLength, tailLength and chestDepth. They are the same mesh in three colours, so the sheet
+  misses criterion 4 (8 different creatures).
+- [major] D2 `frame00.png` neck and foreleg: the belly colour follows per-vertex normals and
+  paints hard-edged blotches on the neck and limbs instead of a belly line.
+- [major] D3 `frame00.png` (670–720, 250–300): the head is a lump on the neck with a notch at
+  the jaw join. The shoulders and knees also step.
+- [minor] D4: the sheet clips #30.
+- [minor] D5: the two bred dragons' parents are not on the sheet.
+- [minor] D6: `dragon.html` takes no pointer input.
+- [minor] D7: no wings, horns, crest or tail ornament (M3b).
+
+*Builder note:* the clones in D1 are what `wild(seed, element)` does by design. A forced element
+draws nothing, so one seed gives the same body under every element, moved only by that
+element's bias (`ELEMENT_BIAS`). The sheet used seed 11 for all six elements, which put that
+into every cell. The sheet changes; the genome does not (docs/GENOME.md is the arbiter).
+
+SCORE_MACHINE: 8.7
+
+---
+
 # M2b — run 10, 2026-10-12 — cycle 1, at `156321e`
 
 **Scores: art-critic 8.2 · perf-critic 9.0 · gameplay-critic 9.2.** No blocking defect. The step
