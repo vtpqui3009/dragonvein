@@ -49,13 +49,13 @@ Take M2a, the first genome step and the start of the hook (CLAUDE.md §0).
 
 ## Open items that need the owner, not a run
 
-- **Closing M0 and M1** needs a real-GPU verification row and a human sighting of the
-  current build. On a machine with a GPU, run `npm ci && npx playwright install chromium &&
-  npm run build && npm run gate:perf -- --real-gpu`, then copy four fields from
-  `artifacts/perf.json` into STATE.md §Real-GPU verification log (`docs/PERF_BUDGET.md`
-  §Real-GPU verification). **`--real-gpu` is new**: before it, the documented command
-  always measured SwiftShader and could not pass anywhere. A current-commit **sighting** was recorded on 2026-10-12 at `3ab6e84` (FPS 60, DRAWS
-  27). A full **verification** is still outstanding.
+- **Closing M0 and M1.** The owner's sighting of the current build is recorded (2026-10-12,
+  `3ab6e84`, FPS 60, DRAWS 27), so a human has seen it run (CLAUDE.md §7). Still
+  outstanding is a full **verification**: on a machine with a GPU, run `npm ci && npx
+  playwright install chromium && npm run build && npm run gate:perf -- --real-gpu`, then
+  copy four fields from `artifacts/perf.json` into STATE.md §Real-GPU verification log.
+  `--real-gpu` is new (`bc5a56e`). Before it, the documented command always measured
+  SwiftShader and could not pass anywhere.
 - If run 7's session on the second account is still set to auto-continue, please archive
   it. Its plan is for M1a, which is DONE.
 
