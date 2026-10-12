@@ -52,6 +52,10 @@ SEED_FOR_COMMITTED = 1
 #: still read as a tree in silhouette; 500 buys five canopy lobes plus real branches.
 BUDGET = {"lod0": 6000, "lod1": 2000, "lod2": 500}
 
+#: How tools/variant-probe.mjs judges the shipped colours (rubric A2): bark is a surface
+#: (ΔE 12 of one colour), the canopy a gradient along its three stops (ΔE 3 of that line).
+PALETTE_ROLES = {"surfaces": ["bark"], "ramps": [["canopyDark", "canopyMid", "canopyLight"]]}
+
 PALETTE = {
     "bark": "#4a3b2f",
     "canopyDark": "#1e4a21",

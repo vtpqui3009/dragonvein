@@ -197,35 +197,47 @@ def _shoot(path):
 
 
 # ---------------------------------------------------------------- variant sheet
+#: How a generator's sheet is framed unless it declares its own `SHEET` (broadleaf's).
+SHEET_DEFAULT = {"widthKey": "canopyWidth", "topKey": "height", "bottomKey": None, "rx": 83.0,
+                 "ground": True}
+
+
 def variant_sheet(mod, out_path, quick=False):
     """8 seeds in one frame: one ortho camera, one rig, one scale."""
+    sheet = {**SHEET_DEFAULT, **getattr(mod, "SHEET", {})}
     _clean()
     _world()
     _lights()
-    _ground()
+    if sheet["ground"]:
+        _ground()
 
-    # Measure every tree first so the spacing and the frame come from the geometry
+    # Measure every seed first so the spacing and the frame come from the geometry
     # rather than from a guessed number.
     plans = [mod.metrics(s) for s in VARIANT_SEEDS]
     # The numbers behind the sheet, for `tools/variant-probe.mjs` (rubric A4). Stamped with
-    # the generator's hash so the probe can refuse metrics from an older generator.
+    # the generator's hash so the probe can refuse metrics from an older generator. The
+    # axes the probe compares are the generator's own (`METRIC_AXES`); broadleaf's default.
     with open(mod.__file__, "rb") as fh:
         script_sha = hashlib.sha256(fh.read()).hexdigest()
     meta = {"asset": f"{mod.FAMILY}/{mod.NAME}",
             "script": os.path.relpath(mod.__file__, REPO).replace(os.sep, "/"),
-            "scriptSha256": script_sha, "seeds": plans}
+            "scriptSha256": script_sha,
+            "axes": list(getattr(mod, "METRIC_AXES",
+                                 ["height", "canopyWidth", "trunkLean", "branches", "canopyArea"])),
+            "seeds": plans}
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     with open(out_path[:-4] + ".metrics.json", "w", encoding="utf-8") as fh:
         json.dump(meta, fh, indent=2)
         fh.write("\n")
-    widths = [p["canopyWidth"] for p in plans]
-    tallest = max(p["height"] for p in plans)
+    widths = [p[sheet["widthKey"]] for p in plans]
+    tallest = max(p[sheet["topKey"]] for p in plans)
+    lowest = min(p[sheet["bottomKey"]] for p in plans) if sheet["bottomKey"] else 0.0
     pitch = max(widths) * 0.86 + 1.1
     span = pitch * (len(VARIANT_SEEDS) - 1)
 
     # rz must be 0: any camera yaw tilts a row laid out along X in screen space, and a
     # sheet whose eight panels slope is a sheet that crops the last one.
-    rx_deg, rz_deg = 83.0, 0.0
+    rx_deg, rz_deg = float(sheet["rx"]), 0.0
     objs = []
     for i, seed in enumerate(VARIANT_SEEDS):
         ob = mod.build(seed, 0)
@@ -234,15 +246,17 @@ def variant_sheet(mod, out_path, quick=False):
         ob.rotation_euler = (0.0, 0.0, math.radians(-26.0 + 11.0 * i))
         objs.append(ob)
 
-    # The frame comes from the content: as wide as the row, as tall as the tallest
-    # tree plus a label band. Guessing a resolution is what leaves half a sheet empty.
+    # The frame comes from the content: as wide as the row, as tall as the tallest seed
+    # (and as deep as the lowest, for things that hang below z = 0) seen at the camera's
+    # pitch, plus a label band. Guessing a resolution is what leaves half a sheet empty.
     scale = span + max(widths) * 1.22
     width = 1200 if quick else 2880
-    vert = tallest + 2.9                      # 1.9 under the row for labels, 1.0 over
+    tilt = math.radians(rx_deg)
+    body = (tallest - lowest) * math.sin(tilt) + max(widths) * math.cos(tilt)
+    vert = body + 2.9                         # 1.9 under the row for labels, 1.0 over
     height = int(round(width * vert / scale / 2.0)) * 2
     vert = scale * height / width
-    floor_z = -1.9
-    centre_z = floor_z + vert * 0.5
+    centre_z = (tallest + lowest) * 0.5 - 0.5
     cam, (rx, rz) = _aim_ortho((0.0, 0.0, centre_z), rx_deg, rz_deg, 180.0, scale)
 
     half_w = scale * 0.5
@@ -263,10 +277,12 @@ def variant_sheet(mod, out_path, quick=False):
 def turntable(mod, out_path, frames=36, quick=False):
     """LOD0, one full revolution, assembled with ffmpeg into a .webm."""
     seed = int(getattr(mod, "SEED_FOR_COMMITTED", 1))
+    sheet = {**SHEET_DEFAULT, **getattr(mod, "SHEET", {})}
     _clean()
     _world()
     _lights()
-    _ground()
+    if sheet["ground"]:
+        _ground()
     ob = mod.build(seed, 0)
     # Fit the camera to the volume the tree *sweeps* as it turns, not to its bounding
     # box in one pose: the crown is off-axis, so a box fit clips it a quarter-turn later.
@@ -278,7 +294,7 @@ def turntable(mod, out_path, frames=36, quick=False):
     lens = 55.0
     half_angle = math.atan(36.0 * 0.5 / lens)
     dist = sphere / math.sin(half_angle) * 1.16
-    _aim_persp((0.0, 0.0, centre_z), 80.0, 16.0, dist, lens=lens)
+    _aim_persp((0.0, 0.0, centre_z), min(80.0, float(sheet["rx"]) + 6.0), 16.0, dist, lens=lens)
 
     size = 240 if quick else 512
     _configure(size, size, 10 if quick else 30)
