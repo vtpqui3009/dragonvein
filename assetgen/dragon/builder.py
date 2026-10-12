@@ -143,7 +143,8 @@ def add_wings(g, idx, p):
             mid=((t[0]+w2[0])*0.51, (t[1]+w2[1])*0.5, (t[2]+w2[2])*0.5)
             g.chain(wrist, [(mid,0.042*p["wingSpan"]),(t,0.018*p["wingSpan"])])
 
-def membrane(p, s):
+def membrane_polys(p, s):
+    """The membrane before its modifiers: corner positions and faces. Pure math."""
     arm,tips = wing_nodes(p,s)
     W0,W1,W2,W3 = [a[0] for a in arm]
     BL=p["bodyLength"]
@@ -154,13 +155,20 @@ def membrane(p, s):
     F.append((2,3,iT))
     for k in range(nT-1): F.append((2,iT+k,iT+k+1))
     F.append((2,iT+nT-1,iA1))
+    return V, F
+
+MEMBRANE_THICKNESS=0.034
+MEMBRANE_SUBDIV=3
+
+def membrane(p, s):
+    V, F = membrane_polys(p, s)
     me=bpy.data.meshes.new(f"Mem{s}")
     me.from_pydata(V,[],[list(f) for f in F]); me.update()
     ob=bpy.data.objects.new(f"Mem{s}",me); bpy.context.collection.objects.link(ob)
     bpy.context.view_layer.objects.active=ob
-    bpy.ops.object.modifier_add(type='SOLIDIFY'); ob.modifiers[-1].thickness=0.034; ob.modifiers[-1].offset=0
+    bpy.ops.object.modifier_add(type='SOLIDIFY'); ob.modifiers[-1].thickness=MEMBRANE_THICKNESS; ob.modifiers[-1].offset=0
     bpy.ops.object.modifier_add(type='SUBSURF')
-    sub=ob.modifiers[-1]; sub.subdivision_type='SIMPLE'; sub.levels=3; sub.render_levels=3
+    sub=ob.modifiers[-1]; sub.subdivision_type='SIMPLE'; sub.levels=MEMBRANE_SUBDIV; sub.render_levels=MEMBRANE_SUBDIV
     for m in list(ob.modifiers): bpy.ops.object.modifier_apply(modifier=m.name)
     bpy.ops.object.shade_smooth()
     return ob
@@ -213,7 +221,8 @@ def torso_at(t, BM, CD):
     z,fr = TORSO_PROFILE[-1][1], TORSO_PROFILE[-1][2]
     return z, fr*BM
 
-def dorsal_spikes(p, offset=(0,0,0), rotz=0.0):
+def spike_params(p):
+    """One dict per dorsal spike: a 6-sided cone's radius, depth, centre and Y rotation. Pure math."""
     SC,SH2 = int(p["spineCount"]),p["spineHeight"]
     BM,BL,CD = p["bodyMass"],p["bodyLength"],p["chestDepth"]
     out=[]
@@ -222,24 +231,41 @@ def dorsal_spikes(p, offset=(0,0,0), rotz=0.0):
         x=lerp(-0.75*BL, 0.95*BL, t)
         z,r = torso_at(t, BM, CD)
         h=(0.10+r*0.60)*SH2
-        bpy.ops.mesh.primitive_cone_add(vertices=6, radius1=r*0.26, radius2=0, depth=h,
-                                        location=(x, 0, z+r*0.86+h*0.40))
-        c=bpy.context.object; c.rotation_euler=(0,math.radians(-14),0)
-        bpy.ops.object.shade_flat(); out.append(c)
+        out.append({"kind":"cone","vertices":6,"radius":r*0.26,"depth":h,
+                    "location":(x, 0, z+r*0.86+h*0.40),"rotY":math.radians(-14),"scale":(1,1,1)})
     return out
 
-def tail_ornament(p):
+def dorsal_spikes(p, offset=(0,0,0), rotz=0.0):
+    out=[]
+    for c in spike_params(p):
+        bpy.ops.mesh.primitive_cone_add(vertices=c["vertices"], radius1=c["radius"], radius2=0, depth=c["depth"],
+                                        location=c["location"])
+        o=bpy.context.object; o.rotation_euler=(0,c["rotY"],0)
+        bpy.ops.object.shade_flat(); out.append(o)
+    return out
+
+def ornament_params(p):
+    """The tail ornament as primitive parameters, or None for tailTip "none". Pure math."""
     TT=int(p["tailTip"]); TL,BL=p["tailLength"],p["bodyLength"]
-    x=-2.95*TL*BL; out=[]
-    if TT==0: return out
+    x=-2.95*TL*BL
+    if TT==0: return None
     if TT==1:   # fin
-        bpy.ops.mesh.primitive_cone_add(vertices=4, radius1=0.26, radius2=0, depth=0.70, location=(x-0.1,0,0.80))
-        o=bpy.context.object; o.rotation_euler=(0,math.radians(-60),0); o.scale=(1,0.22,1)
-    elif TT==2: # spade
-        bpy.ops.mesh.primitive_cone_add(vertices=3, radius1=0.30, radius2=0, depth=0.56, location=(x-0.14,0,0.60))
-        o=bpy.context.object; o.rotation_euler=(0,math.radians(-96),0); o.scale=(1,0.30,1)
-    else:       # club
-        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.26, location=(x-0.12,0,0.56))
+        return {"kind":"cone","vertices":4,"radius":0.26,"depth":0.70,"location":(x-0.1,0,0.80),
+                "rotY":math.radians(-60),"scale":(1,0.22,1)}
+    if TT==2:   # spade
+        return {"kind":"cone","vertices":3,"radius":0.30,"depth":0.56,"location":(x-0.14,0,0.60),
+                "rotY":math.radians(-96),"scale":(1,0.30,1)}
+    return {"kind":"ico","subdivisions":1,"radius":0.26,"location":(x-0.12,0,0.56),"rotY":0.0,"scale":(1,1,1)}
+
+def tail_ornament(p):
+    c=ornament_params(p); out=[]
+    if c is None: return out
+    if c["kind"]=="cone":
+        bpy.ops.mesh.primitive_cone_add(vertices=c["vertices"], radius1=c["radius"], radius2=0, depth=c["depth"],
+                                        location=c["location"])
+        o=bpy.context.object; o.rotation_euler=(0,c["rotY"],0); o.scale=c["scale"]
+    else:
+        bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=c["subdivisions"], radius=c["radius"], location=c["location"])
         o=bpy.context.object
     bpy.ops.object.shade_flat(); out.append(o); return out
 
