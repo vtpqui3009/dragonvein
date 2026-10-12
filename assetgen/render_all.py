@@ -22,7 +22,9 @@ the palette check (`STATE.md` run 7, criterion 7), and a film-emulation tone cur
 move every measured colour away from the palette it is being measured against.
 """
 import argparse
+import hashlib
 import importlib
+import json
 import math
 import os
 import shutil
@@ -205,6 +207,17 @@ def variant_sheet(mod, out_path, quick=False):
     # Measure every tree first so the spacing and the frame come from the geometry
     # rather than from a guessed number.
     plans = [mod.metrics(s) for s in VARIANT_SEEDS]
+    # The numbers behind the sheet, for `tools/variant-probe.mjs` (rubric A4). Stamped with
+    # the generator's hash so the probe can refuse metrics from an older generator.
+    with open(mod.__file__, "rb") as fh:
+        script_sha = hashlib.sha256(fh.read()).hexdigest()
+    meta = {"asset": f"{mod.FAMILY}/{mod.NAME}",
+            "script": os.path.relpath(mod.__file__, REPO).replace(os.sep, "/"),
+            "scriptSha256": script_sha, "seeds": plans}
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    with open(out_path[:-4] + ".metrics.json", "w", encoding="utf-8") as fh:
+        json.dump(meta, fh, indent=2)
+        fh.write("\n")
     widths = [p["canopyWidth"] for p in plans]
     tallest = max(p["height"] for p in plans)
     pitch = max(widths) * 0.86 + 1.1

@@ -729,6 +729,26 @@ def metrics(seed, lod=0):
     for lb in pl["lobes"]:
         width = max(width, _len((lb["c"][0], lb["c"][1], 0.0)) + lb["r"])
     top = pl["spine"](1.0)
+    # Side-view silhouette area of the crown: the union of every lobe's ellipse (radius r
+    # across, r * squash tall) on the x-z plane, sampled on a fixed grid. Overlap counts
+    # once, so two trees with the same lobe count but different clumping differ here.
+    xs = [lb["c"][0] - lb["r"] for lb in pl["lobes"]] + [lb["c"][0] + lb["r"] for lb in pl["lobes"]]
+    zs = [lb["c"][2] - lb["r"] * lb["squash"] for lb in pl["lobes"]] + \
+         [lb["c"][2] + lb["r"] * lb["squash"] for lb in pl["lobes"]]
+    x0, x1, z0, z1 = min(xs), max(xs), min(zs), max(zs)
+    n = 96
+    hits = 0
+    for i in range(n):
+        x = x0 + (x1 - x0) * (i + 0.5) / n
+        for j in range(n):
+            z = z0 + (z1 - z0) * (j + 0.5) / n
+            for lb in pl["lobes"]:
+                dx = (x - lb["c"][0]) / lb["r"]
+                dz = (z - lb["c"][2]) / (lb["r"] * lb["squash"])
+                if dx * dx + dz * dz <= 1.0:
+                    hits += 1
+                    break
+    canopy_area = (x1 - x0) * (z1 - z0) * hits / (n * n)
     return {
         "seed": int(seed), "form": round(pl["form"], 3),
         "height": round(max(zmax, top[2]), 3),
@@ -737,6 +757,7 @@ def metrics(seed, lod=0):
         "branches": pl["branchCount"],
         "lobes": len(pl["lobes"]),
         "canopyBase": round(zmin, 3),
+        "canopyArea": round(canopy_area, 3),
     }
 
 

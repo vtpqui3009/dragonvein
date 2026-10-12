@@ -225,7 +225,7 @@ function manifest(
 describe('the gate scripts themselves are runnable', () => {
   it('every tool parses under this node', () => {
     for (const tool of [
-      'check-assets.mjs', 'check-determinism.mjs', 'check-layers.mjs', 'glb.mjs',
+      'check-assets.mjs', 'check-determinism.mjs', 'check-layers.mjs', 'glb.mjs', 'variant-probe.mjs',
       'gate-meshgen.mjs', 'gate-parity.mjs', 'gate-perf.mjs', 'playtest.mjs',
       'preview-server.mjs', 'rasteriser-cap.mjs', 'site-config.mjs', 'strip-sourcemaps.mjs',
     ]) {
