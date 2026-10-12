@@ -49,14 +49,28 @@ export function hsv(h: number, s: number, v: number): [number, number, number] {
   }
 }
 
-/** The reference's scale and belly colours (builder.py `mats`). Linear RGB, as Blender reads them. */
+/** sRGB transfer function, decoded: display value → linear light. */
+export function srgbToLinear(c: number): number {
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+const toLinear = (c: [number, number, number]): [number, number, number] =>
+  [srgbToLinear(c[0]), srgbToLinear(c[1]), srgbToLinear(c[2])];
+
+/**
+ * The reference's scale and belly colours (builder.py `mats`), as linear RGB for the vertex
+ * attribute. The genes are read as *display* colours and decoded from sRGB. Blender takes
+ * the same HSV triple as linear, which shows paler: a gale dragon at the genes' saturation
+ * floor of 0.35 sampled at s ≈ 0.11 on screen, where docs/ART_BIBLE.md §Palette asks that
+ * saturation "stays inside 0.35–1.00 so no dragon is pure white" (run 11, critic A2).
+ * The bible describes what the player sees, so the genes mean what is on screen.
+ */
 export function bodyColours(p: Phenotype): { scale: [number, number, number]; belly: [number, number, number] } {
   const { hue: H, hueShift: HSh, saturation: S, value: V } = p;
-  return { scale: hsv(H, S, V), belly: hsv(H + HSh, S * 0.60, Math.min(0.95, V + 0.34)) };
+  return { scale: toLinear(hsv(H, S, V)), belly: toLinear(hsv(H + HSh, S * 0.60, Math.min(0.95, V + 0.34))) };
 }
 
 /** builder.py `mats`: the eye and its highlight. */
-export const EYE_COLOUR: [number, number, number] = [0.03, 0.04, 0.07];
+export const EYE_COLOUR: [number, number, number] = [0.03, 0.04, 0.07]; // linear, as builder.py gives it
 export const GLINT_COLOUR: [number, number, number] = [1, 1, 1];
 
 /**

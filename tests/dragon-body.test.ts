@@ -143,6 +143,20 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (i, gm) => {
   });
 });
 
+describe('the genes are display colours', () => {
+  it('srgbToLinear is the sRGB decode, so a gene at s = 0.35 stays visibly coloured', async () => {
+    const { srgbToLinear } = await import('../src/assets/dragon/builder');
+    expect(srgbToLinear(0)).toBe(0);
+    expect(srgbToLinear(1)).toBeCloseTo(1, 12);
+    expect(srgbToLinear(0.5)).toBeCloseTo(0.214041, 6);
+    // the vertex colour, re-encoded for the screen, gives back the gene's HSV
+    const lin = bodyColours({ ...genomes[0]!.phenotype, hue: 0.505, saturation: 0.35, value: 0.85 }).scale;
+    const enc = lin.map((c) => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055));
+    const sat = (Math.max(...enc) - Math.min(...enc)) / Math.max(...enc);
+    expect(sat).toBeCloseTo(0.35, 6);
+  });
+});
+
 describe('hsv() is colorsys.hsv_to_rgb', () => {
   it('matches hand-computed values, including a hue that wraps', () => {
     expect(hsv(0, 1, 1)).toEqual([1, 0, 0]);
