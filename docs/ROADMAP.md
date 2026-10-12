@@ -134,8 +134,8 @@ a sighting of `dragon.html`, and the reference-design questions behind the art s
 |---|---|---|
 | M4a | island generator — shape, size, biome, edge erosion, underside — with a passing variant sheet | DONE |
 | M4b | 3 cliff/rock generators, each with a passing variant sheet | DONE |
-| **M4c** | **2 more rock generators (shard, eroded), each with a passing variant sheet** | **TODO** |
-| M4d | arch and floating-shard landmark generators, each with a passing variant sheet | TODO |
+| M4c | 2 more rock generators (shard, eroded), each with a passing variant sheet | DONE |
+| **M4d** | **arch and floating-shard landmark generators, each with a passing variant sheet** | **TODO** |
 
 M4a closed on 2026-10-12 at `b27bc4d` (run 15) on its first pass: art 8.3, perf 8.2,
 gameplay 9.2. `terrain/island` meets §Definition of done:
@@ -155,6 +155,14 @@ gameplay 9.2. Each of `terrain/stratified`, `terrain/columnar` and `terrain/boul
 M4c was split in run 17. It was written as four generators: two rocks, arches and floating
 shards. M4b's three took the whole of run 16, including a rework cycle, so four would not
 fit in one run (§How big a step may be). The landmarks moved to M4d.
+
+M4c closed on 2026-10-12 at `3a2287f` (run 17) on its first pass: art 8.3, perf 8.5,
+gameplay 9.0. `terrain/shard` and `terrain/eroded` meet §Definition of done:
+1. 8 seeds read as 8 objects (most alike pairs 28.8 % and 26.0 % apart);
+2. LOD0/1/2 = 808/268/128 and 500/182/72 against 4000/1200/300, strictly decreasing on
+   every seed;
+3. both are in MANIFEST.json;
+4. art per generator 8.4 and 8.3.
 
 ## M5 — Flora wave 1
 

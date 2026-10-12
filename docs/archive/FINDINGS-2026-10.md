@@ -6,6 +6,61 @@ docs/archive/FINDINGS-*.md` still gives the full score history.
 
 ---
 
+# M4a — run 15, 2026-10-12 — cycle 1, at `b27bc4d`
+
+**Scores: art-critic 8.3 · perf-critic 8.2 · gameplay-critic 9.2.** No blocking defect. All three
+are ≥ 8.0, so **M4a ships** (ROADMAP §Definition of done for an asset milestone: the sheet
+reads as 8 islands, LODs are in budget, it is in MANIFEST.json, and art ≥ 8.0).
+
+## perf-critic — 8.2 (all six lines)
+
+P1 1.8 · P2 1.8 · P3 1.8 · P4 1.0 · P5 1.2 · P6 0.6.
+
+- [major] P1: the real-GPU log is stale (`3ab6e84`, 29 commits back), and a sighting, not a
+  verification.
+- [major] P6: no real-hardware Potato number.
+- [minor] P4 `heap.bytesPerFrame 33820`, with nonzero per-frame allocation.
+- [minor] `gpuFrameMs.p50 430.8` is about 15 % above PERF_BUDGET's capped figure. It is
+  advisory; a second run would settle it.
+- [minor] The island LODs are not loaded by the game, so no frame covers them. Nine at LOD0
+  would add at most 51 840 triangles.
+
+SCORE_MACHINE: 8.2
+
+## art-critic — 8.3 (all nine lines)
+
+A1 1.1 · A2 0.9 · A3 0.9 · A4 1.2 · A5 1.1 · A6 0.9 · A7 0.9 · A8 0.8 · A9 0.45.
+
+- [major] A4 `variants/island.png`: biome does not read. The steppe seeds (3, 6, 8) look
+  unrelated, and the highland ones (1, 4, 7) look like meadow.
+- [major] A4: the sheet's low camera hides the deck, where terraces, bites and roughness live.
+  Add a top-down or higher row.
+- [major] A6: large featureless decks. Seeds 1, 4, 6 and 7 are dirt plates, and seeds 3 and 5
+  have no landmark. Dressing is M5e's job.
+- [minor] A3: no contact or cast shadow on the sheet. The decks are lit flat.
+- [minor] A2 `island.frame00.png`: concentric contour rings on the green mound.
+- [minor] A9: dirt-topped seeds against the concept's green tops. The dusk plate is very
+  saturated.
+- [minor] A5: needle-thin tips on seeds 1 and 3; check LOD2 there. The turntable is coarse
+  (36 frames, 512 px).
+
+SCORE_MACHINE: 8.3
+
+## gameplay-critic — 9.2 (4.8 of 5.2; G2, G4, G5 n/a)
+
+G1 2.1 · G3 1.2 · G6 1.5.
+
+- [minor] G1: the generated island is unreachable in play. The game uses the hand-built one.
+- [minor] G3: input latency is not measured in ms.
+- [minor] Seeds 1, 6 and 8 have rock-topped decks, which may not read as habitable.
+- [minor] The turntable covers seed 1 only.
+
+SCORE_MACHINE: 9.2
+
+---
+
+---
+
 # M3d — run 14, 2026-10-12 — cycle 1, at `aaa19c7`
 
 **Scores: art-critic 7.4 · perf-critic 8.15 · gameplay-critic 8.5.** No blocking defect.

@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 17 · M4c — shard and eroded rock generators
+## 2026-10-12 · run 17 · M4c DONE — shard and eroded rock generators
 
 **Step**: `M4c`, the first step in reading order that is not `DONE`. Step 0 pushed `a45d808`.
 
@@ -44,6 +44,44 @@ shards. M4b's three took all of run 16, including a rework cycle, so the step wa
    existing generators still pass.
 5. `npm run gates` exits 0.
 6. Art per generator is ≥ 8.0 (ROADMAP §Definition of done for an asset milestone).
+
+---
+
+### Result — M4c DONE (M4 IN_PROGRESS: M4d remains)
+
+All six criteria hold at `3a2287f`:
+
+1. Both generators meet the module criteria.
+   - Flat-shaded, on the rock ramp.
+   - LODs strictly decrease on every seed 1–8:
+     - shard: LOD0 638–1044, LOD2 98–132;
+     - eroded: LOD0 400–1080, LOD2 72–144.
+   - 0 inward faces, 0 open edges and positive shell volume at every seed and LOD.
+2. `--verify` reproduces 21 files byte-for-byte. `--check` and `check:assets` are OK. The 15
+   existing hashes are unchanged.
+3. The sheets and turntables are rendered.
+4. The probe passes for all seven generators. shard's most alike pair is 3/6 at 28.8 %,
+   eroded's is 4/7 at 26.0 %, and the worst ΔE is 0.19.
+5. `npm run gates` exits 0.
+6. Art per generator: shard 8.4, eroded 8.3.
+
+**Scores (cycle 1):**
+- art 8.3;
+- perf 8.5;
+- gameplay 9.0.
+
+The asset-builder wrote both generators in one sequential pass. `rockkit.py` gained the
+shared helpers (vertex normals, a rock tone from the normal, fractured stone). It now also
+imports `bpy` before `bmesh`, which makes each rock module's `__main__` runnable.
+
+**Open, carried to FINDINGS:**
+- the rocks are not placed (M5e);
+- eroded near-pairs;
+- shard reads as splinters;
+- sliver triangles on the caps;
+- LOD1 and LOD2 are never rendered.
+
+**Blockers.** None for M4d. M3 remains with the owner (NEXT.md §Open items).
 
 ---
 
@@ -134,87 +172,6 @@ were re-run green.
 - boulders near-pairs.
 
 **Blockers.** None for M4c. M3 remains with the owner (NEXT.md §Open items).
-
----
-
-## 2026-10-12 · run 15 · M4a DONE — the island generator
-
-**Step**: `M4a`, the first step in reading order that is not `DONE`. Step 0 pushed `cff41b6`.
-
-**Ownership**: `assetgen/` (asset-builder): the generator, plus generalising `render_all.py`.
-Then `tools/variant-probe.mjs` and `tools/check-assets.mjs` (integrator). Sequential.
-
-**What has to generalise first.** `render_all.py` lays out a sheet from `canopyWidth` and
-`height`, and `variant-probe` hard-codes the tree's A4 axes and its bark/canopy palette roles.
-A second generator needs both to read from the generator's own declaration:
-- metric axes;
-- sheet width key;
-- palette roles: surfaces held to ΔE 12, ramps held to ΔE 3.
-
-`flora/broadleaf` must come through unchanged in bytes and verdicts.
-
-### Acceptance criteria
-
-1. **`assetgen/terrain/island.py`, a C1 generator** (`docs/ASSET_PLAN.md` §C), `build(seed, lod)`:
-   - `plan(seed)` draws everything up front, so the LODs are one island;
-   - it varies shape, size, biome, edge erosion and underside taper;
-   - biome is stratified on the seed, like broadleaf's `form`, so consecutive seeds cover it.
-   - Every colour comes from `docs/ART_BIBLE.md` §Palette, on one of two ramps: grass (foliage
-     dark → mid → light) and rock (rock mid → dusk → deep shadow).
-   - Triangle budget 8 000 / 2 500 / 700, strictly decreasing.
-   - Each LOD is a closed mesh with **0 inward-facing faces**, counted with bmesh (NEXT.md
-     §Mesh winding).
-2. **Pipeline.** Registered in `build_all.py`.
-   - `assets:build --verify` reproduces the `.glb` bytes across two processes.
-   - `--check` matches the committed bytes and the MANIFEST pins, for both generators.
-   - `check:assets` passes.
-3. **Seen.** `npm run assets:render` writes `artifacts/variants/island.png` (seeds 1–8) and
-   `artifacts/turntables/island.webm`, and still writes broadleaf's.
-4. **Probed.** `node tools/variant-probe.mjs terrain/island` passes:
-   - A4: no pair of seeds within 8 % on every one of width, depth, relief, roughness and taper;
-   - A2: manifest colours within ΔE 12 of the bible, and every vertex within ΔE 3 of its ramp.
-
-   `node tools/variant-probe.mjs flora/broadleaf` still passes.
-5. `npm run gates` exits 0.
-
-### Result — every criterion met at `b27bc4d`
-
-1. `assetgen/terrain/island.py` (`b27bc4d`):
-   - **Construction:** `plan(seed)` draws everything up front, and the biome is stratified on
-     the golden ratio (seeds 1–8 give 3 highland, 2 meadow, 3 steppe).
-   - **Budget:** LOD0/1/2 at 5760/1536/280 triangles against 8000/2500/700.
-   - **Winding:** 0 inward faces at every LOD.
-   - **Colour:** every colour is on a grass or rock ramp of ART_BIBLE stops.
-2. `assets:build --verify` reproduces all 6 files across two processes. `--check` matches the
-   committed bytes and the MANIFEST pins, broadleaf's included (unchanged at `a24953…`).
-   `check:assets` is OK.
-3. `artifacts/variants/island.png` and `artifacts/turntables/island.webm` were rendered, along
-   with broadleaf's, through the generalised `render_all.py` (`72ba17c`).
-4. The probes pass (`549d93f`):
-   - island A4: the most alike pair (4/5) is 30.6 % apart;
-   - island A2: every vertex is within ΔE 0.14 of its ramp;
-   - broadleaf still passes: bark worst ΔE 3.0, canopy 0.12.
-5. Gates are green with 936 tests.
-
-**Scores:** art **8.3**, perf **8.2**, gameplay **9.2**, on the first pass. **M4a is `DONE`.**
-M4 stays `IN_PROGRESS` with M4b and M4c to go.
-
-### Decisions
-
-- **Generators declare how they are judged and shown.**
-  - `METRIC_AXES` gives the A4 axes.
-  - `PALETTE_ROLES` lists the surfaces held to ΔE 12 and the ramps held to ΔE 3. It is carried
-    in MANIFEST.json as `paletteRoles`.
-  - `SHEET` sets the framing keys, camera pitch and whether there is a ground.
-
-  broadleaf's behaviour is the default, so its verdicts and bytes are unchanged.
-- **One ramp rule.** The island's ramps are the same quadratic Bezier the probe already used
-  for broadleaf's canopy, so every ramp is judged one way.
-- **The rock ramp runs dusk → rock mid → deep shadow.** In the other order, dusk sat
-  mid-underside and every cone came out orange. The bible gives deep shadow to island
-  undersides.
-- **The grass highlight is capped at 0.74.** A hilltop at the light stop read as a glowing
-  blob.
 
 ---
 
