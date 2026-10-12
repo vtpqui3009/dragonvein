@@ -13,6 +13,53 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 11 · M3a — skeleton, torso and limbs from a genome into a `BufferGeometry`
+
+**Step**: `M3a`, the first step in reading order that is not `DONE`. Step 0 pushed `1a22af8`.
+
+**Ownership**: `assetgen/` graph vectors (asset-builder), then `src/assets/dragon/` (mesh-builder),
+then `tools/`, `tests/`, the viewer page and config (integrator). One sequential owner, in that order.
+
+**What can match and what cannot.** `assetgen/dragon/builder.py` builds a *skin graph* —
+`skeleton(p)` then `add_limbs` — which is pure arithmetic on the phenotype: node positions,
+radii, edges. Blender then skins that graph with its Skin modifier and Subsurf, which
+TypeScript cannot reproduce vertex for vertex. So the graph is ported exactly and proven
+the M2 way, and the TS skin is its own sweep, held to the graph by geometry checks.
+
+### Acceptance criteria
+
+1. **The graph is the reference's.** `assetgen/dragon_vectors.py` writes
+   `docs/fixtures/dragon-graphs.json`: for each of the 32 fixed genomes, the graph
+   `skeleton(p)` + `add_limbs(g, idx, p)` produces — every node position and radius, every
+   edge, and the named anchors (`tailTip`, `hip`, `chest`, `shoulder`, `neck`, `headBack`,
+   `headMid`, `nose`, `headPos`, `headMidPos`, `headBackPos`). It pins `builder.py`'s
+   SHA-256 and is byte-identical on re-run. `tests/dragon-graph.test.ts` rebuilds each
+   graph in TS and compares with `Object.is`. Any value that cannot be exact (a libm
+   `pow`/`sin` last-ulp difference) is named in the test with its measured error, not
+   hidden behind a blanket tolerance.
+2. **A `BufferGeometry` comes out.** `buildDragonBody(genome)` in
+   `src/assets/dragon/builder.ts` returns an indexed `THREE.BufferGeometry` with `position`,
+   `normal` and `color` (scale colour, belly colour where the normal faces down — the
+   reference's `paint_belly`). `tests/dragon-body.test.ts`, for all 32 genomes:
+   - no NaN or infinite value in any attribute;
+   - every part is closed (each edge shared by exactly two triangles) and wound outward
+     (positive signed volume), because three.js culls back faces (NEXT.md §Mesh winding);
+   - the bounding box holds every graph node, and lies inside the graph's node-plus-radius
+     box grown by 10 %;
+   - two builds of the same genome are byte-identical;
+   - triangles ≤ 6 000 for skeleton, torso and limbs (wings and crown arrive at M3b).
+3. **`gate:meshgen` measures instead of skipping.** It builds all 32 fixed genomes with the
+   TS builder and fails if any build takes > 120 ms. The worker and Medium-tier
+   measurement is M3c's. The change goes in its own commit.
+4. **Seen rendered.** `node tools/dragon-sheet.mjs` renders `dragon.html` headlessly into
+   `artifacts/variants/dragon-body.png` (8 genomes: one wild per element plus two bred) and
+   a turntable `artifacts/turntables/dragon-body.webm`. The 8 bodies read as 8 different
+   creatures, and none shows an inward-facing patch, hole or detached limb.
+5. `npm run gates` exits 0, with `gate:parity`'s mesh half still a named SKIP (M3c is not
+   `DONE`).
+
+---
+
 ## 2026-10-12 · run 10 · M2b DONE (M2 DONE) — the genome in TypeScript, identical to the reference
 
 **Step**: `M2b`, the first step in reading order that is not `DONE`. Step 0 pushed `6f5a9e4`.
@@ -377,4 +424,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T10:37:38Z
