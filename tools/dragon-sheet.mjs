@@ -2,10 +2,10 @@
 /**
  * Render the runtime dragon for review: `node tools/dragon-sheet.mjs` (after `npm run build`).
  *
- *   artifacts/variants/dragon-body.png          the 8-dragon sheet (dragon.html)
- *   artifacts/turntables/dragon-body.webm        one dragon turned through 360° in 4 s
- *   artifacts/turntables/dragon-body.frame00.png its first frame, for a quick look
- *   artifacts/variants/dragon-body.json          build time and triangle counts
+ *   artifacts/variants/dragon-full.png          the 8-dragon sheet (dragon.html)
+ *   artifacts/turntables/dragon-full.webm        one dragon turned through 360° in 4 s
+ *   artifacts/turntables/dragon-full.frame00.png its first frame, for a quick look
+ *   artifacts/variants/dragon-full.json          build time and triangle counts
  *
  * Headless Chromium on SwiftShader, as every gate here runs. CLAUDE.md §1.4: an asset
  * nobody has seen rendered is not done, and the critics score these files.
@@ -49,11 +49,11 @@ try {
 
   const sheet = await open('', { width: 1800, height: 760 });
   const stats = await sheet.evaluate(() => ({ buildMs: window.__dragonView.buildMs, tris: window.__dragonView.tris }));
-  await sheet.screenshot({ path: 'artifacts/variants/dragon-body.png' });
-  console.log(`sheet: artifacts/variants/dragon-body.png — 8 dragons, ${stats.tris} tris, built in ${stats.buildMs.toFixed(0)} ms`);
+  await sheet.screenshot({ path: 'artifacts/variants/dragon-full.png' });
+  console.log(`sheet: artifacts/variants/dragon-full.png — 8 dragons, ${stats.tris} tris, built in ${stats.buildMs.toFixed(0)} ms`);
 
   const turn = await open(`?view=turn&i=${TURN_PICK}`, { width: 960, height: 720 });
-  const dir = path.join('artifacts', 'turntables', 'dragon-body.frames');
+  const dir = path.join('artifacts', 'turntables', 'dragon-full.frames');
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
   for (let f = 0; f < TURN_FRAMES; f++) {
@@ -62,13 +62,13 @@ try {
   }
   const ff = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(TURN_FPS),
     '-i', path.join(dir, 'f%03d.png'), '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', '-pix_fmt', 'yuv420p',
-    'artifacts/turntables/dragon-body.webm'], { encoding: 'utf8' });
+    'artifacts/turntables/dragon-full.webm'], { encoding: 'utf8' });
   if (ff.status !== 0) errors.push(`ffmpeg: ${ff.stderr}`);
-  spawnSync('cp', [path.join(dir, 'f000.png'), 'artifacts/turntables/dragon-body.frame00.png']);
+  spawnSync('cp', [path.join(dir, 'f000.png'), 'artifacts/turntables/dragon-full.frame00.png']);
   rmSync(dir, { recursive: true, force: true });
-  console.log(`turntable: artifacts/turntables/dragon-body.webm — sheet slot ${TURN_PICK}, ${TURN_FRAMES} frames at ${TURN_FPS} fps`);
+  console.log(`turntable: artifacts/turntables/dragon-full.webm — sheet slot ${TURN_PICK}, ${TURN_FRAMES} frames at ${TURN_FPS} fps`);
 
-  writeFileSync('artifacts/variants/dragon-body.json', `${JSON.stringify({
+  writeFileSync('artifacts/variants/dragon-full.json', `${JSON.stringify({
     sheetGenomes: 8, sheetTris: stats.tris, sheetBuildMs: Math.round(stats.buildMs * 10) / 10,
     turntable: { slot: TURN_PICK, frames: TURN_FRAMES, fps: TURN_FPS },
     renderer: 'SwiftShader (headless)', errors,
