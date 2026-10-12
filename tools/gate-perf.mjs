@@ -265,13 +265,23 @@ function maxDeviationFromVsyncTick(values) {
  * Gzipped weight of what actually ships, by file. Source maps are excluded: they are not
  * part of the gzip budget, they are fetched by devtools rather than by players, and the
  * deployed tree does not contain them.
- * @returns {Promise<{gzipBytes:number, rawBytes:number, files:{file:string,gzipBytes:number}[]}>}
+ *
+ * Assets are excluded too, and reported on their own. `CLAUDE.md` §2.6 sets the 1.4 MB
+ * budget "assets excluded". Vite copies `public/` verbatim into `dist/`, and
+ * `public/assets/` lands in `dist/assets/` beside the JS chunks. So until M1a shipped the
+ * first `.glb` files, "every file in dist/" and "the code bundle" happened to be the same
+ * set. M1a's broadleaf LODs and MANIFEST added ~88 KB that the budget never meant to count.
+ * A file is an asset if the same relative path exists under `public/`, which is exactly
+ * the set Vite copied rather than built.
+ * @returns {Promise<{gzipBytes:number, rawBytes:number, files:{file:string,gzipBytes:number}[],
+ *   assets:{gzipBytes:number, rawBytes:number, count:number}}>}
  */
-async function measureBundle(dir = 'dist') {
+async function measureBundle(dir = 'dist', publicDir = 'public') {
   /** @type {{file:string,gzipBytes:number}[]} */
   const files = [];
   let gzipBytes = 0;
   let rawBytes = 0;
+  const assets = { gzipBytes: 0, rawBytes: 0, count: 0 };
   /** @param {string} d */
   async function walk(d) {
     for (const e of await readdir(d, { withFileTypes: true })) {
@@ -280,14 +290,21 @@ async function measureBundle(dir = 'dist') {
       if (p.endsWith('.map')) continue;
       const buf = await readFile(p);
       const gz = gzipSync(buf, { level: 9 }).length;
-      files.push({ file: path.relative(dir, p), gzipBytes: gz });
+      const rel = path.relative(dir, p);
+      if (existsSync(path.join(publicDir, rel))) {
+        assets.gzipBytes += gz;
+        assets.rawBytes += buf.length;
+        assets.count++;
+        continue;
+      }
+      files.push({ file: rel, gzipBytes: gz });
       gzipBytes += gz;
       rawBytes += buf.length;
     }
   }
   await walk(dir);
   files.sort((a, b) => b.gzipBytes - a.gzipBytes);
-  return { gzipBytes, rawBytes, files };
+  return { gzipBytes, rawBytes, files, assets };
 }
 
 /** Sum of the rising edges of a heap series, in kB, plus the number of falls. */
@@ -752,8 +769,10 @@ try {
       ...bundle,
       budgetGzipBytes: BUDGET.bundleGzipBytes,
       withinBudget: bundle.gzipBytes <= BUDGET.bundleGzipBytes,
-      note: 'Gzip level 9 over every file in dist/ except .map. Source maps are not ' +
-        'shipped to the deployed tree, so they are neither served nor counted.',
+      note: 'Gzip level 9 over every file in dist/ except .map and except assets copied ' +
+        'from public/ (CLAUDE.md §2.6: the budget is "assets excluded"); those are reported ' +
+        'under `assets`, unbudgeted here. Source maps are not shipped to the deployed tree, ' +
+        'so they are neither served nor counted.',
     },
     bootMs: round(paced.probe.bootMs),
     bootBudgetMs: BUDGET.bootMs,
@@ -905,7 +924,9 @@ try {
     `${BUDGET.heapBytesPerFrame} B/frame  (net growth ${report.heap?.netGrowthKB ?? 'n/a'} kB ` +
     `over ${report.heap?.framesInWindow ?? 'n/a'} frames, ${report.gc.inferredScavenges} scavenges)`);
   console.log(`bundle: ${(report.bundle.gzipBytes / 1000).toFixed(2)} kB gzipped vs budget ` +
-    `${(BUDGET.bundleGzipBytes / 1000).toFixed(0)} kB  (source maps excluded, not shipped)`);
+    `${(BUDGET.bundleGzipBytes / 1000).toFixed(0)} kB  (source maps excluded, not shipped; ` +
+    `${report.bundle.assets.count} asset file(s), ${(report.bundle.assets.gzipBytes / 1000).toFixed(2)} kB ` +
+    'gzipped, reported separately per CLAUDE.md §2.6)');
   console.log(`boot to first frame: ${report.bootMs}ms vs budget ${BUDGET.bootMs}ms`);
   console.log(`draw calls: ${report.drawCalls}   triangles: ${report.triangles}`);
   console.log(`potato tier (P6): ${report.potato.viewport.drawingBufferWidth}x` +
