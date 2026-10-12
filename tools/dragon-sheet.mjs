@@ -18,7 +18,7 @@ import { startPreview } from './preview-server.mjs';
 
 const TURN_FRAMES = 96;
 const TURN_FPS = 24;
-const TURN_PICK = Number(process.env.DRAGON_TURN ?? 6); // sheet slot: the fusion child
+const TURN_PICK = Number(process.env.DRAGON_TURN ?? 6); // sheet slot G: the child of A × B
 
 if (!existsSync('dist/dragon.html')) {
   console.error('dragon-sheet: no dist/dragon.html. Run `npm run build` first.');
@@ -47,7 +47,7 @@ try {
     return page;
   };
 
-  const sheet = await open('', { width: 1800, height: 900 });
+  const sheet = await open('', { width: 1800, height: 760 });
   const stats = await sheet.evaluate(() => ({ buildMs: window.__dragonView.buildMs, tris: window.__dragonView.tris }));
   await sheet.screenshot({ path: 'artifacts/variants/dragon-body.png' });
   console.log(`sheet: artifacts/variants/dragon-body.png — 8 dragons, ${stats.tris} tris, built in ${stats.buildMs.toFixed(0)} ms`);

@@ -3,13 +3,13 @@
  * can see what src/assets/dragon/ makes (CLAUDE.md §1.4: an asset nobody has seen rendered
  * is not done). `node tools/dragon-sheet.mjs` drives it headlessly.
  *
- *   dragon.html                  the 8-dragon sheet: one wild dragon per element, a fusion
- *                                child and a fourth-generation child
+ *   dragon.html                  the 8-dragon sheet: one wild dragon per element and two
+ *                                children of dragons on the sheet (see SHEET)
  *   dragon.html?view=turn&i=K    sheet dragon K alone, for a turntable; the page exposes
  *                                `__dragonView.setYaw(rad)` so a driver can step it
  *
- * The genomes are the fixed set in docs/fixtures/genomes.json, rebuilt from the same
- * recipes, so every dragon here is one the parity tests have checked.
+ * The genome code is the one tests/genome.test.ts proves equal to assetgen/genome.py, and
+ * the graph the one tests/dragon-graph.test.ts proves equal to the reference's.
  *
  * Lighting follows docs/ART_BIBLE.md §Lighting and matches the game's (src/main.ts): one
  * warm key with soft shadows, a cool fill at about 20 %, a warm rim, ACES. The backdrop is
@@ -19,30 +19,26 @@ import * as THREE from 'three';
 import { breed, wild, type Element, type Genome } from './core/genome';
 import { buildDragonBody } from './assets/dragon/builder';
 
-type Recipe = { op: 'wild'; seed: number; element: Element | null } | { op: 'breed'; a: number; b: number; seed: number };
-/** docs/fixtures/genomes.json's recipes, in order (later ones breed from earlier ones). */
-const RECIPES: Recipe[] = [
-  ...(['ember', 'tide', 'stone', 'gale', 'jade', 'umbra'] as const).flatMap((element): Recipe[] => [
-    { op: 'wild', seed: 11, element }, { op: 'wild', seed: 29, element },
-  ]),
-  { op: 'wild', seed: 3, element: null }, { op: 'wild', seed: 7, element: null },
-  { op: 'breed', a: 0, b: 2, seed: 777 }, { op: 'breed', a: 4, b: 8, seed: 101 },
-  { op: 'breed', a: 6, b: 10, seed: 202 }, { op: 'breed', a: 0, b: 1, seed: 303 },
-  { op: 'breed', a: 3, b: 7, seed: 404 }, { op: 'breed', a: 11, b: 9, seed: 505 },
-  { op: 'breed', a: 14, b: 15, seed: 606 }, { op: 'breed', a: 16, b: 17, seed: 707 },
-  { op: 'breed', a: 18, b: 19, seed: 808 }, { op: 'breed', a: 14, b: 19, seed: 909 },
-  { op: 'breed', a: 15, b: 18, seed: 1001 }, { op: 'breed', a: 16, b: 5, seed: 1101 },
-  { op: 'breed', a: 20, b: 21, seed: 1201 }, { op: 'breed', a: 22, b: 23, seed: 1301 },
-  { op: 'breed', a: 24, b: 25, seed: 1401 }, { op: 'breed', a: 21, b: 22, seed: 1501 },
-  { op: 'breed', a: 26, b: 29, seed: 1601 }, { op: 'breed', a: 1, b: 3, seed: 1 },
+/**
+ * The sheet: six wild dragons, one per element, on seeds 1-6 taken in order (not picked),
+ * then two children whose parents are both on the sheet. `wild(seed, element)` draws the
+ * same body for one seed under every element (a forced element draws nothing), so a sheet
+ * that reused one seed showed one body in six colours (run 11, critic D1). Each cell has its
+ * own seed, and each child is labelled with its parents (critic D5).
+ */
+type Recipe = { label: string; op: 'wild'; seed: number; element: Element } | { label: string; op: 'breed'; a: number; b: number; seed: number };
+const SHEET: Recipe[] = [
+  { label: 'A', op: 'wild', seed: 1, element: 'ember' },
+  { label: 'B', op: 'wild', seed: 2, element: 'tide' },
+  { label: 'C', op: 'wild', seed: 3, element: 'stone' },
+  { label: 'D', op: 'wild', seed: 4, element: 'gale' },
+  { label: 'E', op: 'wild', seed: 5, element: 'jade' },
+  { label: 'F', op: 'wild', seed: 6, element: 'umbra' },
+  { label: 'G', op: 'breed', a: 0, b: 1, seed: 7 },
+  { label: 'H', op: 'breed', a: 6, b: 2, seed: 8 },
 ];
-/** Which fixed genomes the sheet shows. */
-const SHEET = [0, 2, 4, 6, 8, 10, 31, 30];
-
 const genomes: Genome[] = [];
-for (const r of RECIPES) {
-  genomes.push(r.op === 'wild' ? wild(r.seed, r.element ?? undefined) : breed(genomes[r.a]!, genomes[r.b]!, r.seed));
-}
+for (const r of SHEET) genomes.push(r.op === 'wild' ? wild(r.seed, r.element) : breed(genomes[r.a]!, genomes[r.b]!, r.seed));
 
 const params = new URLSearchParams(location.search);
 const turn = params.get('view') === 'turn';
@@ -96,7 +92,7 @@ const placed: Placed[] = [];
 const labels = document.getElementById('labels')!;
 let tris = 0;
 const t0 = performance.now();
-const shown = turn ? [SHEET[pick]!] : SHEET;
+const shown = turn ? [pick] : SHEET.map((_, i) => i);
 const cols = 4;
 shown.forEach((gi, k) => {
   const gm = genomes[gi]!;
@@ -119,17 +115,25 @@ shown.forEach((gi, k) => {
   scene.add(holder);
   const label = document.createElement('div');
   const el = gm.element[0] === gm.element[1] ? gm.element[0] : `${gm.element[0]} / ${gm.element[1]}`;
-  label.innerHTML = `#${gi} ${gm.gid()}<br><small>${el} · gen ${gm.generation}</small>`;
+  const r = SHEET[gi]!;
+  const origin = r.op === 'wild' ? `wild, seed ${r.seed}` : `child of ${SHEET[r.a]!.label} × ${SHEET[r.b]!.label}`;
+  label.innerHTML = `${r.label} · ${origin}<br><small>${el} · gen ${gm.generation} · ${gm.gid()}</small>`;
   labels.appendChild(label);
   placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 2.9)) });
 });
 const buildMs = performance.now() - t0;
 
-const camera = new THREE.PerspectiveCamera(turn ? 30 : 27, innerWidth / innerHeight, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(turn ? 30 : 32, innerWidth / innerHeight, 0.1, 200);
 const target = new THREE.Vector3(0, turn ? 1.3 : 0, turn ? 0 : 1.2);
 const sheetPose = new THREE.Vector3(0, 19, 31);
 const turnPose = new THREE.Vector3(-4.5, 4.2, 15.5);
 camera.position.copy(turn ? turnPose : sheetPose);
+// `?cam=px,py,pz,tx,ty,tz` overrides the pose, for close-ups of a joint.
+const cam = (params.get('cam') ?? '').split(',').map(Number);
+if (cam.length === 6 && cam.every(Number.isFinite)) {
+  camera.position.set(cam[0]!, cam[1]!, cam[2]!);
+  target.set(cam[3]!, cam[4]!, cam[5]!);
+}
 camera.lookAt(target);
 sun.target.position.copy(target);
 const ext = turn ? 7 : 22;
@@ -164,6 +168,24 @@ window.__dragonView = {
     frame();
   },
 };
+// Drag to turn the dragons (mouse or touch), so a person can inspect them by hand.
+let yaw = turn ? 0 : -0.55;
+let dragX: number | null = null;
+renderer.domElement.style.touchAction = 'none';
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  dragX = e.clientX;
+  renderer.domElement.setPointerCapture(e.pointerId);
+});
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (dragX === null) return;
+  yaw += (e.clientX - dragX) * 0.01;
+  dragX = e.clientX;
+  window.__dragonView!.setYaw(yaw);
+});
+const endDrag = () => { dragX = null; };
+renderer.domElement.addEventListener('pointerup', endDrag);
+renderer.domElement.addEventListener('pointercancel', endDrag);
+
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
