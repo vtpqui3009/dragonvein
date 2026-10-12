@@ -10,48 +10,41 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `599106c`, the last commit of run 9 that changed
+Last updated: **2026-10-12** · at commit `2a1e96f`, the last commit of run 10 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M2b — `src/core/genome.ts` expresses, breeds and mutates identically; `gate:parity` green on
-32 fixed genomes** · `TODO`
+**M3a — skeleton, torso and limbs build from a genome into a `BufferGeometry`** · `TODO`
 
-M2a closed at `7500613` (art **8.6**, perf **8.5**, gameplay **9.4**). `src/core/rng.ts`
-matches `genome.Rng` bit for bit on 10 seeds × 2200 values (`tests/rng.test.ts`, fixture
-from `assetgen/rng_vectors.py`). M0 and M1 are `DONE`; M2 is open on M2b.
+M2b closed at `156321e` (art **8.2**, perf **9.0**, gameplay **9.2**), and with it **milestone M2
+is `DONE`**. `src/core/genome.ts` rebuilds 32 fixed genomes plus 3 hand-set tie cases with
+every allele, phenotype, rarity and gid identical to `genome.py`, and `gate:parity`'s genome
+half is live. M0, M1 and M2 are `DONE`.
 
 ## The single next action
 
-Take M2b. Reuse the M2a pattern: Python writes a fixture, TypeScript must match it exactly
-(`tests/rng.test.ts` is the model), and the fixture pins `genome.py`'s SHA. **Three traps,
-each already found by reading `assetgen/genome.py`:**
+Take M3a, the first step of the runtime dragon mesh (`src/assets/`, owned by `mesh-builder`).
+The reference is `assetgen/dragon/builder.py`.
 
-1. **Rounding.** `express()` returns `round(v)` for `i`/`e` genes. That is Python's
-   banker's rounding: `round(2.5) == 2`, `round(3.5) == 4`. `Math.round(2.5)` is 3. Port
-   round-half-to-even, and put .5 cases in the fixture.
-2. **`gid()` hashes `json.dumps(...)`** with `round(v, 5)` and `sort_keys=True`. Python
-   prints `1.0`, `1e-05` and `", "` / `": "` separators; JS `JSON.stringify` prints `1`,
-   `0.00001` and no spaces. A naive port gives every dragon a different id. Either
-   reproduce Python's float repr exactly, or record in `STATE.md` and ask the owner whether
-   the id format may change. `docs/GENOME.md` is locked by CLAUDE.md §7: a run may not
-   edit it to fit the port, so if it specifies the id, the port follows it.
-   SHA-1 is in `node:crypto` for tests, but `src/core` may import nothing, so the runtime
-   needs its own hash or an injected one.
-3. **`gate:parity` cannot go green as written.** `tools/gate-parity.mjs` SKIPs until *both*
-   `src/core/genome.ts` and `src/assets/dragon/builder.ts` exist, and then exits 1 "NOT
-   IMPLEMENTED". M2b ships only the genome, and the builder is M3. M2b should make
-   `gate:parity` check the genome level now (phenotype, breed and mutate outputs on 32 fixed
-   genomes) and leave the mesh comparison to M3c, as a gate change in its own commit
-   (CLAUDE.md §2.7). `docs/fixtures/genomes.json`, which the gate's message names, does not
-   exist yet.
-
-Also note that `breed()` consumes the Rng in a fixed order (`r.chance` per allele, then
-mutation, then element). The fixture's interleaved-call test from M2a is what catches a
-port that draws in a different order.
+- **The reference skins with Blender's Skin modifier + Subsurf** (`Graph.build`). TypeScript
+  cannot reproduce that vertex for vertex. What *can* match exactly is the **graph**:
+  `skeleton(p)` and `add_limbs`, which are pure math producing node positions, radii and
+  edges from the phenotype. Port that exactly and prove it the M2 way: a Python script
+  writes the graph for the 32 fixed genomes, and a TS test compares it. Then skin it in TS
+  with your own sweep and tessellation.
+- **Owner question to raise at M3d, not now:** CLAUDE.md §1.5 has `gate:parity` compare
+  *vertex count* between the builders. With Blender's Skin+Subsurf on one side, that is
+  probably unachievable by construction. Graph equality plus bounding box within tolerance
+  is the reachable form. Record the evidence in `STATE.md` when you get there, and ask
+  rather than editing the contract.
+- `gate:parity`'s mesh half SKIPs while `builder.ts` exists and M3c is not `DONE`
+  (`2a1e96f`), so creating the builder at M3a does not turn the gates red.
+- Budget: a bred dragon must mesh in < 120 ms (CLAUDE.md §2.3, M3c). Keep the builder
+  allocation-light from the start. Heap is at ~33 kB of 40 kB per frame (perf P4).
+- `src/assets/` may import `core` and `three` (`docs/ARCHITECTURE.md`).
 
 ## Open items that need the owner, not a run
 

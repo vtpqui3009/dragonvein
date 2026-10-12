@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 10 · M2b — the genome in TypeScript, identical to the reference
+## 2026-10-12 · run 10 · M2b DONE (M2 DONE) — the genome in TypeScript, identical to the reference
 
 **Step**: `M2b`, the first step in reading order that is not `DONE`. Step 0 pushed `6f5a9e4`.
 
@@ -46,6 +46,27 @@ the port reproduces it exactly. No owner question is needed.
 | AC4 | `gate:parity` checks the genome level now and passes. The mesh half stays an explicit SKIP naming M3c until `src/assets/dragon/builder.ts` exists. This is a gate change in its own commit (§2.7). | `npm run gate:parity` |
 | AC5 | `npm run gates` exits 0. | `npm run gates` |
 | AC6 | Critics score on a frozen tree. The genome is not yet wired into the game. | `FINDINGS.md` |
+
+### Result
+
+- `89f0a33`: `docs/fixtures/genomes.json` holds 32 genomes (14 wild, generations 1–4, 5 fusions),
+  plus edge vectors and 3 hand-set tie genomes. Byte-identical across runs, with `genome.py`
+  pinned (AC2).
+- `0d99bd3`: `src/core/genome.ts`, `py.ts` (Python arithmetic) and `sha1.ts`, with
+  `tests/genome.test.ts` at 108 exact-equality cases (AC1, AC3). Seen failing two ways. JS
+  `%` fails circ_mean and genomes #21 and #25. **`Math.round` passed all 32 random genomes**:
+  random blends never land on exactly .5. The hand-set tie genomes were added for this and
+  now catch it.
+- `156321e`: `gate:parity` checks the genome level (exit 0 real, exit 1 with the round bug),
+  and the mesh half is a named SKIP (AC4). `2a1e96f`, after the round: the mesh comparison
+  becomes required when ROADMAP marks M3c DONE, not when `builder.ts` first exists at M3a,
+  which would have turned three steps' gates red.
+- `npm run gates` exits 0 with 191 tests (AC5). Scores at `156321e`: **art 8.2 · perf 9.0 ·
+  gameplay 9.2**, no blocking defect (AC6).
+
+**M2b is `DONE`, and milestone M2 is `DONE`**: both steps are done, all three critics are
+≥ 8.0, and the running build is the one the owner saw. The next step is **M3a**. NEXT.md
+flags the M3d owner question: Blender's Skin+Subsurf cannot be matched vertex for vertex.
 
 ---
 
@@ -107,54 +128,6 @@ Still open, and named so it is not mistaken for done: a verification-grade real-
 risk for every step that adds a draw call.
 
 **Next step: M2a.**
-
----
-
-## 2026-10-12 · run 8 · M1b DONE — the asset pipeline runs in CI (M1 IN_PROGRESS on perf)
-
-**Step**: `M1b`, the first step in reading order that is not `DONE`. Step 0 pushed
-`4851904`.
-
-**Ownership**: `.github/workflows/` and `tools/` belong to `integrator`; the `--check`
-mode in `assetgen/build_all.py` belongs to `asset-builder`. That is two owners, so they run
-sequentially: the builder change first, then the workflow that calls it.
-
-**Baseline**: `.github/workflows/assets.yml` exists and is green (runs 4–6 on `b0177f3`,
-`7e2d2dd`, `2adc4f1`), but it runs only the old `render_proof.py`. It does not build, does
-not verify bytes, does not render the variant sheet, and does not probe. It also does not
-trigger on `public/assets/**`, so a hand-edited binary would never reach it. `bpy` is
-unpinned.
-
-### Acceptance criteria
-
-| # | criterion | instrument |
-|---|---|---|
-| AC1 | `python3 -I assetgen/build_all.py --check` rebuilds every asset into a temp dir and compares each committed binary under `public/assets/` with the fresh build *and* with its MANIFEST hash. It exits 1 naming both hashes on any drift. Shown failing on a tampered copy and passing on the real tree. | command output |
-| AC2 | `bpy` is pinned (`assetgen/requirements.txt`), so CI builds with the same Blender that made the committed hashes. | file |
-| AC3 | `assets.yml` triggers on `assetgen/**`, `public/assets/**`, the asset tools and itself, plus `workflow_dispatch`. In order it runs: `build_all.py --verify` (same-machine reproducibility), `--check` (cross-machine: the runner reproduces the committed bytes), `assets:render`, `variant-probe` for every MANIFEST asset, and `check:assets`. It uploads `artifacts/variants/` and `artifacts/turntables/`. | workflow file |
-| AC4 | A real run of that workflow on GitHub, at the pushed commit, concludes **success**, and its artefact list holds the variant sheet and turntable. The run id is recorded here. If the runner builds different bytes, that is a §1.2 finding to record, not to hide. | GitHub Actions API |
-| AC5 | `npm run gates` exits 0. | `npm run gates` |
-| AC6 | Critics score on a frozen tree. Nothing visual changes in this step; the scores are recorded as they come. | `FINDINGS.md` |
-
-
-### Result
-
-- `d34bb94`: `build_all.py --check` passes on the real tree. On a copy with one byte of lod1
-  flipped it fails, printing the committed, fresh and MANIFEST hashes (AC1).
-  `assetgen/requirements.txt` pins `bpy==5.2.2` (AC2).
-- `f7e5597`: `assets.yml` now runs, in order, `--verify`, `--check`, `check:assets`,
-  `render_all`, `variant-probe` per MANIFEST asset, and the dragon proofs. It triggers on
-  `public/assets/**` as well (AC3).
-- **Actions run `38216089403` (job `114701047119`) succeeded at `f7e5597`** (AC4). The Ubuntu
-  runner built `a2495328…`, `8252b2c8…` and `8c6dcee6…`: identical to the committed bytes and
-  MANIFEST, so §1.2 is proven across two machines. The sheet rendered in 39 s and the
-  36-frame turntable in 115 s. The probe passed. Artifact `asset-renders` (id 11732548099)
-  holds 6 files.
-- `npm run gates` exits 0 (AC5): cpu p95 1.7 ms, heap 33 282 B/frame, code bundle 145.89 kB.
-- Scores at `f7e5597` (AC6): **art 8.7 · perf 7.4 · gameplay 8.7**, no blocking defect.
-
-**M1b is `DONE`.** Every M1 step is now `DONE`. **M1 stays `IN_PROGRESS`**, held only by perf
-< 8.0, whose deductions are the owner's real-GPU row (§3.6). The next step is **M2a**.
 
 ---
 

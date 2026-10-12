@@ -84,13 +84,17 @@ most-alike pair 26.1% apart; art A4 1.5/1.6); (2) LOD0/1/2 = 3186/936/342 tris a
 | step | done when | status |
 |---|---|---|
 | M2a | `src/core/rng.ts` reproduces `assetgen/genome.py`'s stream exactly, proven on a fixed vector | DONE |
-| **M2b** | **`src/core/genome.ts` expresses, breeds and mutates identically; `gate:parity` green on 32 fixed genomes** | **TODO** |
+| M2b | `src/core/genome.ts` expresses, breeds and mutates identically; `gate:parity` green on 32 fixed genomes | DONE |
+
+**M2 the milestone is `DONE` — closed 2026-10-12** (CLAUDE.md §3.6): both steps are `DONE`, and
+the M2b pass scored art 8.2, perf 9.0, gameplay 9.2. The running build is the one the owner saw
+at `3ab6e84`; M2's code is not yet imported by the game, so nothing visible changed.
 
 ## M3 — Runtime dragon mesh
 
 | step | done when | status |
 |---|---|---|
-| M3a | skeleton, torso and limbs build from a genome into a `BufferGeometry` | TODO |
+| **M3a** | **skeleton, torso and limbs build from a genome into a `BufferGeometry`** | **TODO** |
 | M3b | wings, crown, membrane and tail ornament; the creature reads as the Python one | TODO |
 | M3c | built in a worker inside 120 ms on Medium; `gate:meshgen` green | TODO |
 | M3d | `gate:parity` green between the two builders on the fixed genome set | TODO |

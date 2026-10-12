@@ -6,6 +6,34 @@ docs/archive/FINDINGS-*.md` still gives the full score history.
 
 ---
 
+# M0 + M1 milestone pass — perf re-scored on new evidence, 2026-10-12, at `634c4d7`
+
+Only the perf-critic re-scored. The artefact it penalised most changed: the owner added a
+current-commit real-hardware **sighting** (STATE.md log, `3ab6e84`, FPS 60, DRAWS 27). That
+is new evidence, not a re-roll of an unchanged tree. No runtime file changed since the M1b
+round, so its art 8.7 and gameplay 8.7 stand.
+
+## perf-critic — 8.4 (6.9 of 8.2; P3 n/a), previous 7.4
+
+P1 2.2 · P2 1.8 · P4 1.1 · P5 1.2 · P6 0.6.
+
+- [major] P1/P6: no verification-grade real-GPU row and no real-hardware Potato measurement.
+  Repro: `npm run gate:perf -- --real-gpu` on a GPU machine, also `?tier=potato`.
+  Not blocking before M16.
+- [major] P4: `heap.uncorrectedBytesPerFrame 40 365` (98.5% of 40 960), `bytesPerFrame
+  33 825` (82.6%) at 27 draws. Every new draw call spends this margin, so instance or merge;
+  never raise 40 960.
+- [minor] P1: the sighting has no GPU model and its viewport was ~1919×943, not 1080p.
+- [minor] P1: the SwiftShader GPU term is not comparable across runs. Only `cpuFrameMs` is a
+  stable regression instrument here.
+- [minor] docs drift: the STATE.md log intro quotes ~135 ms at 20 draws, and PERF_BUDGET.md
+  §Potato quotes 14 draws / 24 960 tris (now 19 / 35 048). Both are figures from earlier scenes.
+- [minor] P3 goes live at M3c, where `gate:meshgen` stops skipping.
+
+SCORE_MACHINE: 8.4
+
+---
+
 # M1b — run 8, 2026-10-12 — cycle 1, at `f7e5597`
 
 **Scores: art-critic 8.7 · perf-critic 7.4 · gameplay-critic 8.7.** No blocking defect. The

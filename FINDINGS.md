@@ -5,6 +5,56 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M2b — run 10, 2026-10-12 — cycle 1, at `156321e`
+
+**Scores: art-critic 8.2 · perf-critic 9.0 · gameplay-critic 9.2.** No blocking defect. The step
+is pure logic; the genome is not imported by the game yet.
+
+## perf-critic — 9.0 (7.4 of 8.2; P3 n/a)
+
+P1 2.3 · P2 1.8 · P4 1.3 · P5 1.2 · P6 0.8.
+
+- [minor] P1: no real-GPU percentile. Both log rows are sightings.
+  Repro: `npm run gate:perf -- --real-gpu`.
+- [minor] P6: no real-hardware Potato evidence.
+- [minor] P4: `heap.bytesPerFrame 32 953` is 80% of 40 960. New draw calls will trip it
+  before P2 does.
+- [minor] `cpuFrameMs.p95 1.5`, `max 7.4` is a little above the documented capped range. It
+  is within budget; re-run to confirm it is noise.
+- [minor] forward: P3 and `gate:meshgen` become scoreable at M3c.
+
+SCORE_MACHINE: 9.0
+
+## art-critic — 8.2 (all nine lines)
+
+A1 1.0 · A2 0.9 · A3 0.9 · A4 1.4 · A5 1.1 · A6 0.9 · A7 0.9 · A8 0.8 · A9 0.35.
+
+- [major] A6 `01-wide.png`, `03-late.png`: no creature, no dragon, no ambient life, so the frame
+  has no focal subject.
+- [major] A3 `01-wide.png` hero deck: trees cast no readable shadow on the island top.
+- [minor] A4 `variants/broadleaf.png`: one species idiom, and canopy hue is fixed across seeds.
+- [minor] A5: the branch stub on seed 5, and the pale wedge on seed 7's trunk base.
+- [minor] A5 `turntables/broadleaf.webm`: a pale smear on the stage floor under the trunk.
+- [minor] A6: the satellite islands are sparse, with flat black undersides.
+- [minor] A9: a saturated sky against the concept's soft peach-lavender.
+- [minor] A7 `06-hud-360.png`: the HUD panel covers the top island at 360 px.
+
+SCORE_MACHINE: 8.2
+
+## gameplay-critic — 9.2 (4.8 of 5.2; G2, G4, G5 n/a)
+
+G1 2.0 · G3 1.3 · G6 1.5.
+
+- [minor] G1/G3: `playtest.log` has no genome line. Breeding is not exercised in a running page
+  (expected before M9).
+- [minor] G3: input-to-frame latency is not measured.
+- [minor] SwiftShader FPS (3–6) is visible in the shots. That is perf territory.
+- [note] at M9b, G2 needs a render-level check that a child resembles its parents.
+
+SCORE_MACHINE: 9.2
+
+---
+
 # M2a — run 9, 2026-10-12 — cycle 1, at `7500613`
 
 **Scores: art-critic 8.6 · perf-critic 8.5 · gameplay-critic 9.4.** No blocking defect. The step
@@ -52,34 +102,6 @@ G1 2.2 · G3 1.2 · G6 1.5.
   can test the hook.
 
 SCORE_MACHINE: 9.4
-
----
-
-# M0 + M1 milestone pass — perf re-scored on new evidence, 2026-10-12, at `634c4d7`
-
-Only the perf-critic re-scored. The artefact it penalised most changed: the owner added a
-current-commit real-hardware **sighting** (STATE.md log, `3ab6e84`, FPS 60, DRAWS 27). That
-is new evidence, not a re-roll of an unchanged tree. No runtime file changed since the M1b
-round, so its art 8.7 and gameplay 8.7 stand.
-
-## perf-critic — 8.4 (6.9 of 8.2; P3 n/a), previous 7.4
-
-P1 2.2 · P2 1.8 · P4 1.1 · P5 1.2 · P6 0.6.
-
-- [major] P1/P6: no verification-grade real-GPU row and no real-hardware Potato measurement.
-  Repro: `npm run gate:perf -- --real-gpu` on a GPU machine, also `?tier=potato`.
-  Not blocking before M16.
-- [major] P4: `heap.uncorrectedBytesPerFrame 40 365` (98.5% of 40 960), `bytesPerFrame
-  33 825` (82.6%) at 27 draws. Every new draw call spends this margin, so instance or merge;
-  never raise 40 960.
-- [minor] P1: the sighting has no GPU model and its viewport was ~1919×943, not 1080p.
-- [minor] P1: the SwiftShader GPU term is not comparable across runs. Only `cpuFrameMs` is a
-  stable regression instrument here.
-- [minor] docs drift: the STATE.md log intro quotes ~135 ms at 20 draws, and PERF_BUDGET.md
-  §Potato quotes 14 draws / 24 960 tris (now 19 / 35 048). Both are figures from earlier scenes.
-- [minor] P3 goes live at M3c, where `gate:meshgen` stops skipping.
-
-SCORE_MACHINE: 8.4
 
 ---
 
