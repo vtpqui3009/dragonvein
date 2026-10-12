@@ -20,17 +20,17 @@
         "lod0": {
           "file": "flora/broadleaf.lod0.glb",
           "tris": 3186,
-          "sha256": "99f20666850f26f90b32e7b995da529be460e4a25b25e638b26b168cea5fa43a"
+          "sha256": "a24953283f2bdbf1dc09f0656207b65bfff5565207cbde4b57b83937279f64b2"
         },
         "lod1": {
           "file": "flora/broadleaf.lod1.glb",
           "tris": 936,
-          "sha256": "b4f351e0c47babfd955f2b1af7328f5b6bc0dbc84fb7be9e0b12df94fdf056c1"
+          "sha256": "8252b2c88e84b7a6567bfae67d755ed9bfbadf5d5cb4ad15892031a4cda0d4f1"
         },
         "lod2": {
           "file": "flora/broadleaf.lod2.glb",
           "tris": 342,
-          "sha256": "91e0db385f72b2493e93cdc24f36ff952c7fa1d97a0f183f1f9e2940c07b66c5"
+          "sha256": "8c6dcee6cc2839ff7557a10f24b86f4717c307d6ab96532ab50cad27cb52786b"
         }
       }
     }

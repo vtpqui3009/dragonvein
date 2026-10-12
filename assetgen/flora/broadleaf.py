@@ -649,11 +649,15 @@ def _lobe(mesh, lb, seg, rings, zrange, tone, lump_scale=1.0):
         t = (s + 1) % seg
         mesh.face((top, loops[0][s], loops[0][t]))
         mesh.face((bot, loops[-1][t], loops[-1][s]))
+    # Winding must agree with the caps above (counter-clockwise seen from outside):
+    # ring `a` is above ring `b`, so outward is a[s] -> b[s] -> b[t] -> a[t]. The other
+    # order put every side quad's normal inward while the caps pointed out — half of each
+    # lobe was back-facing, three.js culled it, and the crown showed its interior.
     for j in range(len(loops) - 1):
         a, b = loops[j], loops[j + 1]
         for s in range(seg):
             t = (s + 1) % seg
-            mesh.face((a[s], a[t], b[t], b[s]))
+            mesh.face((a[s], b[s], b[t], a[t]))
 
 
 def _branch(mesh, br, rings, sides, trunk_len):
