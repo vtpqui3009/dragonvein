@@ -88,7 +88,10 @@ rim.position.set(6, 10, -22);
 // bounce from below. Without the bounce the far legs went near black (run 11, critic A3).
 const bounce = new THREE.DirectionalLight(0x9db9f2, 2.5);
 bounce.position.set(8, -8.5, -6.5);
-scene.add(fill, rim, bounce, new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 0.86));
+// The hemisphere is the game's colours at 1.25 rather than its 0.86. In the studio there is
+// no island or sky to bounce light, and at 0.86 the flanks under a folded wing and the far
+// legs crushed to near black, below the bible's value floor (run 12, art A3/A2).
+scene.add(fill, rim, bounce, new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 1.25));
 
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(400, 400),
@@ -98,7 +101,15 @@ ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
 scene.add(ground);
 
-const material = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0 });
+// One material per geometry group (src/assets/dragon/builder.ts MATERIAL_OF), with the
+// reference's roughness (builder.py `mats`): scale 0.38, membrane 0.50, horn 0.30. Under
+// three.js's lights 0.50 still put a glassy streak on the flat membranes, so the membrane
+// sits at 0.85 to read matte, as the reference's Cycles render does.
+const materials = [
+  new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0 }),
+  new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 }),
+  new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0, flatShading: true }),
+];
 
 interface Placed { mesh: THREE.Mesh; label: HTMLDivElement; anchor: THREE.Vector3 }
 const placed: Placed[] = [];
@@ -110,7 +121,7 @@ shown.forEach((gi, k) => {
   const gm = genomes[gi]!;
   const body = buildDragon(gm);
   tris += body.geometry.getIndex()!.count / 3;
-  const mesh = new THREE.Mesh(body.geometry, material);
+  const mesh = new THREE.Mesh(body.geometry, materials);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   // Centre each dragon on its graph's x extent (Blender x is three.js x), the same rule
@@ -194,22 +205,42 @@ window.__dragonView = {
 // Drag to turn the dragons (mouse or touch), so a person can inspect them by hand.
 let yaw = turn ? 0 : -0.55;
 let dragX: number | null = null;
+// Two pointers down is a pinch: it zooms, and the yaw drag waits until one lifts.
+const pointers = new Map<number, number>(); // pointerId -> clientX
+let pinchSpan: number | null = null;
+const span = () => { const xs = [...pointers.values()]; return Math.abs(xs[0]! - xs[1]!); };
 renderer.domElement.style.touchAction = 'none';
 renderer.domElement.addEventListener('pointerdown', (e) => {
-  dragX = e.clientX;
+  pointers.set(e.pointerId, e.clientX);
   renderer.domElement.setPointerCapture(e.pointerId);
+  if (pointers.size === 2) { pinchSpan = span(); dragX = null; } else dragX = e.clientX;
 });
 renderer.domElement.addEventListener('pointermove', (e) => {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.set(e.pointerId, e.clientX);
+  if (pointers.size === 2 && pinchSpan !== null) {
+    const now = span();
+    if (now > 1 && pinchSpan > 1) zoomBy(pinchSpan / now);
+    pinchSpan = now;
+    return;
+  }
   if (dragX === null) return;
   yaw += (e.clientX - dragX) * 0.01;
   dragX = e.clientX;
   window.__dragonView!.setYaw(yaw);
 });
-const endDrag = () => { dragX = null; };
+const endDrag = (e: PointerEvent) => {
+  pointers.delete(e.pointerId);
+  pinchSpan = null;
+  dragX = pointers.size === 1 ? [...pointers.values()][0]! : null;
+};
 // Wheel (and trackpad pinch, which browsers send as a ctrl+wheel) dollies the camera.
 renderer.domElement.addEventListener('wheel', (e) => {
   e.preventDefault();
-  const k = Math.min(Math.max(1 + e.deltaY * 0.001, 0.8), 1.25);
+  zoomBy(Math.min(Math.max(1 + e.deltaY * 0.001, 0.8), 1.25));
+}, { passive: false });
+/** k > 1 moves out, k < 1 moves in. */
+function zoomBy(k: number): void {
   if (camera instanceof THREE.OrthographicCamera) {
     camera.zoom = Math.min(Math.max(camera.zoom / k, 0.5), 8);
     camera.updateProjectionMatrix();
@@ -219,7 +250,7 @@ renderer.domElement.addEventListener('wheel', (e) => {
     if (d > 2 && d < 90) camera.position.copy(target).add(off);
   }
   frame();
-}, { passive: false });
+}
 renderer.domElement.addEventListener('pointerup', endDrag);
 renderer.domElement.addEventListener('pointercancel', endDrag);
 
