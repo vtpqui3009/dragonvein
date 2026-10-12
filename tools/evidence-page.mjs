@@ -6,7 +6,8 @@
  * It answers three questions, in this order:
  *   1. What does the run need from me?   (`NEXT.md` §Open items that need the owner)
  *   2. Did it pass?                      (newest round in `FINDINGS.md`, gates, perf.json)
- *   3. What does it look like?           (every shot in `artifacts/shots/`, the turntable)
+ *   3. What does it look like?           (asset variant sheets and turntables, then every
+ *                                         in-game shot in `artifacts/shots/`)
  *
  * It is a reader, like `tools/art-probe.mjs`: it gates nothing and changes no score. It
  * only copies what the artefacts and the two handoff files already say. Run it after the
@@ -24,7 +25,8 @@ import path from 'node:path';
 const OUT_DIR = 'artifacts/evidence';
 const OUT = `${OUT_DIR}/run-evidence.html`;
 const SHOTS = 'artifacts/shots';
-const TURNTABLE = 'artifacts/turntables/m0-island.webm';
+const VARIANTS = 'artifacts/variants';
+const TURNTABLES = 'artifacts/turntables';
 const SHIP_BAR = 8.0;
 const BAR = SHIP_BAR.toFixed(1);
 /** The Artifact page limit is 16 MB; stay well clear of it. */
@@ -122,6 +124,10 @@ for (const m of log.matchAll(/^shot: \S*\/([\w.-]+\.png)\s*(?:\((.*)\))?$/gm)) {
   captions.set(m[1], m[2] ?? '');
 }
 const shots = existsSync(SHOTS) ? readdirSync(SHOTS).filter((f) => f.endsWith('.png')).sort() : [];
+/** One sheet per generator (rubric A4), and every turntable: the island's and each asset's. */
+const sheets = existsSync(VARIANTS) ? readdirSync(VARIANTS).filter((f) => f.endsWith('.png')).sort() : [];
+const turntables = existsSync(TURNTABLES)
+  ? readdirSync(TURNTABLES).filter((f) => f.endsWith('.webm')).sort() : [];
 const dataUri = (p, type) => `data:${type};base64,${readFileSync(p).toString('base64')}`;
 
 const sha = git('rev-parse', '--short', 'HEAD');
@@ -265,10 +271,16 @@ figcaption b { font: 600 12px var(--mono); color: var(--ink); }
 
   <section aria-labelledby="look-h">
     <h2 id="look-h">What it looks like</h2>
-    ${existsSync(TURNTABLE) ? `<figure>
-      <video controls muted loop playsinline preload="metadata" src="${dataUri(TURNTABLE, 'video/webm')}"></video>
-      <figcaption><b>${esc(path.basename(TURNTABLE))}</b> the island turning, about 7 s from the first drawn frame</figcaption>
-    </figure>` : ''}
+    ${sheets.map((f) => `<figure>
+      <img alt="${esc(f)} variant sheet" src="${dataUri(path.join(VARIANTS, f), 'image/png')}">
+      <figcaption><b>${esc(f)}</b> 8-seed variant sheet, LOD0 (rubric A4: eight seeds must read as eight objects)</figcaption>
+    </figure>`).join('')}
+    <div class="shots">${turntables.map((f) => `
+      <figure>
+        <video controls muted loop playsinline preload="metadata" src="${dataUri(path.join(TURNTABLES, f), 'video/webm')}"></video>
+        <figcaption><b>${esc(f)}</b> ${f.startsWith('m0-island') ? 'the island turning in the game, about 7 s' : 'asset turntable, LOD0, one full revolution'}</figcaption>
+      </figure>`).join('')}
+    </div>
     <div class="shots">${shots.map((f) => `
       <figure>
         <img loading="lazy" alt="${esc(f)}" src="${dataUri(path.join(SHOTS, f), 'image/png')}">
@@ -290,4 +302,5 @@ if (Buffer.byteLength(html) > MAX_BYTES) {
 mkdirSync(OUT_DIR, { recursive: true });
 writeFileSync(OUT, html);
 console.log(`evidence: ${OUT} (${(Buffer.byteLength(html) / 1048576).toFixed(1)} MB, ` +
-  `${critics.length} critics, ${shots.length} shots, ${asks.length} asks)`);
+  `${critics.length} critics, ${sheets.length} sheets, ${turntables.length} turntables, ${shots.length} shots, ` +
+  `${asks.length} asks)`);
