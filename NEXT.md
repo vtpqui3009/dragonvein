@@ -29,7 +29,9 @@ about 70 ms and runs before any hatch (`DragonMesher.ready()`). **Milestone M3 i
 
 ## The single next action
 
-M3d needs an owner answer first (see below). Then write `gate:parity`'s mesh half.
+The owner answered the vertex-count question: drop it. CLAUDE.md §1.5 now compares the graph
+exactly, plus bounding box and limb anchors within tolerance (STATE.md decision entry). Write
+`gate:parity`'s mesh half on that wording.
 `tools/gate-parity.mjs` SKIPs it now, and FAILS if ROADMAP marks M3d `DONE` without it (`a0dbec0`).
 
 - **What can be compared.** The graphs are already equal, exactly
@@ -37,9 +39,8 @@ M3d needs an owner answer first (see below). Then write `gate:parity`'s mesh hal
   match within 1e-5 (`tests/dragon-full.test.ts`). The bounding box and limb anchors are
   reachable: the reference's evaluated mesh against `buildDragonArrays`. The fixture
   writer is `assetgen/dragon_vectors.py`, which already runs Blender per genome.
-- **What cannot be compared.** A vertex count. The reference skins with Skin + Subsurf
-  (about 20 000 vertices); the TS sweep has about 5 000. They cannot agree by construction.
-  Do not edit CLAUDE.md §1.5. Bring the numbers and ask, unless the owner has answered.
+- **Vertex counts are not compared** (owner decision, 2026-10-12): Skin + Subsurf gives about
+  20 000 vertices, the TS sweep about 5 000.
 - The reference's Skin modifier also leaves about 30 loose vertices per body (`STATE.md`
   run 12). Count bounding boxes on faces, not on all vertices.
 
@@ -49,11 +50,6 @@ M3d needs an owner answer first (see below). Then write `gate:parity`'s mesh hal
   and horns read, but critics keep noting a long, low body against
   `docs/ART_BIBLE.md`'s "chunky, front-heavy, head about 1/5". Only a change to
   `assetgen/dragon/builder.py` can move it. Should the reference be re-proportioned?
-- **M3d is blocked on this:** CLAUDE.md §1.5 has `gate:parity` compare *vertex count* between
-  the builders. Blender's Skin + Subsurf (about 20 000 vertices) and the TS sweep (about
-  5 000) cannot agree by construction. The reachable form is graph equality (proven) plus
-  bounding box and limb anchors within tolerance. May §1.5's vertex-count clause be read as
-  that, or replaced by it?
 - A verification-grade real-GPU row, when convenient (M16 requires it). Run
   `npm run gate:perf -- --real-gpu` on a GPU machine at 1920×1080, and once with
   `?tier=potato`. Also open `dragon.html` on the deployed site and say whether the dragons look

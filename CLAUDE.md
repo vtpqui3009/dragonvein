@@ -42,8 +42,11 @@ hide behind "procedural" and ship untextured primitives.
    An asset no human or critic has seen rendered is not done.
 5. **Two generators, one truth.** The Python dragon builder (`assetgen/dragon/`) and the
    TypeScript one (`src/assets/dragon/`) must produce the same creature from the same
-   genome. `npm run gate:parity` builds a fixed genome set in both and fails if bounding
-   box, vertex count, or limb-anchor positions differ beyond tolerance. The genome spec in
+   genome. `npm run gate:parity` builds a fixed genome set in both and fails if their skin
+   graphs differ (node positions, radii and edges, exactly), or if bounding box or
+   limb-anchor positions differ beyond tolerance. Vertex counts are not compared: the
+   reference skins with Blender's Skin + Subsurf and the runtime with its own sweep, so the
+   counts differ by construction (owner decision, 2026-10-12, STATE.md). The genome spec in
    `docs/GENOME.md` is the arbiter; when the two disagree, the spec decides which is wrong.
 
 ## 2. Non-negotiable rules

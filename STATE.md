@@ -13,6 +13,27 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · decision · CLAUDE.md §1.5: parity compares the graph, not vertex counts
+
+**Asked and answered in session, by the owner.** §1.5 had `gate:parity` fail "if bounding box,
+vertex count, or limb-anchor positions differ beyond tolerance". The two builders cannot
+agree on vertex count:
+- the reference skins its graph with Blender's Skin modifier and Subsurf, about 20 000
+  vertices per body;
+- the runtime sweeps tubes, about 5 000 per body.
+
+They are different tessellations of the same graph by design (STATE.md run 11), and no
+tolerance makes the count meaningful. Asked with three options (drop the count; keep it
+with a loose tolerance; rewrite the TS skin to imitate Blender's), **the owner chose to drop
+it.**
+
+§1.5 now reads: parity fails if the skin graphs differ (positions, radii, edges, exactly),
+or if bounding box or limb-anchor positions differ beyond tolerance. The graph half already
+holds (`tests/dragon-graph.test.ts`, under the named 1-ulp `pow` exception). M3d writes
+the gate on that wording.
+
+---
+
 ## 2026-10-12 · run 13 · M3c DONE (M3 IN_PROGRESS) — the dragon builds in a worker inside 120 ms on Medium
 
 **Step**: `M3c`, the first step in reading order that is not `DONE`. Step 0 pushed `caebd19`.
