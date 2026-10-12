@@ -46,6 +46,48 @@
         }
       }
     },
+    "terrain/arch": {
+      "script": "assetgen/terrain/arch.py",
+      "family": "terrain",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "dusk": "#844e32",
+        "rockMid": "#5a4a40",
+        "deepShadow": "#1a1420"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "dusk",
+            "rockMid",
+            "deepShadow"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "terrain/arch.lod0.glb",
+          "tris": 940,
+          "sha256": "8b14e7a4bd2fd1f70e47d64fe442fd783fcd6ce1d8257e6ca1974b801bfe89a9"
+        },
+        "lod1": {
+          "file": "terrain/arch.lod1.glb",
+          "tris": 292,
+          "sha256": "93847360c79f4f55b7f9e855229ab283687342c9a8c5f999629d36ea4198a33c"
+        },
+        "lod2": {
+          "file": "terrain/arch.lod2.glb",
+          "tris": 140,
+          "sha256": "7dca9502745ecd1d0555399ca2df5fad6a918b702da5dc56fe5dacee8569553e"
+        }
+      }
+    },
     "terrain/boulders": {
       "script": "assetgen/terrain/boulders.py",
       "family": "terrain",
@@ -169,6 +211,59 @@
           "file": "terrain/eroded.lod2.glb",
           "tris": 72,
           "sha256": "b9c7bd9070ea65f02a9920b1baad6c351e1374401fdb2baa4a8ca1c0e25831cc"
+        }
+      }
+    },
+    "terrain/floatshard": {
+      "script": "assetgen/terrain/floatshard.py",
+      "family": "terrain",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "grassDark": "#1e4a21",
+        "grassMid": "#3f8a33",
+        "grassLight": "#8fd24a",
+        "rockMid": "#5a4a40",
+        "dusk": "#844e32",
+        "deepShadow": "#1a1420"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "grassDark",
+            "grassMid",
+            "grassLight"
+          ],
+          [
+            "dusk",
+            "rockMid",
+            "deepShadow"
+          ]
+        ],
+        "optional": [
+          "grassDark\u2192grassMid\u2192grassLight"
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "terrain/floatshard.lod0.glb",
+          "tris": 738,
+          "sha256": "9f34738942ba9fa6b69f11faa7ee4187e3aa49f56ea1fb97fc54f37d21d6dc38"
+        },
+        "lod1": {
+          "file": "terrain/floatshard.lod1.glb",
+          "tris": 250,
+          "sha256": "cdc0e3b0b2da3a76f8b2030a5f4e2b1472e27bd71b08d16c6eadab94c14d44da"
+        },
+        "lod2": {
+          "file": "terrain/floatshard.lod2.glb",
+          "tris": 90,
+          "sha256": "643cd658e9af34cc89475cf970962463429c4e857a028376b293ef7c460e6d4a"
         }
       }
     },

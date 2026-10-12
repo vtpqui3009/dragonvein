@@ -41,6 +41,8 @@ GENERATORS = [
     {"module": "terrain.boulders", "lods": (0, 1, 2)},
     {"module": "terrain.shard", "lods": (0, 1, 2)},
     {"module": "terrain.eroded", "lods": (0, 1, 2)},
+    {"module": "terrain.arch", "lods": (0, 1, 2)},
+    {"module": "terrain.floatshard", "lods": (0, 1, 2)},
 ]
 
 LODS_DEFAULT = (0, 1, 2)
