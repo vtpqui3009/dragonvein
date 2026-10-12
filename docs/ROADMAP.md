@@ -179,11 +179,19 @@ sheets on the evidence page is what closes it (NEXT.md).
 
 | step | done when | status |
 |---|---|---|
-| **M5a** | **wind vertex shader, proven on one tree at 200+ instances inside budget** | **TODO** |
-| M5b | 3 canopy tree generators with passing variant sheets | TODO |
+| M5a | wind vertex shader, proven on one tree at 200+ instances inside budget | DONE |
+| **M5b** | **3 canopy tree generators with passing variant sheets** | **TODO** |
 | M5c | 2 more trees, and saplings | TODO |
 | M5d | 4 understory generators — bushes, ferns, reeds, grass clumps | TODO |
 | M5e | 4 more understory plus ground cover, dressed into the island | TODO |
+
+M5a closed on 2026-10-12 at `e377e1d` (run 19) on its first pass: art 8.4, perf 8.4,
+gameplay 9.2. `src/render/wind.ts` sways 220 instances of the committed `flora/broadleaf` in
+the game scene, which is where `gate:perf` measures it:
+- draws 28 and triangles 174 012, against 180 and 900 000;
+- heap within budget;
+- `cpuFrameMs.p95` 1.9 against 3.5;
+- the smoke run's two wind shots differ by 9 002 pixels, 86.8 % of them on foliage.
 
 ## M6 — Look dev
 

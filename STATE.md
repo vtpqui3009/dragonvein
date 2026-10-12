@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 19 · M5a — wind vertex shader on 200+ instanced trees
+## 2026-10-12 · run 19 · M5a DONE — wind vertex shader on 220 instanced trees
 
 **Step**: `M5a`, the first step in reading order that is not `DONE`. Step 0 pushed `743d96a`.
 
@@ -69,6 +69,58 @@ This is also the first runtime use of an `assetgen/` asset.
    satellites drifting in a turntable whose camera moves anyway, so it cannot isolate sway.
    Its baseline is 5.66 × 3.07 px.
 5. `npm run gates` exits 0.
+
+---
+
+### Result — M5a DONE (M5 IN_PROGRESS)
+
+All five criteria hold at `e377e1d`. The integrator did the work as one sequential owner.
+
+1. **`src/render/wind.ts`.**
+   - `withWind` composes with `withRim`, under the cache key
+     `dragonvein-rim-v4|dragonvein-wind-v1`.
+   - The sway is quadratic in height and bounded at amp·√0.68.
+   - Its phase comes from `instanceMatrix[3].xz`.
+   - Its direction is a world direction carried into each parent space.
+   - `setWindTime` does one number write per frame.
+   - `tests/wind.test.ts` has 7 tests.
+   - `check:layers` gained the `src/render` rule that ARCHITECTURE §Ownership already
+     stated. That adds enforcement and loosens nothing.
+2. **220 instances** of `flora/broadleaf`:
+   - 8 at LOD0 replace the hand-built hero broadleaves;
+   - Rng-seeded groves on all 13 companions bob with their islands;
+   - the companion layouts keep their Rng stream, so the yaw, colour and dressing the
+     critics scored are unchanged;
+   - one `InstancedMesh` per LOD;
+   - only hero LOD0 casts shadows, with a wind-patched depth material.
+3. **Inside budget.**
+
+   | measure | before | after |
+   |---|---|---|
+   | draws | 27 | 28 |
+   | triangles | 42 268 | 174 012 |
+   | `heap.bytesPerFrame` | — | 33 834, within budget |
+   | `cpuFrameMs.p95` | — | 1.9, tail enforced |
+   | Potato draws | — | 20 |
+   | bundle (gzipped) | 165 036 | 193 792 (GLTFLoader, docs/DECISIONS.md) |
+
+4. **Seen moving.** `11-wind-a/b.png` differ by 9 002 pixels, 86.8 % of them on foliage
+   (`11-wind-diff.png`).
+5. `npm run gates` exits 0. It was run twice on the committed tree.
+
+**Scores (cycle 1):** art 8.4, perf 8.4, gameplay 9.2.
+
+**Open, carried to FINDINGS:**
+- the sway is subtle;
+- the trunks render near-black in game;
+- an orange rim fringe on the canopies;
+- the trees pop in after boot;
+- floating props on the companions predate this step.
+
+The perf critic raises a major: the real-GPU row is now stale for a scene with 4× the
+triangles. That is with the owner.
+
+**Blockers.** None for M5b. M3 and M4 wait on the owner (NEXT.md §Open items).
 
 ---
 
@@ -134,78 +186,6 @@ builder resumed from its own transcript and finished.
 
 **Blockers.** The M4 milestone needs the owner to see the sheets (NEXT.md §Open items). M3
 still needs the dragon sighting.
-
----
-
-## 2026-10-12 · run 17 · M4c DONE — shard and eroded rock generators
-
-**Step**: `M4c`, the first step in reading order that is not `DONE`. Step 0 pushed `a45d808`.
-
-**Split first.** M4c was written as four generators: shard, eroded, arches and floating
-shards. M4b's three took all of run 16, including a rework cycle, so the step was split
-(CLAUDE.md §4b.4; ROADMAP §How big a step may be):
-- M4c is the two remaining `docs/ASSET_PLAN.md` §C2 rocks, `terrain/shard` and
-  `terrain/eroded`;
-- M4d is the two §C3 landmarks, arch and floating shards.
-
-**Ownership**: `assetgen/terrain/` (asset-builder), sequential, on `rockkit.py`.
-
-### Acceptance criteria
-
-1. **`terrain/shard`** (angular crystalline rock spikes) and **`terrain/eroded`** (a
-   wind-carved rock with hollows and an undercut waist) each follow the M4b pattern:
-   - `plan(seed)` draws everything, and the main silhouette axis is stratified on the seed;
-   - flat-shaded facets (FINDINGS M4b: smooth blobs are out of style against concept 03);
-   - LOD0/1/2 strictly decreasing **on every seed 1–8**, within 4 000 / 1 200 / 300;
-   - 0 inward faces at every LOD on every seed;
-   - colours only on the ART_BIBLE rock ramp, based on rock mid, with dusk only on faces
-     that look at the sky.
-2. **Pipeline.** Both are registered.
-   - `assets:build --verify` is byte-identical.
-   - `--check` and `check:assets` are OK.
-3. **Seen.** `artifacts/variants/{shard,eroded}.png` and a turntable each.
-4. **Probed.** `node tools/variant-probe.mjs terrain/<name>` passes for both, and the five
-   existing generators still pass.
-5. `npm run gates` exits 0.
-6. Art per generator is ≥ 8.0 (ROADMAP §Definition of done for an asset milestone).
-
----
-
-### Result — M4c DONE (M4 IN_PROGRESS: M4d remains)
-
-All six criteria hold at `3a2287f`:
-
-1. Both generators meet the module criteria.
-   - Flat-shaded, on the rock ramp.
-   - LODs strictly decrease on every seed 1–8:
-     - shard: LOD0 638–1044, LOD2 98–132;
-     - eroded: LOD0 400–1080, LOD2 72–144.
-   - 0 inward faces, 0 open edges and positive shell volume at every seed and LOD.
-2. `--verify` reproduces 21 files byte-for-byte. `--check` and `check:assets` are OK. The 15
-   existing hashes are unchanged.
-3. The sheets and turntables are rendered.
-4. The probe passes for all seven generators. shard's most alike pair is 3/6 at 28.8 %,
-   eroded's is 4/7 at 26.0 %, and the worst ΔE is 0.19.
-5. `npm run gates` exits 0.
-6. Art per generator: shard 8.4, eroded 8.3.
-
-**Scores (cycle 1):**
-- art 8.3;
-- perf 8.5;
-- gameplay 9.0.
-
-The asset-builder wrote both generators in one sequential pass. `rockkit.py` gained the
-shared helpers (vertex normals, a rock tone from the normal, fractured stone). It now also
-imports `bpy` before `bmesh`, which makes each rock module's `__main__` runnable.
-
-**Open, carried to FINDINGS:**
-- the rocks are not placed (M5e);
-- eroded near-pairs;
-- shard reads as splinters;
-- sliver triangles on the caps;
-- LOD1 and LOD2 are never rendered.
-
-**Blockers.** None for M4d. M3 remains with the owner (NEXT.md §Open items).
 
 ---
 
