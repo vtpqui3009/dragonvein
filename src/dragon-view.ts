@@ -17,7 +17,7 @@
  */
 import * as THREE from 'three';
 import { breed, wild, type Element, type Genome } from './core/genome';
-import { buildDragonBody } from './assets/dragon/builder';
+import { buildDragon } from './assets/dragon/builder';
 
 /**
  * The sheet: six wild dragons, one per element, on seeds 1-6 taken in order (not picked),
@@ -37,6 +37,15 @@ const SHEET: Recipe[] = [
   { label: 'G', op: 'breed', a: 0, b: 1, seed: 7 },
   { label: 'H', op: 'breed', a: 6, b: 2, seed: 8 },
 ];
+/** Sheet layout and camera. assetgen/dragon_sheet.py repeats these numbers for Blender. */
+const SHEET_COLS = 4;
+const SHEET_COL_GAP = 9.5;
+const SHEET_ROW_GAP = 12;
+const SHEET_YAW = -0.55;
+const SHEET_ELEVATION_DEG = 32;
+const SHEET_ORTHO_WIDTH = 44;
+const SHEET_TARGET: [number, number, number] = [0, 1.2, 0];
+
 const genomes: Genome[] = [];
 for (const r of SHEET) genomes.push(r.op === 'wild' ? wild(r.seed, r.element) : breed(genomes[r.a]!, genomes[r.b]!, r.seed));
 
@@ -58,7 +67,7 @@ const scene = new THREE.Scene();
 // The ground fades into the backdrop instead of ending at a hard horizon line. The
 // backdrop is a fogged sphere, not `scene.background`: the background skips tone mapping
 // and fog does not, so the two greys met in a visible seam.
-scene.fog = new THREE.Fog(0x5d6063, 40, 95);
+scene.fog = new THREE.Fog(0x5d6063, turn ? 40 : 95, turn ? 95 : 140);
 scene.add(new THREE.Mesh(
   new THREE.SphereGeometry(150, 24, 12),
   new THREE.MeshBasicMaterial({ color: 0x5d6063, side: THREE.BackSide }),
@@ -97,24 +106,24 @@ const labels = document.getElementById('labels')!;
 let tris = 0;
 const t0 = performance.now();
 const shown = turn ? [pick] : SHEET.map((_, i) => i);
-const cols = 4;
 shown.forEach((gi, k) => {
   const gm = genomes[gi]!;
-  const body = buildDragonBody(gm);
+  const body = buildDragon(gm);
   tris += body.geometry.getIndex()!.count / 3;
   const mesh = new THREE.Mesh(body.geometry, material);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
-  // Centre each dragon on its own bounding box so long tails do not crowd a neighbour.
-  const bb = body.geometry.boundingBox!;
-  const cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
+  // Centre each dragon on its graph's x extent (Blender x is three.js x), the same rule
+  // assetgen/dragon_sheet.py uses, so the two sheets put every dragon in the same place.
+  const xs = body.graph.v.map((v) => v[0]);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
   const holder = new THREE.Group();
-  mesh.position.set(-cx, 0, -cz);
+  mesh.position.set(-cx, 0, 0);
   holder.add(mesh);
   if (!turn) {
-    const col = k % cols, row = Math.floor(k / cols);
-    holder.position.set((col - (cols - 1) / 2) * 8.4, 0, (row - 0.5) * 8.2);
-    holder.rotation.y = -0.55;
+    const col = k % SHEET_COLS, row = Math.floor(k / SHEET_COLS);
+    holder.position.set((col - (SHEET_COLS - 1) / 2) * SHEET_COL_GAP, 0, (row - 0.5) * SHEET_ROW_GAP);
+    holder.rotation.y = SHEET_YAW;
   }
   scene.add(holder);
   const label = document.createElement('div');
@@ -123,18 +132,25 @@ shown.forEach((gi, k) => {
   const origin = r.op === 'wild' ? `wild, seed ${r.seed}` : `child of ${SHEET[r.a]!.label} × ${SHEET[r.b]!.label}`;
   label.innerHTML = `${r.label} · ${origin}<br><small>${el} · gen ${gm.generation} · ${gm.gid()}</small>`;
   labels.appendChild(label);
-  placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 2.9)) });
+  placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 3.4)) });
 });
 const buildMs = performance.now() - t0;
 
-const camera = new THREE.PerspectiveCamera(turn ? 30 : 32, innerWidth / innerHeight, 0.1, 200);
-const target = new THREE.Vector3(0, turn ? 1.3 : 0, turn ? 0 : 1.2);
-const sheetPose = new THREE.Vector3(0, 16, 26.5);
+// The sheet is orthographic, so every cell is drawn at one scale: in perspective the near
+// row looked about 30 % bigger, and children looked larger than their parents (critic,
+// run 11). Its pose is assetgen/dragon_sheet.py's Blender camera, so the TS sheet and the
+// reference sheet line up cell for cell. A window narrower than 2.37:1 widens the view so
+// all eight cells stay in it.
+const aspect = innerWidth / innerHeight;
+const sheetHalfW = (SHEET_ORTHO_WIDTH / 2) * Math.max(1, 2.37 / aspect);
+const camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = turn
+  ? new THREE.PerspectiveCamera(30, aspect, 0.1, 200)
+  : new THREE.OrthographicCamera(-sheetHalfW, sheetHalfW, sheetHalfW / aspect, -sheetHalfW / aspect, 0.1, 200);
+const target = turn ? new THREE.Vector3(0, 1.3, 0) : new THREE.Vector3(...SHEET_TARGET);
+const el = (SHEET_ELEVATION_DEG * Math.PI) / 180;
+const sheetPose = target.clone().add(new THREE.Vector3(0, Math.sin(el), Math.cos(el)).multiplyScalar(60));
 const turnPose = new THREE.Vector3(-4.5, 4.2, 15.5);
-// The sheet is framed for a 2.37:1 window; a narrower one backs the camera off so all
-// eight cells stay in view (a 360 px phone lost half of them: critic, cycle 2).
-const fit = turn ? 1 : Math.max(1, 2.37 / (innerWidth / innerHeight));
-camera.position.copy(turn ? turnPose : sheetPose).sub(target).multiplyScalar(fit).add(target);
+camera.position.copy(turn ? turnPose : sheetPose);
 // `?cam=px,py,pz,tx,ty,tz` overrides the pose, for close-ups of a joint.
 const cam = (params.get('cam') ?? '').split(',').map(Number);
 if (cam.length === 6 && cam.every(Number.isFinite)) {
@@ -148,7 +164,7 @@ Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ex
 sun.shadow.camera.updateProjectionMatrix();
 
 document.getElementById('note')!.textContent =
-  `runtime dragon bodies (M3a: skeleton, torso, limbs) · ${shown.length} built in ${buildMs.toFixed(0)} ms · ${tris} tris`;
+  `runtime dragons (M3b: body, wings, crown, spikes, tail ornament) · ${shown.length} built in ${buildMs.toFixed(0)} ms · ${tris} tris`;
 
 function frame(): void {
   renderer.render(scene, camera);
@@ -194,9 +210,14 @@ const endDrag = () => { dragX = null; };
 renderer.domElement.addEventListener('wheel', (e) => {
   e.preventDefault();
   const k = Math.min(Math.max(1 + e.deltaY * 0.001, 0.8), 1.25);
-  const off = camera.position.clone().sub(target).multiplyScalar(k);
-  const d = off.length();
-  if (d > 2 && d < 90) camera.position.copy(target).add(off);
+  if (camera instanceof THREE.OrthographicCamera) {
+    camera.zoom = Math.min(Math.max(camera.zoom / k, 0.5), 8);
+    camera.updateProjectionMatrix();
+  } else {
+    const off = camera.position.clone().sub(target).multiplyScalar(k);
+    const d = off.length();
+    if (d > 2 && d < 90) camera.position.copy(target).add(off);
+  }
   frame();
 }, { passive: false });
 renderer.domElement.addEventListener('pointerup', endDrag);
@@ -204,7 +225,12 @@ renderer.domElement.addEventListener('pointercancel', endDrag);
 
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
-  camera.aspect = innerWidth / innerHeight;
+  const a = innerWidth / innerHeight;
+  if (camera instanceof THREE.PerspectiveCamera) camera.aspect = a;
+  else {
+    const hw = (SHEET_ORTHO_WIDTH / 2) * Math.max(1, 2.37 / a);
+    Object.assign(camera, { left: -hw, right: hw, top: hw / a, bottom: -hw / a });
+  }
   camera.updateProjectionMatrix();
   frame();
 });
