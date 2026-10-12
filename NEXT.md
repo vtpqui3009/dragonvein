@@ -10,62 +10,71 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `2a1e96f`, the last commit of run 10 that changed
+Last updated: **2026-10-12** · at commit `e015a48`, the last commit of run 11 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M3a — skeleton, torso and limbs build from a genome into a `BufferGeometry`** · `TODO`
+**M3b — wings, crown, membrane and tail ornament; the creature reads as the Python one** · `TODO`
 
-M2b closed at `156321e` (art **8.2**, perf **9.0**, gameplay **9.2**), and with it **milestone M2
-is `DONE`**. `src/core/genome.ts` rebuilds 32 fixed genomes plus 3 hand-set tie cases with
-every allele, phenotype, rarity and gid identical to `genome.py`, and `gate:parity`'s genome
-half is live. M0, M1 and M2 are `DONE`.
+M3a closed in run 11 at `e015a48`, after three critic cycles: art **7.6**, perf **8.7**,
+gameplay **9.0**. `src/assets/dragon/` builds a genome into a `BufferGeometry`:
+- the reference skin graph (`graph.ts`) is identical to `builder.py`'s on the 32 fixed
+  genomes, with one named 1-ulp `pow` exception;
+- `skin.ts` sweeps it into closed, outward-wound tubes;
+- the eyes are where the reference puts them.
+
+`dragon.html` shows it and `tools/dragon-sheet.mjs` renders it. **Milestone M3 is `IN_PROGRESS`.**
 
 ## The single next action
 
-Take M3a, the first step of the runtime dragon mesh (`src/assets/`, owned by `mesh-builder`).
-The reference is `assetgen/dragon/builder.py`.
+Take M3b in `src/assets/dragon/`. The reference is `add_wings`, `membrane`, `add_crown`,
+`dorsal_spikes` and `tail_ornament` in `assetgen/dragon/builder.py`.
 
-- **The reference skins with Blender's Skin modifier + Subsurf** (`Graph.build`). TypeScript
-  cannot reproduce that vertex for vertex. What *can* match exactly is the **graph**:
-  `skeleton(p)` and `add_limbs`, which are pure math producing node positions, radii and
-  edges from the phenotype. Port that exactly and prove it the M2 way: a Python script
-  writes the graph for the 32 fixed genomes, and a TS test compares it. Then skin it in TS
-  with your own sweep and tessellation.
-- **Owner question to raise at M3d, not now:** CLAUDE.md §1.5 has `gate:parity` compare
-  *vertex count* between the builders. With Blender's Skin+Subsurf on one side, that is
-  probably unachievable by construction. Graph equality plus bounding box within tolerance
-  is the reachable form. Record the evidence in `STATE.md` when you get there, and ask
-  rather than editing the contract.
-- `gate:parity`'s mesh half SKIPs while `builder.ts` exists and M3c is not `DONE`
-  (`2a1e96f`), so creating the builder at M3a does not turn the gates red.
-- Budget: a bred dragon must mesh in < 120 ms (CLAUDE.md §2.3, M3c). Keep the builder
-  allocation-light from the start. Heap is at ~33 kB of 40 kB per frame (perf P4).
-- `src/assets/` may import `core` and `three` (`docs/ARCHITECTURE.md`).
+- **Port the graph stages exactly**, the M3a way. Add `wings` and `crown` stages to
+  `assetgen/dragon_vectors.py` (the fixture's `stages` list) and extend
+  `tests/dragon-graph.test.ts`. `wing_nodes`, `membrane` and `torso_at` are pure math too.
+- **The membrane, spikes and tail ornament are not skin-graph parts.** The reference builds
+  them as Blender primitives (`primitive_cone_add`, `ico_sphere`), plus Solidify and Subsurf
+  on the membrane. Build them in TS as their own closed parts. `builder.ts`'s `merge()` and
+  part `kinds` already carry per-part colour. The membrane colour is `mats()["memb"]`, the
+  horn colour `mats()["horn"]`.
+- **Run 11's colour decision:** the genes' HSV is decoded from sRGB (`bodyColours`), so the
+  screen shows the genes, where Blender reads them as linear. Keep that for the new parts.
+- **Triangle budget:** the body is at max 5752. `tests/dragon-body.test.ts` caps the body at
+  6 000, and M3b needs its own cap written into STATE.md first. Perf's P4 heap headroom is
+  only about 6 kB, and none of this is in the frame loop yet. Keep it that way.
+- **Fixes the critics left on M3a** (FINDINGS.md, M3a cycle 3):
+  - The far-side legs render near black. They sit in the body's sun shadow, and no fill reaches
+    their camera-facing side. This happens under the game's own rig.
+  - A jagged seam where a leg tube pierces the body (A8). A blend at the joint would fix it.
+  - The sheet's second row sits nearer the camera, so children look bigger than their
+    parents. Put a child beside its parents at one scale.
+  - Two-finger pinch in `dragon.html` rotates instead of zooming.
 
 ## Open items that need the owner, not a run
 
-- **M0 and M1 are `DONE`** (2026-10-12): the owner's sighting at `3ab6e84` lifted perf to
-  8.4. Still worth doing when convenient, because M16 will require it: a verification-grade
-  row. On a GPU machine, run `npm ci && npx playwright install chromium && npm run build &&
-  npm run gate:perf -- --real-gpu` with a 1920×1080 window, note the GPU model, and run once
-  more with `?tier=potato` for P6.
-- If run 7's session on the second account is still set to auto-continue, please archive
-  it. Its plan is for M1a, which is DONE.
+- **The reference dragon's proportions (decide before M3b's art round).** Both art rounds
+  flag a long, low lizard with the head about 1/8 of body length, where
+  `docs/ART_BIBLE.md` §Proportions asks for "chunky and front-heavy: head roughly 1/5 of
+  body length". The TS port copies `assetgen/dragon/builder.py`'s graph exactly, so only a
+  change to the reference can fix it. Should the reference be re-proportioned to the
+  bible? Run 11 fixed one reference bug on its own authority (the tail, `8d78efa`), but
+  this one is a design call.
+- A verification-grade real-GPU row, when convenient (M16 requires it). On a GPU machine run
+  `npm ci && npx playwright install chromium && npm run build && npm run gate:perf -- --real-gpu`
+  with a 1920×1080 window, note the GPU model, and run once more with `?tier=potato`. Also
+  open `dragon.html` on the deployed site and say whether the dragons look right to you.
+- If run 7's session on the second account is still set to auto-continue, please archive it.
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
-- Broadleaf: no per-seed colour or value variation; a branch stub on seed 5; the root slab
-  on seed 7; seed labels overlap two trunk bases; the turntable is short (36 frames at 18
-  fps, which is 2 s).
-- The satellite islets are nearly bare, and nothing lives on the island yet (A6).
-- G3: input-to-frame latency is unmeasured.
-- The Assets job logs a harmless "Draco is not available" error from bpy, because the
-  build deliberately exports without Draco. Also, Actions warns that Node 20 actions are
-  deprecated (`actions/*@v4`).
+- No dragon or creature in the game scene yet (A6); the satellite islets are bare.
+- Broadleaf: no per-seed colour variation, the seed 5 stub, the seed 7 root slab.
+- G3: input-to-frame latency is unmeasured. `gate:smoke` does not load `dragon.html`.
+- Perf P4: `heap.bytesPerFrame` 34 589 of 40 960. The frame loop still allocates.
 
 ## Standing hazards — every run hits these
 
@@ -96,6 +105,9 @@ The reference is `assetgen/dragon/builder.py`.
 - **Owner's evidence page**: `node tools/evidence-page.mjs`, republished every run to
   https://claude.ai/artifact/Pgkt22EifnK5hUzmXqssoj (see `run-closeout`). Its "Needs you"
   box is §Open items below, verbatim.
+- `node tools/dragon-sheet.mjs` (after `npm run build`): the runtime dragon sheet and
+  turntable, `artifacts/variants/dragon-body.png` and `artifacts/turntables/dragon-body.webm`.
+  `dragon.html?view=turn&i=K&cam=px,py,pz,tx,ty,tz` gives a close-up of any joint.
 - `node tools/variant-probe.mjs <family/name>`: A4 spread and A2 palette numbers for an
   asset, after `npm run assets:render`. It reads the shipped `.glb` bytes.
 - `node tools/check-assets.mjs` pins every binary by hash and counts its triangles from the
@@ -119,7 +131,7 @@ The reference is `assetgen/dragon/builder.py`.
 
 ```sh
 git log --oneline -8
-grep -E '^\| \*?\*?M1' docs/ROADMAP.md          # step status
+grep -E '^\| \*?\*?M3' docs/ROADMAP.md          # step status
 sed -n '1,60p' STATE.md                          # newest journal entry
 grep -hE '^SCORE_MACHINE' FINDINGS.md docs/archive/FINDINGS-*.md | head -6   # latest scores first
 npm ci && npm run gates                          # the ground truth
