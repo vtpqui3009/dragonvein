@@ -36,6 +36,9 @@ if HERE not in sys.path:
 GENERATORS = [
     {"module": "flora.broadleaf", "lods": (0, 1, 2)},
     {"module": "terrain.island", "lods": (0, 1, 2)},
+    {"module": "terrain.stratified", "lods": (0, 1, 2)},
+    {"module": "terrain.columnar", "lods": (0, 1, 2)},
+    {"module": "terrain.boulders", "lods": (0, 1, 2)},
 ]
 
 LODS_DEFAULT = (0, 1, 2)

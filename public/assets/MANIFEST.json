@@ -46,6 +46,90 @@
         }
       }
     },
+    "terrain/boulders": {
+      "script": "assetgen/terrain/boulders.py",
+      "family": "terrain",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "dusk": "#844e32",
+        "rockMid": "#5a4a40",
+        "deepShadow": "#1a1420"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "dusk",
+            "rockMid",
+            "deepShadow"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "terrain/boulders.lod0.glb",
+          "tris": 1600,
+          "sha256": "a6820f49376dbd59d4e2e419e2278381d770a03e867a8747354c34b85bc7f161"
+        },
+        "lod1": {
+          "file": "terrain/boulders.lod1.glb",
+          "tris": 400,
+          "sha256": "d28b7726469d961a934f9fec0c468ebfa8cd3ab238a4c8c0f647739e5099c2b8"
+        },
+        "lod2": {
+          "file": "terrain/boulders.lod2.glb",
+          "tris": 100,
+          "sha256": "e4f729915372dec548a3513bedc3216a76e89fc51bd786a54745af0b7f83943a"
+        }
+      }
+    },
+    "terrain/columnar": {
+      "script": "assetgen/terrain/columnar.py",
+      "family": "terrain",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "dusk": "#844e32",
+        "rockMid": "#5a4a40",
+        "deepShadow": "#1a1420"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "dusk",
+            "rockMid",
+            "deepShadow"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "terrain/columnar.lod0.glb",
+          "tris": 470,
+          "sha256": "ffa7b8bb5609803c1c2d3d25ec96d5dbf8fdf124b1cc225b508466453c9aa9d3"
+        },
+        "lod1": {
+          "file": "terrain/columnar.lod1.glb",
+          "tris": 304,
+          "sha256": "db13dad429fad4288ce7db67a178bcffd9b429cd5eaa6023533b587af2a89a7f"
+        },
+        "lod2": {
+          "file": "terrain/columnar.lod2.glb",
+          "tris": 105,
+          "sha256": "fa9432340dc5b08ec70f23c914cdcfa0974b080152e5f671a8a8ae159d02426f"
+        }
+      }
+    },
     "terrain/island": {
       "script": "assetgen/terrain/island.py",
       "family": "terrain",
@@ -93,6 +177,56 @@
           "file": "terrain/island.lod2.glb",
           "tris": 280,
           "sha256": "49293b08d64651d2a03e8a540c7d27008145d071ff229474463eac492286dbee"
+        }
+      }
+    },
+    "terrain/stratified": {
+      "script": "assetgen/terrain/stratified.py",
+      "family": "terrain",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "grassDark": "#1e4a21",
+        "grassMid": "#3f8a33",
+        "grassLight": "#8fd24a",
+        "rockMid": "#5a4a40",
+        "dusk": "#844e32",
+        "deepShadow": "#1a1420"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "grassDark",
+            "grassMid",
+            "grassLight"
+          ],
+          [
+            "dusk",
+            "rockMid",
+            "deepShadow"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "terrain/stratified.lod0.glb",
+          "tris": 896,
+          "sha256": "d35f84220baeda42fb6655013c7ce54166e957b345db4026ccad40dda6a52e8c"
+        },
+        "lod1": {
+          "file": "terrain/stratified.lod1.glb",
+          "tris": 384,
+          "sha256": "ff9d81c0770fa80fe5887dc7d90a6a8e1b388b986f01cf3dedce0371425f4f36"
+        },
+        "lod2": {
+          "file": "terrain/stratified.lod2.glb",
+          "tris": 144,
+          "sha256": "f84158f263e911539e7eabd28e9f28b42a3e6eb926912d43e8bf5578ad03c7f5"
         }
       }
     }
