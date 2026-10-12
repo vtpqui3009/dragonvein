@@ -17,8 +17,12 @@ The checkout often arrives in detached HEAD with local `main` stale, so do this 
 
 ```sh
 cd /home/user/dragonvein
-git checkout main && git fetch origin main && git reset --hard origin/main
+git checkout main && git fetch origin main && git merge --ff-only origin/main
 ```
+
+**Use `merge --ff-only`, not `reset --hard`.** `git reset --hard origin/main` has been
+refused by the session's permission layer three times. On a clean tree the fast-forward
+reaches the same commit. Do not read that refusal as a credential problem.
 
 Then append `- run started <UTC timestamp>` to `STATE.md`, `git commit -am "chore: run marker"`,
 and `git push origin main` **using Bash git, not the GitHub MCP tools** — those travel on a
