@@ -17,6 +17,8 @@ genome.py, so this fixture and that one cannot describe different dragons.
 Stages:
 - `body`: skeleton + add_limbs (M3a).
 - `full`: skeleton, add_limbs, add_wings, add_crown, in place()'s order (M3b).
+- `placed`: the whole dragon as `place()` builds it, its bounding box over face vertices (M3d,
+  for gate:parity).
 - `parts`: the pieces that are not skin graph (M3b). Each holds:
   - the membrane polygons per wing, before modifiers;
   - each dorsal spike's and the tail ornament's primitive parameters;
@@ -29,6 +31,7 @@ pins builder.py's and genome.py's SHA-256.
 """
 import hashlib
 import json
+import math
 import os
 import sys
 
@@ -38,6 +41,7 @@ sys.path.insert(0, HERE)
 
 import bpy  # noqa: E402
 import genome as G  # noqa: E402
+import dragon as D  # noqa: E402
 from dragon import builder as B  # noqa: E402
 
 GENOMES = os.path.join(REPO, "docs", "fixtures", "genomes.json")
@@ -115,6 +119,25 @@ def parts(p):
     return out
 
 
+def placed_bbox(gm):
+    """The whole dragon as place() builds it, at the origin and unrotated: the box over every
+    vertex that belongs to a face, across all its meshes. Faces only: the Skin modifier
+    leaves loose vertices (STATE.md run 12) that no renderer draws."""
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+    objs = D.place(gm, name="d")
+    bpy.context.view_layer.update()
+    lo, hi = [math.inf] * 3, [-math.inf] * 3
+    for o in objs:
+        if o.type != "MESH":
+            continue
+        m, mw = o.data, o.matrix_world
+        for vi in {v for f in m.polygons for v in f.vertices}:
+            w = mw @ m.vertices[vi].co
+            for k in range(3):
+                lo[k], hi[k] = min(lo[k], w[k]), max(hi[k], w[k])
+    return {"min": [r6(x) for x in lo], "max": [r6(x) for x in hi]}
+
+
 def jsonable(x):
     """Tuples to lists, recursively, so the fixture is plain JSON arrays."""
     if isinstance(x, dict):
@@ -131,9 +154,10 @@ def main():
     data = {
         "builderSha256": sha256(os.path.join(HERE, "dragon", "builder.py")),
         "genomeSha256": sha256(os.path.join(HERE, "genome.py")),
-        "stages": ["body", "full", "parts"],
+        "stages": ["body", "full", "parts", "placed"],
         "graphs": [jsonable({"gid": gm.gid(), "body": body_graph(gm.phenotype),
-                             "full": full_graph(gm.phenotype), "parts": parts(gm.phenotype)})
+                             "full": full_graph(gm.phenotype), "parts": parts(gm.phenotype),
+                             "placed": placed_bbox(gm)})
                    for gm in genomes],
     }
     with open(OUT, "w") as fh:
