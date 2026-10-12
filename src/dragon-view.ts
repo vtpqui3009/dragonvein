@@ -17,7 +17,7 @@
  */
 import * as THREE from 'three';
 import { breed, wild, type Element, type Genome } from './core/genome';
-import { buildDragon } from './assets/dragon/builder';
+import { DragonMesher } from './assets/dragon/mesher';
 
 /**
  * The sheet: six wild dragons, one per element, on seeds 1-6 taken in order (not picked),
@@ -115,15 +115,19 @@ interface Placed { mesh: THREE.Mesh; label: HTMLDivElement; anchor: THREE.Vector
 const placed: Placed[] = [];
 const labels = document.getElementById('labels')!;
 let tris = 0;
-/** Each dragon's build, in ms, in build order; the first is the cold one. */
+/** Each dragon's round trip through the mesh worker, in ms, in build order. */
 const buildTimes: number[] = [];
+// The dragons are built off the main thread, as the game builds them (M3c). The worker is
+// spawned and warmed first, as the game does while idle; that one-off is `startupMs`.
+const mesher = new DragonMesher();
+const { startupMs } = await mesher.ready();
 const t0 = performance.now();
 const shown = turn ? [pick] : SHEET.map((_, i) => i);
-shown.forEach((gi, k) => {
+for (const [k, gi] of shown.entries()) {
   const gm = genomes[gi]!;
-  const tb = performance.now();
-  const body = buildDragon(gm);
-  buildTimes.push(performance.now() - tb);
+  const built = await mesher.build(gm);
+  const body = built.body;
+  buildTimes.push(built.roundTripMs);
   tris += body.geometry.getIndex()!.count / 3;
   const mesh = new THREE.Mesh(body.geometry, materials);
   mesh.castShadow = true;
@@ -148,8 +152,9 @@ shown.forEach((gi, k) => {
   label.innerHTML = `${r.label} · ${origin}<br><small>${el} · gen ${gm.generation} · ${gm.gid()}</small>`;
   labels.appendChild(label);
   placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 3.4)) });
-});
+}
 const buildMs = performance.now() - t0;
+mesher.dispose();
 
 // The sheet is orthographic, so every cell is drawn at one scale: in perspective the near
 // row looked about 30 % bigger, and children looked larger than their parents (critic,
@@ -179,7 +184,7 @@ Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ex
 sun.shadow.camera.updateProjectionMatrix();
 
 document.getElementById('note')!.textContent =
-  `runtime dragons (M3b: body, wings, crown, spikes, tail ornament) · ${shown.length} built in ${buildMs.toFixed(0)} ms · ${tris} tris`;
+  `runtime dragons, built in a worker · ${shown.length} in ${buildMs.toFixed(0)} ms after a ${startupMs.toFixed(0)} ms warm-up · ${tris} tris`;
 
 function frame(): void {
   renderer.render(scene, camera);
@@ -194,13 +199,16 @@ function frame(): void {
 
 declare global {
   interface Window {
-    __dragonView?: { ready: boolean; buildMs: number; buildTimes: number[]; tris: number; setYaw(rad: number): void };
+    __dragonView?: {
+      ready: boolean; buildMs: number; buildTimes: number[]; startupMs: number; tris: number; setYaw(rad: number): void;
+    };
   }
 }
 window.__dragonView = {
   ready: true,
   buildMs,
   buildTimes,
+  startupMs,
   tris,
   setYaw(rad: number) {
     for (const p of placed) p.mesh.parent!.rotation.y = rad;
