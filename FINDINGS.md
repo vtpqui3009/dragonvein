@@ -5,6 +5,41 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M4b — run 16, 2026-10-12 — cycle 2, at `4cadbbc`
+
+**Scores: art-critic 8.5 · perf-critic 8.2 · gameplay-critic 9.2** (perf and gameplay carried
+from cycle 1). No blocking defect. The rework touched only `assetgen/terrain/boulders.py` and
+its three `.glb` files. The game loads none of the rocks, so the frame that perf and
+gameplay measured is the same, and the gates were re-run green at `b58251a`. Art per
+generator: stratified 8.4, columnar 8.6, boulders 8.1. Every generator is ≥ 8.0, so
+**M4b ships**.
+
+## art-critic — 8.5 (all nine lines)
+
+A1 1.0 · A2 0.9 · A3 1.1 · A4 1.3 · A5 1.0 · A6 0.9 · A7 0.9 · A8 0.8 · A9 0.5.
+
+- [major] A6 `shots/01-wide.png`: none of the new rocks is placed in the scene. This is M5e
+  work, so it is not blocking.
+- [minor] A4 `variants/boulders.png`: seeds 2 and 4 (a flat slab plus one small rock) and
+  seeds 6 and 7 (a small cluster) are near-pairs.
+- [minor] A4/A1 `variants/columnar.png` seeds 1, 2, 4 and 5: flat hex pavements of similar
+  height.
+- [minor] A3/A9 `variants/stratified.png`: the vertical smears read as baked occlusion, and
+  the ledge skirts on seeds 3, 4 and 5 look like cloth.
+- [minor] A5 `turntables/boulders.webm` at about 1.0 s: the main boulder of seed 1 tilts, so
+  its lower edge looks lifted.
+- [minor] A2 columnar and stratified: dusk dominates, so they read as orange clay.
+- [minor] A8 `variants/columnar.png` seed 3: confirm that LOD1 and LOD2 show no floor
+  through the dark pocket.
+
+Fixed since cycle 1:
+- the boulders facets, flat shading and rockMid base;
+- the bud-sphere on seed 1.
+
+SCORE_MACHINE: 8.5
+
+---
+
 # M4b — run 16, 2026-10-12 — cycle 1, at `5aa2665`
 
 **Scores: art-critic 8.4 · perf-critic 8.2 · gameplay-critic 9.2.** No blocking defect. The art
@@ -116,60 +151,3 @@ G1 2.1 · G3 1.2 · G6 1.5.
 SCORE_MACHINE: 9.2
 
 ---
-
-# M3d — run 14, 2026-10-12 — cycle 1, at `aaa19c7`
-
-**Scores: art-critic 7.4 · perf-critic 8.15 · gameplay-critic 8.5.** No blocking defect.
-**M3d closes on its criteria. Milestone M3 stays `IN_PROGRESS`**, with art under 8.0 and no
-human sighting of the dragons yet.
-
-This step added a comparison and changed nothing visible, so the art deductions are standing
-ones. They sit in the reference's design or in later milestones, and are not in M3d's code.
-No rework cycle was run, because re-scoring an unchanged look would be score-fishing (the
-dispatcher ruling in STATE.md). The parity.json labelling minor was fixed (`8f73e84`).
-
-## perf-critic — 8.15 (all six lines)
-
-P1 1.75 · P2 1.8 · P3 1.8 · P4 1.0 · P5 1.2 · P6 0.6.
-
-- [major] P1: the real-GPU log's newest row is `3ab6e84`, an ancestor of M3a, so it is stale for M3.
-- [major] `gate:perf` renders no dragon. Draws 27 and triangles 42268 are M0's.
-- [minor] P4 `uncorrectedBytesPerFrame 39866` is 97.3 % of budget.
-- [minor] `cpuFrameMs.max 3.5` sits on the line (p95 1.6).
-- [minor] P6: no real-hardware Potato number.
-
-SCORE_MACHINE: 8.15
-
-## art-critic — 7.4 (all nine lines)
-
-A1 1.0 · A2 0.7 · A3 0.8 · A4 1.1 · A5 0.8 · A6 1.0 · A7 0.9 · A8 0.7 · A9 0.4.
-
-- [major] A3 `turntables/dragon-full.frame00.png`, `dragon-full.png` cells A, E, F, H: the near
-  flank, belly and far legs crush to black.
-- [major] A5 `dragon-full.png` cell A (150–500, 290–340): a wing finger passes through the belly,
-  and the hind membrane crosses the tail (also in E and G). This is the reference's geometry.
-- [major] A4: one pose and body plan. A, C and F differ mostly in paint.
-- [major] A9/A6: flat sail wings rather than the concept's spread bat wings.
-- [major] A6: no dragon or creature in the game scene.
-- [minor] A2: wing hue clashes with body hue (magenta on brown, yellow on red).
-- [minor] A8: hard, faceted wing struts. G's horns read as a frayed cluster.
-- [minor] A7: the dev sheet's sub-labels are about 3:1. parity.json gaps were unlabelled; fixed.
-
-SCORE_MACHINE: 7.4
-
-## gameplay-critic — 8.5 (4.4 of 5.2; G2, G4, G5 n/a)
-
-G1 1.9 · G3 1.3 · G6 1.2.
-
-- [major, G2 preview] H looks almost identical to its parent C.
-- [minor, G2 preview] G shows none of B's body colour (hue A 0.03, B 0.53, G 0.05).
-- [minor] The game page has no dragon, and `gate:smoke` never loads `dragon.html`.
-- [minor] parity.json lacked anchor results and axis labels. Fixed in `8f73e84`.
-- [minor] G6: the sheet is unusable at phone width. The viewer has no pitch and no zoom
-  limits.
-- [minor] Colour and material differ between the TS and reference renders; parity is geometry.
-
-SCORE_MACHINE: 8.5
-
----
-

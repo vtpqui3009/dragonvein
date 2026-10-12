@@ -10,7 +10,7 @@
  *    docs/fixtures/dragon-graphs.json by the same rule, and must be `Object.is`-equal.
  * 2. **Bounding box, within 3 % of the reference's extent on each axis and side.** The
  *    reference box is Blender's: the whole placed dragon, over face vertices only. The tolerance
- *    and why it is 3 % are in STATE.md run 14. Vertex counts are not compared: the owner
+ *    and why it is 3 % are in docs/archive/STATE-2026-10.md, run 14. Vertex counts are not compared: the owner
  *    dropped that clause, because Skin + Subsurf and the TS sweep tessellate differently.
  *
  * Every gap goes to artifacts/parity.json, so a reader sees the margin and not just a pass.
@@ -24,7 +24,7 @@ import { buildDragonArrays } from '../src/assets/dragon/arrays';
 import { fullGraph } from '../src/assets/dragon/graph';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-/** Allowed box gap, as a fraction of the reference's extent on that axis (STATE.md run 14). */
+/** Allowed box gap, as a fraction of the reference's extent on that axis (docs/archive/STATE-2026-10.md, run 14). */
 const BOX_TOLERANCE = 0.03;
 /** The spine is the body graph's first 15 nodes: tail 0–3, torso 4–7, neck 8–10, head 11–14. */
 const SPINE = 15;

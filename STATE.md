@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-12 · run 16 · M4b — three cliff and rock generators
+## 2026-10-12 · run 16 · M4b DONE — three cliff and rock generators
 
 **Step**: `M4b`, the first step in reading order that is not `DONE`. Step 0 pushed the run marker.
 
@@ -47,6 +47,59 @@ inward-face count. Budgets follow docs/PERF_BUDGET.md §Other budgets for props:
 
 If the three cannot all land with critics inside the run, the step is split (ROADMAP §How
 big a step may be), and the split is recorded here.
+
+---
+
+### Result — M4b DONE (M4 IN_PROGRESS: M4c remains)
+
+All five criteria hold at `b58251a`:
+1. The three generators follow the island pattern. Each has 0 inward faces at every LOD on
+   seeds 1–8. Every LOD chain strictly decreases on every seed. Triangles, LOD0/1/2 on the
+   committed seed, against 4 000 / 1 200 / 300:
+   - stratified 896/384/144;
+   - columnar 470/304/105;
+   - boulders 400/100/80.
+2. `assets:build --verify` reproduces all 15 files byte-for-byte. `--check` and
+   `check:assets` are OK.
+3. `artifacts/variants/{stratified,columnar,boulders}.png` and the three turntables are
+   rendered.
+4. `variant-probe` passes for all five generators. The most alike pairs are 25.0 %, 22.6 %
+   and 21.5 % apart (the limit is 8 %), and every rock ramp is within ΔE 0.16.
+5. `npm run gates` exits 0.
+
+**Scores.**
+
+| critic | cycle 1 at `5aa2665` | cycle 2 at `4cadbbc` |
+|---|---|---|
+| art | 8.4 (stratified ~8.7, columnar ~8.6, **boulders ~7.8**) | **8.5** (stratified 8.4, columnar 8.6, boulders 8.1) |
+| perf | 8.2 | carried |
+| gameplay | 9.2 | carried |
+
+Perf and gameplay were not re-run in cycle 2. The rework touched only `boulders.py` and its
+`.glb` files, which the game does not load, so the measured frame is the same. The gates
+were re-run green.
+
+**Decisions and fixes in this run.**
+- The palette ramps are quadratic Beziers in `rockkit.ramp`, the same rule the probe judges
+  by. A piecewise-linear ramp failed ΔE 3 against the probe's curve.
+- `PALETTE_ROLES["optional"]`, a probe change in its own commit: stratified's grass cap is on
+  some seeds only, so the probe holds the grass ramp to ΔE 3 wherever it appears and does
+  not require it on the committed seed.
+- Stratified's grass cap has its own lip ring, so green does not bleed down the cliff face.
+- Boulders, rework cycle 2:
+  - 4–8 fracture planes per stone;
+  - flat shading at icosphere subdivision 1;
+  - rockMid base, with dusk only on sky-facing faces;
+  - tighter seating, and sizes floored at 0.34;
+  - LOD2 always drops at least one stone.
+
+**Open, carried to FINDINGS:**
+- the rocks are not placed in the game (M5e);
+- columnar flat-pavement seeds;
+- stratified smears and warmth;
+- boulders near-pairs.
+
+**Blockers.** None for M4c. M3 remains with the owner (NEXT.md §Open items).
 
 ---
 
@@ -128,79 +181,6 @@ M4 stays `IN_PROGRESS` with M4b and M4c to go.
   undersides.
 - **The grass highlight is capped at 0.74.** A hilltop at the light stop read as a glowing
   blob.
-
----
-
-## 2026-10-12 · run 14 · M3d DONE (M3 IN_PROGRESS) — `gate:parity` green between the two builders
-
-**Step**: `M3d`, the first step in reading order that is not `DONE`. Step 0 pushed `c5c46fa`.
-
-**Ownership**: `assetgen/dragon_vectors.py` (asset-builder), then `tests/` and
-`tools/gate-parity.mjs` (integrator). Sequential.
-
-**What parity means now.** CLAUDE.md §1.5 as the owner amended it today: the skin graphs
-equal, exactly; bounding box and limb anchors within tolerance; vertex counts not compared.
-
-**The tolerance, and why.** 3 % of the reference's extent on each axis, on each side. The
-principle: two dragons whose outlines differ by under 1/20 of their size do not read as
-different creatures. 3 % is under that, with margin. It was measured before it was chosen,
-and the numbers are recorded so nobody has to take it on trust. On genomes #0, #5, #12 and #30 the
-largest gap is 0.123 at the snout end of x, where Subsurf shrinks the reference's skin and
-the TS sweep keeps the node radius. Every other axis is ≤ 0.04. The extents are about
-6.3 × 4.8 × 3.8.
-
-### Acceptance criteria
-
-1. **The fixture holds the reference's own bounding box.**
-   - For each of the 32 genomes, `assetgen/dragon_vectors.py` places the whole dragon (`place()`,
-     at the origin, unrotated) and records the box over every vertex that belongs to a face.
-   - Faces only, because the Skin modifier leaves loose vertices.
-   - The fixture stays byte-identical on re-run.
-2. **`tests/dragon-parity.test.ts`**, for all 32 genomes:
-   - The limb anchors are exactly equal: each leg's root and foot, each wing's root, wrist
-     and finger tips, and each horn and crest root. They are the TS full graph's nodes
-     against the fixture's.
-   - `buildDragonArrays`' box is within 3 % of the reference's extent on every axis and side.
-   - The test also writes `artifacts/parity.json` with every gap.
-3. **`gate:parity` runs the mesh half for real.** No SKIP once the builder exists. It fails if
-   the test fails or is missing, and it keeps the M3d-`DONE` guard.
-4. `npm run gates` exits 0.
-
-### Result — every criterion met at `aaa19c7`
-
-1. The fixture gains `placed`: Blender's box over the face vertices of the whole placed dragon,
-   for all 32 genomes, byte-identical on re-run (`3a7e450`).
-2. `tests/dragon-parity.test.ts` (`c869d47`, labelled in `8f73e84`):
-   - limb anchors are exact, 40–58 per genome, `anchorMaxGap` 0;
-   - boxes are within 3 %, worst 2.04 % on `f14f60d77d`, at the snout end of x.
-3. `gate:parity`'s mesh half runs (`aaa19c7`). It is OK at 3 %, and fails with exit 1 at 1 %.
-4. Gates are green with 936 tests.
-
-**Scores:** art **7.4**, perf **8.15**, gameplay **8.5**. **M3d is `DONE`. M3 stays
-`IN_PROGRESS`**: art is under 8.0 on the last pass, and there is no human sighting of the
-dragons yet.
-
-### Decisions
-
-- **CLAUDE.md §1.5 amended by the owner** (the decision entry below): parity compares graphs,
-  anchors and boxes, not vertex counts.
-- **No rework cycle.** M3d changed no pixel. The art deductions are:
-  - flank shading in the viewer;
-  - the reference's wing pose and the membrane crossing the tail;
-  - the body plan;
-  - no dragon in the game.
-
-  Each is either the reference's design (an owner question) or a later milestone's (M7
-  wings, the game scene). Re-scoring an unchanged look is the score-fishing the dispatcher
-  ruling forbids.
-- **The tolerance was chosen on a stated principle, and the measurement is on record**
-  (criteria above). The margin is 2.04 % against 3 %.
-
-### Open for milestone M3 (owner)
-
-- A sighting of `dragon.html` on the deployed site.
-- Whether the reference dragon should be re-designed: spread wings, no wing–tail crossing, a
-  chunkier front-heavy body.
 
 ---
 
