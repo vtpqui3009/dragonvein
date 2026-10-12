@@ -13,6 +13,23 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 7b · M1a taken over from run 7 (out of usage)
+
+Run 7 (`session_015wGqRT1h1SMvdiguFdACAU`, the owner's second account) ran out of usage
+after `b0177f3`. Its asset-builder was mid-way through the apex fix, and that uncommitted
+work was lost with the container. The owner confirmed it had stopped. Run 7b continues
+M1a from `b0177f3`, against run 7's acceptance criteria below, unchanged.
+
+- `7e2d2dd`: the "truncated apex" (A8) was inward-wound lobe side quads, about half the
+  faces of every mesh. It is fixed, with 0 inward faces over seeds 1–8 × LOD0–2.
+- Next in this run: the `check:assets` enforcement (hash, LOD chain, budget),
+  `tools/variant-probe.mjs`, the full sheet and turntable, gates, critics, close-out.
+- **If run 7 auto-resumes** (its UI showed "auto-continue at 2:01 PM" local), its push will
+  be refused as non-fast-forward. It must re-read `NEXT.md` and `STATE.md` rather than merge
+  its stale plan over this.
+
+---
+
 ## 2026-10-12 · run 7 · M1a — the first generator goes end to end
 
 **Step taken:** M1a, the first step in reading order that is not `DONE`. Every M0 step is
