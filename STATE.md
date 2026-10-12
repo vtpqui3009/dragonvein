@@ -94,9 +94,6 @@ M4 stays `IN_PROGRESS` with M4b and M4c to go.
 
 ---
 
-
----
-
 ## 2026-10-12 · run 14 · M3d DONE (M3 IN_PROGRESS) — `gate:parity` green between the two builders
 
 **Step**: `M3d`, the first step in reading order that is not `DONE`. Step 0 pushed `c5c46fa`.
