@@ -13,6 +13,34 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-12 · run 8 · M1b — the asset pipeline runs in CI
+
+**Step**: `M1b`, the first step in reading order that is not `DONE`. Step 0 pushed
+`4851904`.
+
+**Ownership**: `.github/workflows/` and `tools/` belong to `integrator`; the `--check`
+mode in `assetgen/build_all.py` belongs to `asset-builder`. That is two owners, so they run
+sequentially: the builder change first, then the workflow that calls it.
+
+**Baseline**: `.github/workflows/assets.yml` exists and is green (runs 4–6 on `b0177f3`,
+`7e2d2dd`, `2adc4f1`), but it runs only the old `render_proof.py`. It does not build, does
+not verify bytes, does not render the variant sheet, and does not probe. It also does not
+trigger on `public/assets/**`, so a hand-edited binary would never reach it. `bpy` is
+unpinned.
+
+### Acceptance criteria
+
+| # | criterion | instrument |
+|---|---|---|
+| AC1 | `python3 -I assetgen/build_all.py --check` rebuilds every asset into a temp dir and compares each committed binary under `public/assets/` with the fresh build *and* with its MANIFEST hash. It exits 1 naming both hashes on any drift. Shown failing on a tampered copy and passing on the real tree. | command output |
+| AC2 | `bpy` is pinned (`assetgen/requirements.txt`), so CI builds with the same Blender that made the committed hashes. | file |
+| AC3 | `assets.yml` triggers on `assetgen/**`, `public/assets/**`, the asset tools and itself, plus `workflow_dispatch`. In order it runs: `build_all.py --verify` (same-machine reproducibility), `--check` (cross-machine: the runner reproduces the committed bytes), `assets:render`, `variant-probe` for every MANIFEST asset, and `check:assets`. It uploads `artifacts/variants/` and `artifacts/turntables/`. | workflow file |
+| AC4 | A real run of that workflow on GitHub, at the pushed commit, concludes **success**, and its artefact list holds the variant sheet and turntable. The run id is recorded here. If the runner builds different bytes, that is a §1.2 finding to record, not to hide. | GitHub Actions API |
+| AC5 | `npm run gates` exits 0. | `npm run gates` |
+| AC6 | Critics score on a frozen tree. Nothing visual changes in this step; the scores are recorded as they come. | `FINDINGS.md` |
+
+---
+
 ## 2026-10-12 · run 7b · M1a DONE — taken over from run 7 (out of usage) and closed
 
 Run 7 (`session_015wGqRT1h1SMvdiguFdACAU`, the owner's second account) ran out of usage
@@ -347,4 +375,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-12T07:06:15Z
