@@ -7,6 +7,7 @@
  * real tool in it, and assert the exit code and the message.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -17,7 +18,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** @returns the fixture root; files are written relative to it. */
 const fixtures: string[] = [];
-function makeTree(files: Record<string, string>): string {
+function makeTree(files: Record<string, string | Buffer>): string {
   const dir = mkdtempSync(path.join(os.tmpdir(), 'dragonvein-gate-'));
   fixtures.push(dir);
   for (const [rel, body] of Object.entries(files)) {
@@ -112,24 +113,119 @@ describe('check:assets', () => {
     expect(r.output).toContain('UNDECLARED ASSET');
   });
 
-  it('accepts an asset declared with a script that exists', () => {
+  it('accepts an asset whose binaries are pinned, counted and inside budget', () => {
+    const lod0 = glb(4);
+    const lod1 = glb(2);
     const dir = makeTree({
-      'public/assets/MANIFEST.json': JSON.stringify({
-        assets: { 'rock/boulder': { script: 'assetgen/rock/boulder.py' } },
-      }),
-      'public/assets/rock/boulder.lod0.glb': 'not really a glb',
+      'public/assets/MANIFEST.json': manifest({ lod0: [lod0, 4], lod1: [lod1, 2] }),
+      'public/assets/rock/boulder.lod0.glb': lod0,
+      'public/assets/rock/boulder.lod1.glb': lod1,
       'assetgen/rock/boulder.py': '# generator\n',
     });
     const r = runTool('check-assets.mjs', dir);
     expect(r.output).toContain('check:assets OK');
     expect(r.code).toBe(0);
   });
+
+  it('rejects a binary the manifest does not pin by hash', () => {
+    const dir = makeTree({
+      'public/assets/MANIFEST.json': JSON.stringify({
+        assets: { 'rock/boulder': { script: 'assetgen/rock/boulder.py' } },
+      }),
+      'public/assets/rock/boulder.lod0.glb': glb(4),
+      'assetgen/rock/boulder.py': '# generator\n',
+    });
+    const r = runTool('check-assets.mjs', dir);
+    expect(r.code).toBe(1);
+    expect(r.output).toContain('UNPINNED BINARY');
+  });
+
+  it('rejects a binary whose bytes changed after the build', () => {
+    const lod0 = glb(4);
+    const tampered = Buffer.from(lod0);
+    tampered.writeUInt8(tampered.readUInt8(tampered.length - 1) ^ 0xff, tampered.length - 1);
+    const dir = makeTree({
+      'public/assets/MANIFEST.json': manifest({ lod0: [lod0, 4] }),
+      'public/assets/rock/boulder.lod0.glb': tampered,
+      'assetgen/rock/boulder.py': '# generator\n',
+    });
+    const r = runTool('check-assets.mjs', dir);
+    expect(r.code).toBe(1);
+    expect(r.output).toContain('HASH MISMATCH');
+  });
+
+  it('counts triangles from the bytes, not from the manifest\'s claim', () => {
+    const lod0 = glb(4);
+    const dir = makeTree({
+      'public/assets/MANIFEST.json': manifest({ lod0: [lod0, 3] }),
+      'public/assets/rock/boulder.lod0.glb': lod0,
+      'assetgen/rock/boulder.py': '# generator\n',
+    });
+    const r = runTool('check-assets.mjs', dir);
+    expect(r.code).toBe(1);
+    expect(r.output).toContain('TRI COUNT');
+  });
+
+  it('rejects a LOD chain that does not get cheaper, and a level over budget', () => {
+    const big = glb(4);
+    const same = glb(4);
+    const dir = makeTree({
+      'public/assets/MANIFEST.json': manifest({ lod0: [big, 4], lod1: [same, 4] }, { lod0: 3, lod1: 10 }),
+      'public/assets/rock/boulder.lod0.glb': big,
+      'public/assets/rock/boulder.lod1.glb': same,
+      'assetgen/rock/boulder.py': '# generator\n',
+    });
+    const r = runTool('check-assets.mjs', dir);
+    expect(r.code).toBe(1);
+    expect(r.output).toContain('LOD CHAIN');
+    expect(r.output).toContain('OVER BUDGET');
+  });
 });
+
+/** A minimal valid glTF 2.0 binary: one TRIANGLES primitive with `tris` triangles. */
+function glb(tris: number): Buffer {
+  const verts = tris * 3;
+  const bin = Buffer.alloc(verts * 12);
+  for (let i = 0; i < verts; i++) bin.writeFloatLE(i, i * 12);
+  const text = JSON.stringify({
+    asset: { version: '2.0' },
+    buffers: [{ byteLength: bin.length }],
+    bufferViews: [{ buffer: 0, byteLength: bin.length }],
+    accessors: [{ bufferView: 0, componentType: 5126, count: verts, type: 'VEC3' }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+  });
+  // GLB chunks are 4-byte aligned; the JSON chunk pads with spaces (glTF 2.0 §4.4.3.1).
+  const jsonChunk = Buffer.from(text.padEnd(Math.ceil(text.length / 4) * 4, ' '));
+  const header = Buffer.alloc(12);
+  const total = 12 + 8 + jsonChunk.length + 8 + bin.length;
+  header.writeUInt32LE(0x46546c67, 0); header.writeUInt32LE(2, 4); header.writeUInt32LE(total, 8);
+  const ch = (len: number, type: number) => {
+    const b = Buffer.alloc(8); b.writeUInt32LE(len, 0); b.writeUInt32LE(type, 4); return b;
+  };
+  return Buffer.concat([header, ch(jsonChunk.length, 0x4e4f534a), jsonChunk, ch(bin.length, 0x004e4942), bin]);
+}
+
+function manifest(
+  lods: Record<string, [Buffer, number]>,
+  triBudget: Record<string, number> = { lod0: 100, lod1: 100 },
+): string {
+  const sha = (b: Buffer) => createHash('sha256').update(b).digest('hex');
+  return JSON.stringify({
+    assets: {
+      'rock/boulder': {
+        script: 'assetgen/rock/boulder.py',
+        triBudget,
+        lods: Object.fromEntries(Object.entries(lods).map(([lod, [bytes, tris]]) =>
+          [lod, { file: `rock/boulder.${lod}.glb`, tris, sha256: sha(bytes) }])),
+      },
+    },
+  });
+}
 
 describe('the gate scripts themselves are runnable', () => {
   it('every tool parses under this node', () => {
     for (const tool of [
-      'check-assets.mjs', 'check-determinism.mjs', 'check-layers.mjs',
+      'check-assets.mjs', 'check-determinism.mjs', 'check-layers.mjs', 'glb.mjs',
       'gate-meshgen.mjs', 'gate-parity.mjs', 'gate-perf.mjs', 'playtest.mjs',
       'preview-server.mjs', 'rasteriser-cap.mjs', 'site-config.mjs', 'strip-sourcemaps.mjs',
     ]) {
