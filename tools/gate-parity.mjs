@@ -9,10 +9,13 @@
  *      assetgen/genome_vectors.py — with every allele, phenotype value, rarity and id
  *      exactly equal. The assertions live in tests/genome.test.ts; this gate runs that
  *      file alone so `gate:parity` fails on its own when the genome drifts.
- *   2. Mesh (live from M3c). Both dragon builders build those genomes and must agree on
- *      bounding box, vertex count and limb-anchor positions (CLAUDE.md §1.5). Until
- *      `src/assets/dragon/builder.ts` exists this half is an explicit, named SKIP; the
- *      moment it exists and this comparison has not been written, the gate fails.
+ *   2. Mesh (due at M3d). Both dragon builders build those genomes and must agree on
+ *      bounding box, vertex count and limb-anchor positions (CLAUDE.md §1.5). The
+ *      TypeScript builder appears at M3a and grows through M3b–M3c, while ROADMAP puts the
+ *      comparison at M3d, "gate:parity green between the two builders". So this half is a
+ *      named SKIP until docs/ROADMAP.md marks M3c `DONE`. From then on it fails until the
+ *      comparison is written. Failing as soon as builder.ts existed would have turned
+ *      every gate red from M3a, two steps before the comparison was due.
  *
  * Before M2b the whole gate SKIPped until *both* files existed, which meant the genome
  * half — the half that could be checked — could not go green before M3 (STATE.md run 10).
@@ -59,10 +62,20 @@ if (!existsSync(GENOME_TS)) {
 }
 
 // --- 2. mesh ----------------------------------------------------------------------------
+/** True once docs/ROADMAP.md marks `step` DONE — the roadmap is the record of where we are. */
+function stepDone(step) {
+  if (!existsSync('docs/ROADMAP.md')) return false;
+  const row = readFileSync('docs/ROADMAP.md', 'utf8').split('\n')
+    .find((l) => l.replace(/\*/g, '').startsWith(`| ${step} |`));
+  return Boolean(row && /\|\s*\**DONE\**\s*\|\s*$/.test(row));
+}
 if (!existsSync(BUILDER_TS)) {
-  console.log(`gate:parity mesh SKIP — ${BUILDER_TS} does not exist yet (M3c).`);
+  console.log(`gate:parity mesh SKIP — ${BUILDER_TS} does not exist yet (M3a).`);
+} else if (!stepDone('M3c')) {
+  console.log(`gate:parity mesh SKIP — ${BUILDER_TS} exists, and the builder comparison is ` +
+    'due at M3d (docs/ROADMAP.md); it becomes required once M3c is DONE.');
 } else {
-  console.error('gate:parity mesh NOT IMPLEMENTED — M3c must build the genomes in ' +
+  console.error('gate:parity mesh NOT IMPLEMENTED — M3d must build the genomes in ' +
     `${FIXTURE} with both dragon builders and compare bounding box, vertex count and ` +
     'limb-anchor positions within tolerance (CLAUDE.md §1.5).');
   failed = true;
