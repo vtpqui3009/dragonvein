@@ -84,38 +84,67 @@ const TORSO_PROFILE: readonly (readonly [number, number, number])[] = [
  * same numbers. At the middle of every range the dragon is about the M3e one; at the ends
  * the outline moves (artifacts/variants/dragon-sweep.json measures it):
  *
- *   bodyMass   girth: the torso radius scales by `girth(BM)`, 0.53 to 1.62 over the range,
- *              and the centre sinks by BELLY_SAG of the added radius, so a heavy dragon's
- *              belly hangs and a light one's tucks up. The belly never comes nearer the
- *              ground than CLEARANCE.
- *   legLength  ride height: the hip and everything it carries rise RIDE_PER_LEG per unit,
- *              and the legs reach from the body to the ground, upright.
+ *   bodyMass   girth: each torso node's radius scales by `girth(BM, k)`. Below the middle
+ *              of the range all four slim alike (to 0.51 at the low end); above it the chest
+ *              swells most (to 1.74) and the hip least (1.50; TORSO_GAIN), so a heavy dragon is barrel-
+ *              chested and front-heavy (docs/ART_BIBLE.md §Proportions). The centre sinks by
+ *              BELLY_SAG of the added radius, so a heavy belly hangs and a light one tucks
+ *              up; it never comes nearer the ground than CLEARANCE.
+ *   headSize   the skull, horns, crest and eyes scale by `headScale(HS)`: 0.78 at the low
+ *              end, 1.77 at the high, so the range spans more than twice the size.
+ *   legLength  ride height: the hip and everything it carries rise by `rideLift(LL)`, from
+ *              0.43 below the middle to 0.43 above it, and the legs reach from the body to
+ *              the ground, upright.
  *   neckLength / neckArc  a cubic neck. A low arc is a straight neck reaching forward; a high
  *              one rises steeply in a swan's S (forward and low, then up), the head held high.
  */
-/** Hip centre height at legLength 1, bodyMass 1. */
-export const RIDE_MID = 0.86;
-/** How far the body rises per unit of legLength. */
-export const RIDE_PER_LEG = 1.3;
-/** Torso radius gain per unit of bodyMass, about the range's middle. */
-export const GIRTH_GAIN = 1.45;
+/** Hip centre height at the middle of legLength's range (bodyMass at 1). */
+export const RIDE_MID = 0.90;
+/**
+ * Ride height follows the same kind of saturating curve as girth: the body rises
+ * RIDE_GAIN · d / (RIDE_KNEE + |d|), d being legLength's distance from its range's middle.
+ */
+export const RIDE_GAIN = 0.62;
+export const RIDE_KNEE = 0.15;
+/** Ride height's lift over RIDE_MID for a legLength. */
+export function rideLift(LL: number): number {
+  const d = LL - 1.05;
+  return RIDE_GAIN * (d / (RIDE_KNEE + Math.abs(d)));
+}
+/**
+ * Girth follows a saturating curve of bodyMass, s = d / (GIRTH_KNEE + |d|) with d the
+ * distance from the range's middle: steep where wild dragons cluster, flattening toward the
+ * ends so neither extreme leaves plausibility. Below the middle all four torso nodes slim
+ * alike by GIRTH_LOW per unit of s...
+ */
+export const GIRTH_KNEE = 0.25;
+export const GIRTH_LOW = 0.95;
+/** ...and above it each node swells by its own TORSO_GAIN (hip, belly, chest, shoulder). */
+export const TORSO_GAIN: readonly number[] = [0.70, 0.95, 1.10, 1.00];
+/** Head scale gain per unit of headSize, about the range's low end. */
+export const HEAD_GAIN = 0.6;
 /** How much of its added radius a heavier torso's centre sinks by. */
 export const BELLY_SAG = 0.45;
 /** The belly's least height above the ground. */
 export const CLEARANCE = 0.12;
 
-/** Torso radius multiplier for a bodyMass. */
-export const girth = (BM: number) => 1.075 + GIRTH_GAIN * (BM - 1.075);
+/** Torso radius multiplier for a bodyMass at torso node k (0 hip … 3 shoulder). */
+export function girth(BM: number, k: number): number {
+  const d = BM - 1.075;
+  const s = d / (GIRTH_KNEE + Math.abs(d));
+  return 1.075 + GIRTH_LOW * s + (TORSO_GAIN[k]! - GIRTH_LOW) * pyMax(s, 0.0);
+}
+/** The skull's scale for a headSize: horns, crest and eyes scale with it. */
+export const headScale = (HS: number) => HS + HEAD_GAIN * (HS - 0.78);
 
 /** The four torso nodes, hip to shoulder: [x, z, radius] — `torso_nodes(p)`. */
 export function torsoNodes(p: Phenotype): [number, number, number][] {
   const { bodyMass: BM, bodyLength: BL, chestDepth: CD, legLength: LL } = p;
-  const G = girth(BM);
-  const lift = RIDE_PER_LEG * (LL - 1.0);
-  return TORSO_PROFILE.map(([fx, fz, fr]) => {
+  const lift = (RIDE_MID - 0.86) + rideLift(LL);
+  return TORSO_PROFILE.map(([fx, fz, fr], k) => {
     const x = lerp(-0.75 * BL, 0.95 * BL, fx);
     const r0 = fr * (0.2 < fx && fx < 0.8 ? CD : 1.0);
-    const r = r0 * G;
+    const r = r0 * girth(BM, k);
     const z = pyMax(fz + lift - BELLY_SAG * (r - r0), r + CLEARANCE);
     return [x, z, r];
   });
@@ -126,9 +155,10 @@ export function skeleton(p: Phenotype): { g: Graph; idx: Anchors } {
   const { bodyMass: BM, bodyLength: BL } = p;
   const { tailLength: TL, tailTaper: TT } = p;
   const { neckLength: NL, neckArc: NA } = p;
-  const { headSize: HS, snoutLength: SL } = p;
+  const { snoutLength: SL } = p;
+  const HS = headScale(p.headSize);
   const g = new Graph();
-  const G = girth(BM);
+  const G = girth(BM, 0);
   const tn = torsoNodes(p);
   const hipZ = tn[0]![1];
 
@@ -163,7 +193,7 @@ export function skeleton(p: Phenotype): { g: Graph; idx: Anchors } {
   const p1: Vec3 = [sx + reach * lerp(1.0 / 3.0, 0.95, NA), 0, sz + rise * lerp(1.0 / 3.0, 0.0, NA)];
   const p2: Vec3 = [sx + reach * lerp(2.0 / 3.0, 0.05, NA), 0, sz + rise * lerp(2.0 / 3.0, 0.90, NA)];
   const p3: Vec3 = [sx + reach, 0, sz + rise];
-  const NG = (BM + G) * 0.5;
+  const NG = (BM + girth(BM, 3)) * 0.5;
   const neck: number[] = [];
   let prev = torso[3]!;
   for (let i = 1; i < 5; i++) {
@@ -207,7 +237,7 @@ export function addLimbs(g: Graph, idx: Anchors, p: Phenotype): void {
   const TC = p.toeCount;
   // The legs stand under the body, wider set on a heavier one, and reach the ground from
   // whatever height legLength lifted it to: thigh, knee, ankle at fixed fractions of the drop.
-  const spread = 0.55 + 0.45 * girth(p.bodyMass);
+  const spread = 0.55 + 0.45 * girth(p.bodyMass, 0);
   for (const s of [1, -1]) {
     const legs: [number, number, boolean][] = [[idx.hip, -0.72 * BL, true], [idx.shoulder, 0.94 * BL, false]];
     for (const [anchor, ax, back] of legs) {
@@ -366,7 +396,11 @@ export function addWings(g: Graph, idx: Anchors, p: Phenotype): void {
  * (artifacts/variants/dragon-sweep.json).
  */
 export function addCrown(g: Graph, idx: Anchors, p: Phenotype): void {
-  const { hornCount: HC, hornLength: HL, hornCurve: HK, crestType: CT, headSize: HS } = p;
+  const { hornCount: HC, hornLength: HL, hornCurve: HK, crestType: CT } = p;
+  // Horns are as thick as the skull is big (headScale), but reach as far as headSize itself
+  // says: on the amplified scale the longest horns stood three units tall.
+  const HS = headScale(p.headSize);
+  const HR = p.headSize;
   const [hx, hz] = idx.headPos;
   const back = idx.headBack;
   const pairs = Math.floor(Math.max(0, HC) / 2);
@@ -376,17 +410,17 @@ export function addCrown(g: Graph, idx: Anchors, p: Phenotype): void {
     for (const s of [1, -1]) {
       const yaw = 0.16 + 0.26 * f;
       g.chain(back, [
-        [[hx - 0.16 * HL, yaw * s * HS, hz + (0.56 + 0.30 * f) * HL * HS], 0.135 * HS],
-        [[hx - 0.16 * HL - 0.26 * HL * (1 - HK * 0.5), (yaw + 0.09) * s * HS, hz + (0.86 + 0.34 * f) * HL * HS], 0.085 * HS],
-        [[hx - 0.16 * HL - 0.48 * HL * (1 - HK * 0.8), (yaw + 0.14) * s * HS, hz + (1.02 + 0.26 * f) * HL * HS - 0.22 * HK * HL], 0.030 * HS],
+        [[hx - 0.16 * HL, yaw * s * HS, hz + (0.56 + 0.30 * f) * HL * HR], 0.135 * HS],
+        [[hx - 0.16 * HL - 0.26 * HL * (1 - HK * 0.5), (yaw + 0.09) * s * HS, hz + (0.86 + 0.34 * f) * HL * HR], 0.085 * HS],
+        [[hx - 0.16 * HL - 0.48 * HL * (1 - HK * 0.8), (yaw + 0.14) * s * HS, hz + (1.02 + 0.26 * f) * HL * HR - 0.22 * HK * HL], 0.030 * HS],
       ]);
     }
   }
   if (odd) {
     g.chain(back, [
-      [[hx - 0.10 * HL, 0, hz + 0.64 * HL * HS], 0.125 * HS],
-      [[hx - 0.28 * HL, 0, hz + 1.00 * HL * HS], 0.075 * HS],
-      [[hx - 0.46 * HL, 0, hz + 1.18 * HL * HS - 0.20 * HK * HL], 0.028 * HS],
+      [[hx - 0.10 * HL, 0, hz + 0.64 * HL * HR], 0.125 * HS],
+      [[hx - 0.28 * HL, 0, hz + 1.00 * HL * HR], 0.075 * HS],
+      [[hx - 0.46 * HL, 0, hz + 1.18 * HL * HR - 0.20 * HK * HL], 0.028 * HS],
     ]);
   }
   if (CT === 1) { // frill: three thick spines a side, fanned out and back from behind the jaw
@@ -410,13 +444,13 @@ export function addCrown(g: Graph, idx: Anchors, p: Phenotype): void {
   } else if (CT === 3) { // antler: a beam each side, forking twice
     for (const s of [1, -1]) {
       const br = g.chain(back, [
-        [[hx - 0.18, 0.22 * s * HS, hz + 0.60 * HS], 0.110 * HS],
-        [[hx - 0.40, 0.46 * s * HS, hz + 1.06 * HS], 0.075 * HS],
+        [[hx - 0.18, 0.22 * s * HS, hz + 0.60 * HS], 0.130 * HS],
+        [[hx - 0.40, 0.50 * s * HS, hz + 1.10 * HS], 0.095 * HS],
       ])[1]!;
       for (const d of [-1, 1]) {
         g.chain(br, [
-          [[hx - 0.62 + 0.18 * d, (0.50 + 0.30 * d) * s * HS, hz + 1.42 * HS], 0.055 * HS],
-          [[hx - 0.86 + 0.30 * d, (0.52 + 0.52 * d) * s * HS, hz + 1.80 * HS], 0.028 * HS],
+          [[hx - 0.62 + 0.22 * d, (0.62 + 0.36 * d) * s * HS, hz + 1.50 * HS], 0.070 * HS],
+          [[hx - 0.86 + 0.36 * d, (0.70 + 0.62 * d) * s * HS, hz + 1.95 * HS], 0.034 * HS],
         ]);
       }
     }
@@ -453,10 +487,11 @@ export function membranePolys(p: Phenotype, s: number): { v: Vec3[]; f: number[]
   const { arm, tips } = wingNodes(p, s);
   const BL = p.bodyLength;
   const W2 = arm[2]![0];
-  // The flank anchors sit as far under the wing root as they did in M3e (1.04 and 1.12 under 1.22).
-  const WZ = wingRootZ(p);
-  const A1: Vec3 = [-0.35 * BL, 0.20 * s, WZ - 0.18];
-  const A2: Vec3 = [-0.15 * BL, 0.22 * s, WZ - 0.10];
+  // The flank anchors sit as far over the chest's centre as they did in M3e (1.04 and 1.12
+  // over 1.0), so the membrane never dips under the torso's midline, whatever the girth.
+  const zc = torsoNodes(p)[2]![1];
+  const A1: Vec3 = [-0.35 * BL, 0.20 * s, zc + 0.04];
+  const A2: Vec3 = [-0.15 * BL, 0.22 * s, zc + 0.12];
   const v: Vec3[] = [...arm.map((a) => a[0]), ...tips, A1, A2];
   const nT = tips.length, iT = 4, iA1 = 4 + nT, iA2 = iA1 + 1;
   const f: number[][] = [[0, 1, 2, iA2], [iA2, 2, iA1]];
