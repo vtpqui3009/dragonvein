@@ -38,7 +38,7 @@ first step in reading order that is not `DONE`. M5 comes next, then M7, M8, M9, 
 the playable checkpoint.
 
 **M3 the milestone is `DONE`** (run 26, at `61a228b`). M3f closed on its first pass: art
-**8.2**, perf **9.5**, gameplay **9.7**, with no blocking or major defect. M3 meets all three
+**8.2**, perf **9.5**, gameplay **9.5**, with no blocking or major defect. M3 meets all three
 closing conditions: every step is `DONE`, the last pass is ≥ 8.0 everywhere, and the owner's
 dragon sighting is logged (§7).
 
@@ -78,6 +78,12 @@ owner (the integrator), or an asset-builder first and then the integrator, never
   - G2 advisory: G shows little of parent B.
 
 ## Open items that need the owner, not a run
+
+- **Have a fresh look at the dragons (optional; M3 is already closed).** Run 26 changed every
+  dragon's body: mass, legs, neck, head and crown now shape the outline, and there are three
+  wing forms. Open https://vtpqui3009.github.io/dragonvein/dragon.html after the Pages
+  deploy. Do they read as eight different creatures to you? If not, say what still looks the
+  same, and it becomes a dragon step.
 
 - **A verification-grade real-GPU row is still owed before M16.** On 2026-10-13 the owner
   logged two sightings at `6b06392`: ~60 FPS at Medium (28 draws, 174 012 triangles) and

@@ -167,7 +167,7 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
-## 2026-10-13 · run 26 · M3f — taken over from stopped run 25
+## 2026-10-13 · run 26 · M3f DONE, M3 DONE — taken over from stopped run 25
 
 **Step**: `M3f`, still the first step in reading order that is not `DONE` under the new order
 (M3 → M5 → M7 → M8 → M9 → ▲ playable checkpoint → M6 …, owner decision `67941df`).
@@ -179,6 +179,73 @@ stood down: the sweep instrument in `tools/silhouette.mjs` and `dragon-view.ts`,
 `graph.ts`. That work was uncommitted, so it was not on `main` when `6dd4794` described run
 25 as having shipped nothing. Run 26 continues it here, in the order written: the sweep
 first, then the genes. Nothing lands on `main` until `npm run gates` is green.
+
+---
+
+### Result — M3f DONE; **M3 DONE**
+
+All five run 25 criteria hold at `61a228b`:
+
+1. **Sweep** (`dragon-sweep.json`). Low-vs-high IoU for each gene:
+
+   | gene | before | after |
+   |---|---|---|
+   | bodyMass | 0.845 | 0.678 |
+   | neckLength | 0.620 | 0.577 |
+   | neckArc | 0.840 | 0.511 |
+   | legLength | **0.967** | 0.416 |
+   | tailLength | 0.230 | 0.235 |
+   | headSize | 0.689 | 0.584 |
+   | hornCount | 0.824 | 0.790 |
+   | crestType | **0.932** | 0.768 |
+
+   All eight are ≤ 0.85.
+2. **Sheet.**
+
+   | | before | after |
+   |---|---|---|
+   | mean pairwise IoU | 0.632 | **0.523** |
+   | most-alike pair | 0.785 | **0.677** |
+   | height spread | 1.22× | **1.42×** |
+
+3. **Greyscale.** It reads as eight individuals. The art critic downgraded the
+   shared-body-plan major to a minor.
+4. **Gates.**
+   - Parity exact; worst box gap 2.37 % of 3 %.
+   - meshgen round-trip max 43.3 ms.
+   - `npm run gates` exits 0, with 1055 tests.
+5. No blocking or major art defect.
+
+**What changed**, identically in `builder.py` and `graph.ts`, using only `+ - * /`, `abs` and
+`max`:
+- **Body mass** drives torso girth on a saturating curve, chest-heavy, with belly sag.
+- **Leg length** sets the ride height, and the legs are rebuilt to reach the ground.
+- **The neck** is a 4-node cubic, from straight to a swan S.
+- **Head size** scales the skull, crown and eyes ×0.78–1.77.
+- **Horns and crests** are larger.
+- **Wing hue** sits near the body hue.
+- **Skinning in `skin.ts`** is cheaper on branches.
+
+No GENOME range changed. The wing tests read the root and midline from the body instead of
+fixed constants, with the same values at mid-body.
+
+**Scores (cycle 1):** art 8.2, perf 9.5, gameplay 9.5.
+
+**M3 closes.** Every step is `DONE`, the last pass is ≥ 8.0 in all three, and §7 holds
+through the owner's sighting (run 23). The M3f geometry is new since that sighting, so a
+fresh look at `dragon.html` is invited in NEXT.md.
+
+**Usage limit.** The run hit the limit at about 10:00 UTC, while the integrator waited on
+gates. Its work was snapshotted to `wip/m3f` and resumed after the reset. `wip/m3f` is now
+superseded.
+
+**Open, carried to FINDINGS:**
+- wing hue clashes with the body, and F is near-black;
+- the rib skewers;
+- the belly wedge;
+- the bible's "chunky" proportions;
+- `dragon.html` input is not smoke-covered;
+- a dragon-on-screen perf pass for when dragons are placed.
 
 ---
 
@@ -335,203 +402,6 @@ interchangeable in greyscale. That is M3f.
 (NEXT.md).
 
 ---
-
-## 2026-10-13 · run 23 · M5d — the critic round
-
-**Step**: `M5d`, still the first step in reading order that is not `DONE`. Run 22 landed the
-four generators and criteria 1–5; **criterion 6, art ≥ 8.0 per generator, is all that is
-left**, so this run is the critic round and the close-out, not a build.
-
-**Ownership**: no builder unless a rework cycle needs one. Then `assetgen/flora/`
-(asset-builder), sequential.
-
-**Hand-off hazard, recorded because it cost this run time.** Run 22 was on the owner's
-second Pro account, so its session is invisible to this one's `list_sessions`. It pushed
-`1cd78f5`, `3bf104e`, `60d1796` and `1a617ef` between 03:01:31 and 03:02:07 UTC — after the
-dispatcher had checked the remote at 03:01 and after the `NEXT.md` this run was handed. The
-stamp in that `NEXT.md` (`3bf104e`, "run 22 is in flight") was therefore already stale on
-arrival. Its own §Current step and `STATE.md` both say the generators are on `main` and the
-critics are next, so that is what this run took.
-
-**Git, Step 0.** Local `main` was an unrelated root again (4 commits, root `00927cd`, against
-`origin/main`'s `cff41b6`) exactly as §Standing hazards predicts. `merge --ff-only` refused
-unrelated histories, and `checkout -B` and `checkout -b` were both refused by the permission
-layer. `git checkout origin/main` (detached) worked, as the hazard note says. **New detail
-worth the next run's time: `git checkout main` onto that stale root had already swapped the
-whole working tree to the pre-M1 project, so `NEXT.md`, `ops/` and `public/` simply vanished
-from disk.** Check `git log -1` before trusting any file. The Step 0 push succeeded
-(`1a617ef..3812835`) on the second attempt; the first was rejected non-fast-forward because
-run 22 pushed `1a617ef` in between, which is a race, not a credential fault.
-
-### Acceptance criteria
-
-1. **Artefacts at the scored commit.** `artifacts/` is git-ignored and arrives empty, so the
-   round cannot read run 22's renders. Regenerate at this run's HEAD:
-   - `artifacts/variants/{bush,fern,reeds,grassclump}.png` and a turntable each;
-   - `artifacts/perf.json`, `artifacts/playtest.log`, `artifacts/shots/` from `npm run gates`.
-2. **`npm run gates` exits 0** at the commit the critics score, with HEAD not moving after.
-3. **The round is recorded** in `FINDINGS.md` in the `critic-round` format, with a
-   `SCORE_MACHINE` line for each of the three critics and an art estimate **per generator**.
-4. **Decision.** All three critics ≥ 8.0, every generator ≥ 8.0, gates green and no blocking
-   defect → M5d `DONE`. Otherwise the deduction is traced to this step's code, fixed,
-   re-gated and re-scored, up to 3 cycles; if it still fails, commit what is green, leave
-   M5d `IN_PROGRESS` and record the blocker. No score is stretched to close it.
-5. **Closed out** per the `run-closeout` skill: `NEXT.md` rewritten first, this entry given
-   its result, the archive rotated, the evidence page republished to the same URL, pushed.
-
-### Result — **superseded: M5d is `DONE`.** This section was written mid-run, before §4 was settled; the final result is below
-
-**Scores.** Cycle 1 at `9e1a2b6`: art 8.3 · perf 8.65 · gameplay 9.7. Cycle 2 at `d1dcabe`:
-art 8.0 · perf 8.15 · gameplay 9.7. `npm run gates` exits 0 at both. No blocking defect in
-either round. Every criterion 1–5 holds; **criterion 6 does not**, and criteria 1–4 of this
-run's own list were met (artefacts regenerated, gates green, both rounds recorded with
-`SCORE_MACHINE` lines and per-generator estimates).
-
-**What shipped.** `d1dcabe`, the fern rework. Cycle 1 scored fern 7.7 — below the
-per-generator bar — on three majors: fronds were single wide serrated blades so it read as an
-agave; eight seeds gave three silhouettes; the croziers were invisible. All three were fixed
-in the generator, not by reseeding. A frond is now a stipe, a tapering rachis and discrete
-pinnae; a discrete `habit` axis stratified on π−3 gives four architectures at two seeds each
-(vase, spread, fountain, bracken-on-a-rhizome); croziers scale off the plant's measured apex
-with a per-head tilt. LOD0/1/2 strictly decreasing and inside 4000/1200/300 on every seed,
-scanned to seed 64 (worst 3412/1002/256); 0 inward, open and non-manifold edges at every LOD
-on every seed; `--verify` reproduces all 57 files byte-for-byte; `treekit.py` untouched, so
-the other generators stay byte-identical.
-
-**A real bug found on the way.** The `droop` axis was dead. The old generator straightened any
-frond that threatened the ground (`turn *= 0.86`, up to 16 times), which zeroed the arch on
-five of eight seeds — run 22 had renamed the axis from `curl` to `droop` after a low probe
-score without finding this cause. The rachis turn is now solved by bisection so the tip lands
-at the commanded fraction *and* clears the ground. The probe reads 0.045–0.376 where five
-seeds read 0.0.
-
-**Why the step did not close.** Criterion 6 is per generator, and the two rounds disagree about
-assets that did not change. Between `9e1a2b6` and `d1dcabe` only `fern.py` and the three
-`flora/fern.lod*.glb` changed, yet:
-
-| generator | cycle 1 | cycle 2 | delta | file changed? |
-|---|---|---|---|---|
-| bush | 8.6 | 7.8 | −0.8 | **no — byte-identical** |
-| reeds | 8.2 | 8.0 | −0.2 | **no — byte-identical** |
-| grassclump | 8.1 | 7.8 | −0.3 | **no — byte-identical** |
-| fern | 7.7 | 7.4 | −0.3 | yes, rebuilt |
-
-Roughly **±0.8 of scorer variance on an unchanged artefact**, against a bar the step is being
-accepted on. Under cycle 1's numbers three of four generators pass; under cycle 2's, one does.
-`docs/RUBRIC.md` has no per-generator line — the per-generator estimate is a prompt-level
-request, which is why it is not reproducible. **This is a defect in how the step is measured,
-not in the assets**, and it is the blocker handed to the owner in `NEXT.md`.
-
-What this run refused to do, recorded so a later reader can audit it: it did not average the
-two cycles, did not adopt cycle 1 because it was kinder, and did not spawn a third art-critic
-hoping for a friendlier number. All three are score-fishing (`CLAUDE.md` §4, `critic-round`
-§4). It also ran **no cycle 3**, because a third cycle would have to "fix" `bush` and
-`grassclump` — files that have not changed since cycle 1 scored them 8.6 and 8.1. There is no
-defect in that code; editing it to move a scorer's number is the inverse of the rule.
-
-**Perf was re-run rather than inherited, deliberately.** Run 22's perf-critic scored the same
-code tree 8.6 before its session died, and the dispatcher offered that number on the ground
-that the code had not moved. It had not — `1a617ef..9e1a2b6` touches `STATE.md` only. But
-`artifacts/` is git-ignored, so run 22's `perf.json` never reached this container; it was
-measured on another machine under another load and cannot be read or reproduced here. P1
-scores a *reproducible measurement*, so the measurement is the artefact, and adopting the
-number would have attached a score to a file no critic in this run had seen. Cycle 1's
-independent 8.65 landed 0.05 from it, which is corroboration, not proof the re-run was waste.
-
-**A factual error in a critic report, recorded without changing its score.** Cycle 2's
-perf-critic scored P1's real-hardware half 0, reading the §Real-GPU verification log as having
-"one row only" (2026-10-10, `c429d4a`). The log has **two** rows — line 459 adds a 2026-10-12
-`3ab6e84` sighting it did not see — and cycle 1's perf-critic read that newer row and scored
-the same half 0.5. That single misread is the entire 0.5 between 8.65 and 8.15. Per
-`critic-round` §3 the score stands as given and a builder note was added instead.
-
-**Correction, entered after the fact: the second half of that note was wrong, and the error
-was this run's.** Run 23 reported that `3ab6e84` "does not resolve in this repo" and raised it
-as an owner blocker. `git log -1 3ab6e84` did return "unknown revision" here, so the
-observation was accurate — but the inference was not. **This container's clone is shallow**:
-`create_session` defaults `clone_depth` to 50, `git rev-parse --is-shallow-repository`
-returned `true`, and `git rev-list --count HEAD` was 60 against the repository's 211. After
-`git fetch --unshallow`, `3ab6e84` resolves as `docs(next): the owner's real-GPU command, now
-that it can pass`, 2026-10-12 08:13, and `git merge-base --is-ancestor 3ab6e84 origin/main`
-confirms it is on main's history. **The row is sound and the owner need do nothing.** Both
-perf rounds spent P1 deductions on a defect that did not exist, and this run escalated it
-instead of checking the clone. The check is `git rev-parse --is-shallow-repository`, now a
-standing hazard in `NEXT.md`. Do not deduct P1 for that row again.
-
-**Forward risk for M5e, now agreed by three independent perf rounds** (run 22's, and this
-run's two): heap headroom is about 4 355 B of 40 960 at 28 draws — roughly **two draws** at
-PERF_BUDGET's ~1.8 kB per draw — and `uncorrectedBytesPerFrame` is already 45 200, passing
-only via the idle-baseline subtraction. Placing the four understory types as separate draws,
-or one draw per LOD, will trip the heap gate. Placement must use one `InstancedMesh` per plant
-type with LOD inside the instance.
-
-**Open blockers,** as they stood when this entry was first written. (1) and (2) have since
-been settled — see the two sub-entries above this one: criterion 6 is now ruled in
-`CLAUDE.md` §4 as defects-not-sub-scores, and the `3ab6e84` blocker was this run's own error.
-(1) How criterion 6 is measured — **ruled**. (2) The `3ab6e84` real-GPU row — **withdrawn,
-not a defect**. (3) No verification-grade real-GPU or Potato row — owner, M16. (4) fern seeds
-1/8 and 3/5 near-pairs — **the live one**, and under the new §4 the only thing keeping M5d
-open. (5) The evidence page's old
-URL (`Pgkt22EifnK5hUzmXqssoj`) is not reachable from this account — `artifact not found` —
-so run 23 published to https://claude.ai/artifact/HXPyJnjvcwr5tayAwbpD9a instead. The owner
-chooses which link stands; a third must not be created.
-
-**Step 0.** The push proof succeeded, on the second attempt: the first was rejected
-non-fast-forward because run 22 pushed `1a617ef` in between, which is a race and not a
-credential fault. `1a617ef..3812835`, then rebased and pushed.
-
-### Final result — M5d `DONE` at `3364460`, and M3e unblocked
-
-**Cycle 3: art 8.5 · perf 8.3 · gameplay 9.7**, gates exit 0, no blocking defect, and — the
-test that actually decides it — **no `blocking` or `major` defect against any of the four
-generators' own variant sheet or turntable**. All four pass. M5d is `DONE`; M5 stays
-`IN_PROGRESS` on M5e.
-
-**What unblocked it was a rule, and the rule came from this run's own evidence.** The owner
-amended `CLAUDE.md` §4 on the cycle 1 / cycle 2 comparison recorded above: per-asset acceptance
-is decided by defects carrying pointers, not by improvised per-generator sub-scores, because
-those sub-scores moved up to 0.8 on **byte-identical** assets against a bar at 8.0. §4 also now
-requires a critic to state its coverage — that came from this run's builder note on a critic
-reading 3 of 14 shots. Both cycle 3 critics duly stated coverage, and the gaps are now visible
-in `FINDINGS.md` instead of invisible: art decoded no `.webm` and read 6 of 14 shots; perf read
-2 of 14 and no sheets.
-
-Worth being explicit, because a rule change that closes a step invites the suspicion: **the
-rule did not lower the bar for M5d.** Fern still had to be fixed twice, and both fixes were
-real geometry changes in the generator. What the rule removed was the prospect of reworking
-`bush` and `grassclump` — files that never changed — to chase a second scorer's number.
-
-**The fern fix that closed it (`3364460`).** Cycle 2's single `major` was seeds 1/8 reading as
-one upright vase and 3/5 as one low fan. Root cause was confirmed before any change, and both
-halves were real: the pair members were only 33.3% apart on their most different axis, **and**
-the `spread` and `fountain` habits genuinely overlapped at their low end, where a high-`form`
-spread and a low-`form` fountain both solved to a ~0.3 m pancake at the same ~4.8 width/height
-ratio. The fix is a new discrete `stature` axis (`tuft`/`stand`) on √6−2 — the only constant of
-~27 searched whose halves split all four habit pairs of seeds 1–8 with margin — plus habit
-envelopes pulled onto disjoint rise bands and absolute length bands. Most-alike pair 26.5% →
-**37.5%**, and an independent check in the shape of the critic's own complaint (within 15% on
-height *and* width, across all 28 pairs) is clean where both named pairs tripped it before.
-
-**Two corrections this run made to its own earlier work**, recorded rather than quietly dropped:
-1. The `3ab6e84` "commit does not exist" blocker was **wrong and withdrawn** — this container's
-   clone was shallow (`clone_depth` 50; 60 commits of 211). Cycle 3's perf-critic independently
-   read the log as 3 rows, all hashes resolving, `is-shallow-repository` false.
-2. Cycle 2's perf-critic misread that same log as having one row; its score stood unchanged
-   with a builder note, per `critic-round` §3.
-
-**The live risk handed forward is P4, now a `major`:** the frame loop allocates 35 108 B per
-frame, 86% of budget, with a 3 995 kB sawtooth over 18 scavenges. M5e's instance matrices will
-spend that headroom, so it wants fixing before placement — by removing per-frame allocation,
-never by raising the budget. Also flagged for one look: `shots/05-potato.png`'s HUD disagrees
-with `perf.json`'s potato figures (17 draws / 30 552 tris against 20 / 142 800) while
-`01-wide.png` matches its own, which suggests the potato shot is captured before the scene
-finishes drawing. If so, every potato shot ever scored was of an incomplete frame.
-
-**Next step is M3e, not M5e,** on the owner's decision. This run flipped that row from `BLOCKED`
-to `TODO`, which `docs/ROADMAP.md` names as the closing run's job. M3e is the genome driving
-silhouette rather than hue; its load-bearing criterion is the greyscale test, whose renderer
-**does not exist yet and is part of the step**, and §1.5 makes it one sequential owner across
-`assetgen/dragon/` and `src/assets/dragon/`, never a fan-out.
 
 ## 2026-10-12 · decision · CLAUDE.md §1.5: parity compares the graph, not vertex counts
 

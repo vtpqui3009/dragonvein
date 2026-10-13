@@ -99,7 +99,7 @@ at `3ab6e84`; M2's code is not yet imported by the game, so nothing visible chan
 | M3c | built in a worker inside 120 ms on Medium; `gate:meshgen` green | DONE |
 | M3d | `gate:parity` green between the two builders on the fixed genome set | DONE |
 | M3e | wing form from the genome (sail, spread membrane, segmented), spread at rest; the greyscale sheet and outline numbers that measure silhouette | DONE |
-| **M3f** | **neck arc, body mass and horn count push the outline until `dragon-greyscale.png` reads as eight creatures; no blocking or major defect on the dragon's sheet or turntable** | **TODO** |
+| M3f | neck arc, body mass and horn count push the outline until `dragon-greyscale.png` reads as eight creatures; no blocking or major defect on the dragon's sheet or turntable | DONE |
 
 M3a closed on 2026-10-12 at `e015a48` (run 11), on its STATE.md criteria with gates green. The
 graph is identical to the reference on 32 genomes, and the skin is closed and outward-wound.
@@ -126,7 +126,7 @@ CLAUDE.md §1.5 as the owner amended it that day: skin graphs and limb anchors e
 bounding boxes within 3 % (worst 2.04 %). Vertex counts are no longer compared. The pass scored
 art 7.4, perf 8.15 and gameplay 8.5.
 
-**M3 the milestone is `IN_PROGRESS`.** §7 is now satisfied — the owner opened `dragon.html` on
+**M3 the milestone is `DONE` — closed 2026-10-13 in run 26** at `61a228b`. M3f closed on its first pass (art 8.2, perf 9.5, gameplay 9.5; no blocking or major defect), so every step is `DONE`, the last pass is ≥ 8.0 in all three, and §7 holds through the owner's sighting. *History:* **M3 was `IN_PROGRESS`.** §7 is now satisfied — the owner opened `dragon.html` on
 2026-10-13 and the sighting is logged in `STATE.md`. What remains is the art score: **7.4**,
 and the thing holding it down is what the owner saw at full size. **M3e is that work**, added
 on the owner's decision of 2026-10-13 to take it ahead of M5e.
@@ -215,7 +215,7 @@ The sighting is logged in `STATE.md`. Nothing about M4 is outstanding.
 | M5b | 3 canopy tree generators with passing variant sheets | DONE |
 | M5c | 2 more trees, and saplings | DONE |
 | M5d | 4 understory generators — bushes, ferns, reeds, grass clumps | DONE |
-| M5e | 4 more understory plus ground cover, dressed into the island | TODO (after M3e) |
+| **M5e** | **4 more understory plus ground cover, dressed into the island** | **TODO** |
 
 M5a closed on 2026-10-12 at `e377e1d` (run 19) on its first pass: art 8.4, perf 8.4,
 gameplay 9.2. `src/render/wind.ts` sways 220 instances of the committed `flora/broadleaf` in
