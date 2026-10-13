@@ -4,7 +4,7 @@
  * a measurement.
  */
 import { describe, expect, it } from 'vitest';
-import { alignedIoU, geneDiffs, maskFromRgb, maskStats, silhouetteReport } from '../tools/silhouette.mjs';
+import { alignedIoU, frameIoU, geneDiffs, maskFromRgb, maskStats, silhouetteReport, sweepBase, sweepReport, sweepValues } from '../tools/silhouette.mjs';
 
 type Mask = { w: number; h: number; on: Uint8Array };
 /** A w×h mask with the given rectangles switched on ([x0, y0, x1, y1), exclusive). */
@@ -51,5 +51,33 @@ describe('silhouette instrument', () => {
     expect(r.pairs.map((p: { a: string; b: string }) => p.a + p.b)).toEqual(['AB', 'AC', 'BC']);
     expect(r.summary.maxIoU).toBe(1);
     expect(r.dragons[0]).toMatchObject({ area: 1, width: 1, height: 1 });
+  });
+
+  it('frame IoU does not align: the same block moved is a different outline', () => {
+    const a = rects(40, 30, [5, 5, 15, 15]);
+    expect(frameIoU(a, a)).toBe(1);
+    expect(frameIoU(a, rects(40, 30, [10, 5, 20, 15]))).toBe(50 / 150);
+    expect(frameIoU(rects(4, 4), rects(4, 4))).toBe(0);
+  });
+
+  it('the sweep base is mid-range, ints rounded, enums at their first value; a sweep is low, mid, high', () => {
+    const genes = { f: [0.5, 1.5, 'f'], n: [0, 6, 'i'], e: [0, 3, 'e'] } as const;
+    expect(sweepBase(genes)).toEqual({ f: 1, n: 3, e: 0 });
+    expect(sweepValues(genes, 'f')).toEqual([0.5, 1, 1.5]);
+    expect(sweepValues(genes, 'e')).toEqual([0, 2, 3]);
+  });
+
+  it('the sweep report judges low against high, aligned for the body and in place for the head', () => {
+    const base = rects(40, 30, [5, 5, 15, 15]);
+    const moved = rects(40, 30, [20, 5, 30, 15]); // the same block elsewhere
+    const half = rects(40, 30, [20, 10, 30, 15]);
+    const r = sweepReport([
+      { gene: 'body', crop: 'body', base, samples: [base, base, moved].map((mask, i) => ({ value: i, mask })) },
+      { gene: 'bodyHalf', crop: 'body', base, samples: [base, base, half].map((mask, i) => ({ value: i, mask })) },
+      { gene: 'head', crop: 'head', base, samples: [base, base, moved].map((mask, i) => ({ value: i, mask })) },
+    ], { body: 10, head: 10 });
+    expect(r.summary.lowVsHigh).toEqual({ body: 1, bodyHalf: 0.5, head: 0 });
+    expect(r.summary.failing).toEqual(['body']);
+    expect(r.genes[0]!.low).toMatchObject({ area: 1, width: 1, height: 1, iouVsBase: 1 });
   });
 });
