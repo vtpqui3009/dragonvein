@@ -104,9 +104,9 @@ editing it to move a scorer's number is the inverse of the rule.
   `npm run gate:perf -- --real-gpu` on a GPU machine at 1920×1080, and once with
   `?tier=potato`. Potato's 30 fps is currently unverified anywhere.
 
-- **Please look at the terrain assets, so M4 can close (CLAUDE.md §7).** The evidence page
-  shows the nine 8-seed sheets and their turntables: island, stratified, columnar, boulders,
-  shard, eroded, arch and floatshard. Every critic has passed them; no human has seen them.
+- ~~Please look at the terrain assets, so M4 can close~~ — **done, 2026-10-13. M4 is `DONE`.**
+  The owner reviewed the nine 8-seed sheets and accepted them. With art 8.3 / perf 8.7 /
+  gameplay 9.0 already on the last pass, §7 was the only thing outstanding. Nothing left on M4.
 
 - ~~Please look at the dragons, so M3 can close~~ — **done, 2026-10-13. §7 is satisfied for
   M3.** The owner opened `dragon.html` in Chrome on Windows and sent a screenshot: eight

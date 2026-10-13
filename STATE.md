@@ -13,6 +13,57 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-13 · owner session · M4 closed, and M3e added ahead of M5e
+
+No code. The owner reviewed both artefacts and made a roadmap decision; both are recorded here
+because §7 requires the sighting and §4b.4 requires a roadmap change to be argued, not assumed.
+
+### M4 is `DONE`
+
+The owner opened the evidence page and accepted the nine 8-seed terrain sheets — island,
+stratified, columnar, boulders, shard, eroded, arch and floatshard. That is CLAUDE.md §7's
+requirement, and it was the only thing M4 was waiting on: every step was already `DONE` and the
+last pass scored art **8.3**, perf **8.7**, gameplay **9.0** at `e699c95`, so §3.6's milestone
+bar was already met. **M4 closes with nothing outstanding.**
+
+### M3 does not close, and the reason is what the owner saw
+
+§7 is now satisfied for M3 too — the `dragon.html` sighting is logged in §Real-GPU
+verification log below. But §3.6 needs all three critics ≥ 8.0 and **art is 7.4**. So M3 stays
+`IN_PROGRESS` on the score alone.
+
+The owner's screenshot shows exactly what the art-critic has been deducting for: all eight
+dragons carry the same upright flat triangular sail where `docs/concept/` shows spread bat
+wings, and **the eight silhouettes differ far less than the eight hues do**. For a project whose
+§0 says the genome *is* the parameter set the mesh is built from, a creature set that reads as
+one shape in eight colours is the hook not landing. This is the first time a human has seen it
+at full size rather than inferred it from a variant sheet.
+
+### The decision: M3e before M5e
+
+**Asked and answered by the owner, 2026-10-13.** Roadmap order put M5e — more flora, dressed
+into the island — next. The owner chose the dragon silhouette instead. Recorded as a decision,
+not drifted into:
+
+- It is the one step that can close M3, since art 7.4 is the only thing left and the silhouette
+  is what that score is about. More flora cannot move it.
+- §0's tie-breaker says to pick what makes the genetics more visible. Shape carrying the genome
+  is that, directly.
+- The cost is real and is accepted: flora dressing waits, including the M5e heap note about
+  merging the four understory types into one draw call.
+
+**M3e's acceptance criteria are in `docs/ROADMAP.md`**, written to be checkable. The one worth
+naming here is the **greyscale test**: render the eight dragons with all colour removed, and
+they must still read as eight different creatures. It targets the defect precisely — if the
+genome is carried by shape, removing hue changes nothing about how many creatures you can count.
+
+M3e is marked `BLOCKED` rather than `TODO` so that a run reading in order does not take it ahead
+of M5d, which is in flight with only fern's near-pairs left. The run that closes M5d flips it.
+
+**Next:** close M5d (fern), then M3e.
+
+---
+
 ## 2026-10-13 · dispatcher · two rulings: per-asset acceptance, and a blocker that was not one
 
 No code. Run 23 ended `IN_PROGRESS` on M5d and named two owner items. Both are settled here.

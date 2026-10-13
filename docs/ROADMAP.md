@@ -98,6 +98,7 @@ at `3ab6e84`; M2's code is not yet imported by the game, so nothing visible chan
 | M3b | wings, crown, membrane and tail ornament; the creature reads as the Python one | DONE |
 | M3c | built in a worker inside 120 ms on Medium; `gate:meshgen` green | DONE |
 | M3d | `gate:parity` green between the two builders on the fixed genome set | DONE |
+| **M3e** | **the genome drives the SILHOUETTE, not mainly the hue — wing form, neck arc, body mass and horn count each change the outline visibly** | **BLOCKED — M5d closes first (owner, 2026-10-13)** |
 
 M3a closed on 2026-10-12 at `e015a48` (run 11), on its STATE.md criteria with gates green. The
 graph is identical to the reference on 32 genomes, and the skin is closed and outward-wound.
@@ -124,9 +125,36 @@ CLAUDE.md §1.5 as the owner amended it that day: skin graphs and limb anchors e
 bounding boxes within 3 % (worst 2.04 %). Vertex counts are no longer compared. The pass scored
 art 7.4, perf 8.15 and gameplay 8.5.
 
-**M3 the milestone is `IN_PROGRESS`.** Every step is `DONE`, but the last pass has art at 7.4,
-and no human has seen the dragons running (CLAUDE.md §7). Both are with the owner (NEXT.md):
-a sighting of `dragon.html`, and the reference-design questions behind the art score.
+**M3 the milestone is `IN_PROGRESS`.** §7 is now satisfied — the owner opened `dragon.html` on
+2026-10-13 and the sighting is logged in `STATE.md`. What remains is the art score: **7.4**,
+and the thing holding it down is what the owner saw at full size. **M3e is that work**, added
+on the owner's decision of 2026-10-13 to take it ahead of M5e.
+
+**M3e — what it must deliver.** Every one of the eight dragons on `dragon.html` carries the
+same upright flat triangular sail where `docs/concept/` shows spread bat wings, and the eight
+silhouettes differ far less than the eight hues do. §0 says the genome *is* the parameter set
+the mesh is built from, and that an unclear call goes to whatever makes the genetics more
+visible; a creature set that reads as one shape in eight colours is that promise unmet.
+
+Acceptance, all checkable:
+
+1. **A wing-form gene with at least three expressed forms** — spread membrane, segmented, and
+   sail — chosen by genome, each visible in the 8-seed sheet.
+2. **The greyscale test.** `artifacts/variants/dragon-greyscale.png` renders the eight with
+   all colour removed. They must still read as eight different creatures. This is the
+   criterion that targets the defect directly: if shape carries the genome, hue is decoration,
+   and removing it changes nothing about how many creatures you can count.
+3. Neck arc, body mass and horn count each measurably change the outline across the fixed
+   genome set — reported as numbers, not prose.
+4. `gate:parity` stays green. §1.5 means `assetgen/dragon/` and `src/assets/dragon/` move
+   together, so this is **one sequential owner across two directories** (§2.4), never a
+   parallel fan-out.
+5. `gate:meshgen` stays under 120 ms and `npm run gates` exits 0.
+6. No `blocking` or `major` defect against the dragon's own sheet or turntable (§4).
+
+**Why it is `BLOCKED` and not `TODO`.** M5d is in flight with only fern's near-pairs left.
+A run reading in order takes the first step that is not `DONE`; this annotation sends it past
+M3e to M5d. The run that closes M5d flips this row to `TODO`.
 
 ## M4 — Terrain assets
 
@@ -171,9 +199,10 @@ gameplay 9.0. `terrain/arch` and `terrain/floatshard` meet §Definition of done:
 3. both are in MANIFEST.json;
 4. art per generator 8.4 and 8.2.
 
-**M4 the milestone is `IN_PROGRESS`.** Every step is `DONE` and the last pass had all three
-critics ≥ 8.0. No human has seen the assets yet (CLAUDE.md §7), so the owner's look at the
-sheets on the evidence page is what closes it (NEXT.md).
+**M4 the milestone is `DONE`, 2026-10-13.** Every step is `DONE`; the last pass had all three
+critics ≥ 8.0 (art 8.3, perf 8.7, gameplay 9.0 at `e699c95`); and the owner reviewed the nine
+8-seed sheets on the evidence page and accepted them, which is CLAUDE.md §7's requirement.
+The sighting is logged in `STATE.md`. Nothing about M4 is outstanding.
 
 ## M5 — Flora wave 1
 
