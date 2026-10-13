@@ -52,6 +52,15 @@ recurring question for this family.
 
 ---
 
+### Status at 02:46 UTC — handoff before the usage limit (owner request)
+
+The asset-builder had written all four generators, but had not reported or verified them.
+To keep `main` green, they are **not** committed there. They are pushed unverified as branch
+`wip/m5d` (`c96ac94`). The next step is in NEXT.md: restore that snapshot, re-verify all
+four against the criteria above, gate, run the critics, and close out.
+
+---
+
 ## 2026-10-13 · run 21 · M5c DONE — two more trees and saplings
 
 **Step**: `M5c`, the first step in reading order that is not `DONE`. The marker commit
