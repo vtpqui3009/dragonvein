@@ -208,8 +208,6 @@ def variant_sheet(mod, out_path, quick=False):
     _clean()
     _world()
     _lights()
-    if sheet["ground"]:
-        _ground()
 
     # Measure every seed first so the spacing and the frame come from the geometry
     # rather than from a guessed number.
@@ -234,6 +232,10 @@ def variant_sheet(mod, out_path, quick=False):
     lowest = min(p[sheet["bottomKey"]] for p in plans) if sheet["bottomKey"] else 0.0
     pitch = max(widths) * 0.86 + 1.1
     span = pitch * (len(VARIANT_SEEDS) - 1)
+    if sheet["ground"]:
+        # 150 m unless the row is wider than the plane can hold (ancientgiant's is ~175 m):
+        # a plane edge across the sheet reads as a horizon line that is not there.
+        _ground(max(150.0, 1.6 * (span + max(widths) * 1.22)))
 
     # rz must be 0: any camera yaw tilts a row laid out along X in screen space, and a
     # sheet whose eight panels slope is a sheet that crops the last one.
