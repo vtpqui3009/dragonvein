@@ -303,17 +303,17 @@
         "lod0": {
           "file": "flora/fern.lod0.glb",
           "tris": 2624,
-          "sha256": "c057c0e35b85f84f9bcb840f86d82dcde2076342dde8004058a4b640174dc181"
+          "sha256": "eadcf6f113cf785edf4242f56906b367c1a5428437d43001d23e0f9e44e506be"
         },
         "lod1": {
           "file": "flora/fern.lod1.glb",
           "tris": 692,
-          "sha256": "7e9f4fdddcab664a93fdaeced44d5cd88486e0b0e1b995a8d4db2915558327d2"
+          "sha256": "ba9a1a2ddf72cc345a7f2c7d1e25d3312937d57e6772be524a9ca80103e3e779"
         },
         "lod2": {
           "file": "flora/fern.lod2.glb",
           "tris": 176,
-          "sha256": "ebacc93174232fb27608c3f85d60b61f77de21d7448f36c096103427e70119e0"
+          "sha256": "70b117795fc6ac410bf4dd6606eaec53e6a9788ffcaef40ac8612d42de8530d9"
         }
       }
     },

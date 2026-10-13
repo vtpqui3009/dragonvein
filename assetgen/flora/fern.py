@@ -11,8 +11,9 @@ leaflets — pinnae — stepping down each side of it, alternating, swept toward
 and shortening toward it so the blade tapers. Each pinna is its own closed shell (a thin
 lozenge with a raised midrib, `_pinna`), so daylight shows between them and the frond reads
 as a fern rather than as an agave. The rachis is a thin tapering tube; the crown is a dark,
-squat, bark-coloured knob sunk at z = 0. Some seeds carry fiddleheads — young fronds still
-rolled into a crozier — standing clear of the crown on their own stalks.
+squat, bark-coloured knob sunk at z = 0, or, where the habit creeps, a row of flatter ones
+half buried in the ground and joined by a rhizome. Some seeds carry fiddleheads — young
+fronds still rolled into a crozier — standing clear of the crown on their own stalks.
 
 The axes
 --------
@@ -20,15 +21,30 @@ The axes
 classes falls on exactly two of seeds 1..8 (bush's pattern):
 
   vase      a shuttlecock of steep fronds that only bend over at the tip
-  spread    a low, wide rosette lying out from the crown, tips arching to the ground
-  fountain  mid-height fronds whose tips fall most of the way back down
+  spread    a flat star lying out along the ground: fronds leaving the crown at 14..27
+            degrees and bending from the base, so the plant is all width and no height
+  fountain  fronds that climb steeply, then fall nearly all the way back down
   bracken   a few big triangular fronds on long bare stipes, from a creeping rhizome,
             so the plant is a line rather than a rosette
 
-`form` 0..1 is stratified on the golden ratio and moves size, frond length and rise inside
-whatever the habit allows, so the two seeds of one habit are still two plants. Size, frond
-count, blade breadth, the tip fall and the fiddleheads ride on their own stratified
-sequences (plastic, 1/e, sqrt(3) - 1, golden**-4, sqrt(2) - 1).
+A spread and a fountain used to meet in the middle — a low fountain and a wide spread read
+as the same pancake. Their rise bands no longer touch: a spread leaves the crown at 14..27
+degrees and a fountain at 54..73, and a spread bends evenly from the base (`pow` ~ 1)
+where a fountain holds its rise and lets go near the tip.
+
+`stature` is the second structural fact, and the reason the two seeds of one habit are two
+plants rather than one plant twice. It is stratified on sqrt(6) - 2 in halves, which is the
+one low-discrepancy split that separates *every* habit pair of seeds 1..8 — (1,8), (2,3),
+(4,5), (6,7) — so no two seeds on the sheet share both their habit and their size class:
+
+  tuft   a small plant: short fronds, hardly any bare stipe, narrow blades, held stiffer
+  stand  a big one: fronds some 60% longer on long bare stipes, broad blades, arching
+
+`form` 0..1 is stratified on the golden ratio and moves frond length and rise inside
+whatever the habit and stature allow, so the two seeds of one habit are still two plants
+even where their size classes happen to pull the same way. Size, frond count, blade
+breadth, the tip fall and the fiddleheads ride on their own stratified sequences (plastic,
+1/e, sqrt(3) - 1, golden**-4, sqrt(2) - 1).
 
 The tip fall is a *parameter*, not an outcome: `_solve_turn` bisects the rachis' total turn
 so the tip lands a chosen fraction of the way from the frond's apex back down to a ground
@@ -66,53 +82,86 @@ SHEET = {"widthKey": "sheetWidth", "topKey": "height", "bottomKey": None, "rx": 
 
 INV_E = 0.36787944117144233          # 1 / e
 PI_M3 = 0.14159265358979312          # pi - 3: the habit, each class twice in seeds 1..8
+#: sqrt(6) - 2. Searched for, not picked: of the usual low-discrepancy constants it is the
+#: only one whose halves split all four of the habit pairs of seeds 1..8, and it clears the
+#: half-way line by 0.05 everywhere there, which is why `stature`'s jitter is only 0.02.
+SQRT6M2 = 0.4494897427831781
 
 HABITS = ("vase", "spread", "fountain", "bracken")
-#: Per habit, where in each PARAMS range that habit lives. `elev`, `len`, `nf` are read at
-#: `form`, `droop` at its own stratified draw, `w` at `breadth`. `pow` is how late the
-#: rachis bends (1 = evenly along it, 2.7 = a straight stipe that flops over at the top),
-#: `stipe` the bare fraction, `vm` where the blade is widest, `young` the innermost frond's
-#: length over the outermost's, `creep` whether the crown is a line instead of a point.
+#: Per habit, where in each PARAMS range that habit lives. `len` and `nf` are read at
+#: `form`, `elev` at `form` shifted by the stature, `droop` at its own stratified draw, `w`
+#: at `breadth`. `pow` is how late the rachis bends (1 = evenly along it, 2.7 = a straight
+#: stipe that flops over at the top), `stipe` the bare fraction, `vm` where the blade is
+#: widest, `young` the innermost frond's length over the outermost's, `creep` whether the
+#: crown is a line instead of a point.
+#:
+#: The rise bands no longer overlap where two habits would otherwise read alike: spread
+#: 14..27 deg against fountain's 54..73, so a wide spread cannot climb into a fountain's
+#: silhouette, and vase 73..86 against bracken's 54..73, so the steep rosette and the
+#: creeping patch are not the same plant at the same height. Where bands do meet
+#: (fountain and bracken) the habits differ in everything else: 5..8 fronds bending
+#: evenly against 3..6 broad ones held stiff on a long bare stipe, falling tips against
+#: stiff ones, one crown against a row of them.
 HABIT = {
-    "vase": {"elev": (0.700, 1.000), "len": (0.400, 0.956), "nf": (0.222, 1.000),
-             "droop": (0.022, 0.402), "w": (0.26, 0.42), "pow": 2.10, "stipe": 0.26,
+    "vase": {"elev": (0.820, 1.000), "len": (0.160, 0.840), "nf": (0.333, 1.000),
+             "droop": (0.022, 0.300), "w": (0.24, 0.40), "pow": 2.10, "stipe": 0.26,
              "vm": 0.42, "young": 0.66, "creep": False},
-    "spread": {"elev": (0.260, 0.520), "len": (0.120, 0.420), "nf": (0.444, 1.000),
-               "droop": (0.402, 0.967), "w": (0.34, 0.54), "pow": 1.50, "stipe": 0.16,
-               "vm": 0.46, "young": 0.54, "creep": False},
-    "fountain": {"elev": (0.500, 0.760), "len": (0.330, 0.700), "nf": (0.222, 0.667),
-                 "droop": (0.565, 1.000), "w": (0.28, 0.46), "pow": 1.35, "stipe": 0.20,
-                 "vm": 0.40, "young": 0.60, "creep": False},
-    "bracken": {"elev": (0.722, 0.972), "len": (0.344, 0.789), "nf": (0.000, 0.333),
-                "droop": (0.054, 0.380), "w": (0.46, 0.72), "pow": 2.70, "stipe": 0.50,
+    "spread": {"elev": (0.000, 0.180), "len": (0.380, 0.900), "nf": (0.500, 1.000),
+               "droop": (0.560, 1.000), "w": (0.36, 0.58), "pow": 1.05, "stipe": 0.14,
+               "vm": 0.50, "young": 0.54, "creep": False},
+    "fountain": {"elev": (0.560, 0.820), "len": (0.300, 0.800), "nf": (0.167, 0.611),
+                 "droop": (0.700, 1.000), "w": (0.28, 0.46), "pow": 1.45, "stipe": 0.20,
+                 "vm": 0.36, "young": 0.60, "creep": False},
+    "bracken": {"elev": (0.560, 0.820), "len": (0.640, 0.920), "nf": (0.000, 0.333),
+                "droop": (0.054, 0.380), "w": (0.46, 0.74), "pow": 2.70, "stipe": 0.50,
                 "vm": 0.22, "young": 0.78, "creep": True},
+}
+
+STATURES = ("tuft", "stand")
+#: A size class is more than a scale factor, or the sheet would read as one plant twice at
+#: two distances. `sm` scales frond length and the crown; `wm` the blade width; `stm` the
+#: bare stipe; `dm` the tip fall; `em` shifts the rise by a share of the habit's own band,
+#: so a tuft sits at the steep end of whatever it is and a stand at the open end. `young`
+#: multiplies the inner-frond length ratio: a tuft's fronds are all much of a length, a
+#: stand's step down steeply from the outermost.
+STATURE = {
+    "tuft": {"sm": 0.780, "wm": 0.90, "stm": 0.74, "dm": 0.86, "em": +0.18, "young": 1.16},
+    "stand": {"sm": 1.265, "wm": 1.11, "stm": 1.20, "dm": 1.12, "em": -0.16, "young": 0.92},
 }
 
 # ---------------------------------------------------------------- parameters
 PARAMS = {
     "habit": (0.0, 1.0, "stratified on pi - 3, in quarters: vase (a steep shuttlecock), "
-                        "spread (a low wide rosette), fountain (tips falling back to the "
-                        "ground), bracken (a few broad triangular fronds on long bare "
-                        "stipes, from a creeping rhizome)"),
+                        "spread (a flat star lying out along the ground), fountain (steep "
+                        "fronds whose tips fall nearly all the way back down), bracken (a "
+                        "few broad triangular fronds on long bare stipes, from a creeping "
+                        "rhizome)"),
+    "stature": (0.0, 1.0, "stratified on sqrt(6) - 2, in halves: below 0.5 a tuft (a small "
+                          "plant, short fronds on almost no stipe, narrow blades, stiff), "
+                          "above it a stand (fronds some 60% longer on long bare "
+                          "stipes, broad blades, arching). Splits every habit pair of "
+                          "seeds 1..8, so no two of them are the same plant twice"),
     "form": (0.0, 1.0, "stratified on the golden ratio: 0 the small, low, shallow end of "
                        "whatever the habit allows ... 1 the big, tall, steep end"),
     "size": (0.86, 1.18, "multiplier on frond length and crown; stratified on the plastic "
                          "number"),
     "fronds": (3, 12, "open fronds, stratified on 1/e inside the habit's band: 3..6 for "
-                      "bracken, 5..9 for a fountain, 7..12 for a vase or a spreading "
-                      "rosette"),
+                      "bracken, 5..8 for a fountain, 6..12 for a vase, 8..12 for a "
+                      "spreading rosette"),
     "breadth": (0.0, 1.0, "stratified on sqrt(3) - 1: 0 the narrow end of the habit's blade "
                           "width ... 1 the broad end"),
     "curl": (0.0, 1.0, "stratified on sqrt(2) - 1: below 0.5 none; above, one to three "
                        "fiddleheads (coiled young fronds) standing clear of the crown"),
     "droop": (0.03, 0.95, "how far a frond tip falls from the frond's own apex back toward "
                           "the ground, as a fraction of that drop; stratified on golden**-4 "
-                          "inside the habit's band. The rachis turn is bisected to hit it, "
-                          "so the tip clears the ground by construction"),
-    "length": (0.44, 1.34, "frond length in metres before `size`; the habit picks the band, "
-                           "`form` the point inside it"),
+                          "inside the habit's band, then nudged by the stature. The rachis "
+                          "turn is bisected to hit it, so the tip clears the ground by "
+                          "construction"),
+    "length": (0.38, 1.24, "frond length in metres before `size` and `stature`; the habit "
+                           "picks the band, `form` the point inside it"),
     "elevation": (14.0, 86.0, "the outermost frond's rise from the crown, in degrees; the "
-                              "habit picks the band, `form` the point inside it"),
+                              "habit picks the band, `form` the point inside it and "
+                              "`stature` shifts it within the band"),
     "fill": (0.78, 1.00, "a pinna's half-width over half the gap to the next pinna on its "
                          "side: airy and separated ... touching, a solid-looking blade"),
     "sweep": (16.0, 44.0, "degrees a pinna is swept from square to the rachis toward the "
@@ -139,6 +188,7 @@ def plan(seed):
     curl = _p("curl", T.stratify(seed, T.SQRT2M1, 0.03, rng))
     droop_t = T.stratify(seed, T.PHI_M4, 0.04, rng)
     habit_t = _p("habit", T.stratify(seed, PI_M3, 0.004, rng))
+    stature_t = _p("stature", T.stratify(seed, SQRT6M2, 0.02, rng))
     tone = _p("tone", rng.next())
     fill = _p("fill", rng.next())
     sweep = math.radians(_p("sweep", rng.next()))
@@ -146,12 +196,18 @@ def plan(seed):
 
     habit = HABITS[min(3, int(habit_t * 4.0))]
     hb = HABIT[habit]
-    L = _p("length", T.lerp(hb["len"][0], hb["len"][1], form)) * size
-    e_out = math.radians(_p("elevation", T.lerp(hb["elev"][0], hb["elev"][1], form)))
-    drop = _p("droop", T.lerp(hb["droop"][0], hb["droop"][1], droop_t))
+    stature = STATURES[0 if stature_t < 0.5 else 1]
+    st = STATURE[stature]
+    L = _p("length", T.lerp(hb["len"][0], hb["len"][1], form)) * size * st["sm"]
+    # The rise moves inside the habit's band, never out of it: the bands are what keeps a
+    # spread from ever climbing into a fountain's silhouette.
+    e_t = T.clamp01(T.lerp(hb["elev"][0], hb["elev"][1], T.clamp01(form + st["em"])))
+    e_out = math.radians(_p("elevation", e_t))
+    drop = T.clamp01(_p("droop", T.lerp(hb["droop"][0], hb["droop"][1], droop_t)) * st["dm"])
     n = int(round(_p("fronds", T.lerp(hb["nf"][0], hb["nf"][1], nf_t))))
-    wmax = T.lerp(hb["w"][0], hb["w"][1], breadth)
-    stipe = hb["stipe"] * rng.range(0.92, 1.08)
+    wmax = T.lerp(hb["w"][0], hb["w"][1], breadth) * st["wm"]
+    taper = min(0.94, hb["young"] * st["young"])   # innermost frond / outermost
+    stipe = hb["stipe"] * st["stm"] * rng.range(0.92, 1.08)
     # Pinnae per side, against the triangle budget rather than taste: a crowded rosette of
     # twelve fronds divides each of them less finely, so LOD0 stays level across seeds.
     pside = max(4, min(11, int(round(80.0 / n))))
@@ -180,7 +236,7 @@ def plan(seed):
         az += 2.39996 + rng.range(-0.25, 0.25)        # golden-angle phyllotaxis
         young = i / max(1, n - 1)                      # 0 outermost ... 1 innermost
         nd = nodes[i % len(nodes)]
-        fl = L * T.lerp(1.0, hb["young"], young) * rng.range(0.90, 1.08)
+        fl = L * T.lerp(1.0, taper, young) * rng.range(0.90, 1.08)
         fr = {"az": az,
               "len": fl,
               "e0": min(math.radians(86.0), e_out + T.lerp(0.0, 0.30, young)
@@ -196,7 +252,7 @@ def plan(seed):
                        nd[1] + math.sin(az) * node_r * 0.45, node_r * 0.34)}
         # The pinnae hang below the rachis, so the rachis must clear the ground by more
         # than nothing. `_solve_turn` then hits the wanted tip fall inside that clearance.
-        fr["zfloor"] = 0.022 + 0.34 * 0.5 * fr["w"] * fr["len"]
+        fr["zfloor"] = 0.022 + 0.44 * 0.5 * fr["w"] * fr["len"]
         _solve_turn(fr)
         fronds.append(fr)
 
@@ -216,7 +272,8 @@ def plan(seed):
                           "off": (nd[0] + math.cos(haz) * rc * rng.range(0.2, 0.5),
                                   nd[1] + math.sin(haz) * rc * rng.range(0.2, 0.5))})
 
-    return {"seed": seed, "habit": habit, "form": form, "size": size, "breadth": breadth,
+    return {"seed": seed, "habit": habit, "stature": stature, "form": form, "size": size,
+            "breadth": breadth, "taper": taper,
             "curl": curl, "tone": tone, "stipe": stipe, "fill": fill, "sweep": sweep,
             "pitch": pitch, "pside": pside, "pside1": pside1, "rc": rc, "nodes": nodes,
             "nodeR": node_r, "creep": hb["creep"], "fronds": fronds, "heads": heads}
@@ -445,17 +502,22 @@ def _blade(mesh, pl, fr, rows):
 
 def _crown(mesh, pl, seg, rings):
     """The rhizome: a dark, squat, lumpy knob at each node, and, when there is more than
-    one, the creeping stem that joins them. Sunk so it sits in the ground."""
+    one, the creeping stem that joins them. Sunk so it sits in the ground.
+
+    A creeping rhizome is flatter and sits lower than a single crown: a row of round knobs
+    standing proud of the ground reads as pebbles a fern has been dropped on, not as the
+    stem the fronds grow out of."""
     rc = pl["nodeR"]
+    lift, squash = (0.06, 0.46) if pl["creep"] else (0.15, 0.62)
     for nd in pl["nodes"]:
         def place(d, nd=nd):
             m = 1.0 + 0.12 * math.cos(3.0 * math.atan2(d[1], d[0]) + d[2] * 2.0)
             p = (nd[0] + d[0] * rc * m, nd[1] + d[1] * rc * m,
-                 rc * 0.15 + d[2] * rc * 0.62 * m)
+                 rc * lift + d[2] * rc * squash * m)
             return p, T.bark_shade(0.85 + 0.30 * (0.5 + 0.5 * d[2]))
         T.blob(mesh, seg, rings, place)
     if len(pl["nodes"]) > 1:
-        path = [(nd[0], nd[1], rc * 0.12) for nd in pl["nodes"]]
+        path = [(nd[0], nd[1], rc * 0.04) for nd in pl["nodes"]]
         radii = [rc * 0.42] * len(path)
         T.tube(mesh, path, radii, max(3, seg // 2), lambda u, m: T.bark_shade(0.80))
 
@@ -534,7 +596,8 @@ def metrics(seed, lod=0):
     for hd in pl["heads"]:
         top = max(top, hd["h"] + 2.0 * hd["R"])
     return {
-        "seed": int(seed), "habit": pl["habit"], "form": round(pl["form"], 3),
+        "seed": int(seed), "habit": pl["habit"], "stature": pl["stature"],
+        "form": round(pl["form"], 3),
         "height": round(top, 3),
         "width": round(2.0 * reach, 3),
         "sheetWidth": round(1.7 * reach, 3),
