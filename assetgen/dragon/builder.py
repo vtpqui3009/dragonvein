@@ -140,42 +140,56 @@ def wing_form(p):
     return "spread" if p["wingShape"]<0.5 else "segmented"
 
 WING_ROOT_Z=1.22
+FAN_DROP=0.35        # how far the last finger's tip falls back toward root height, as a fraction of its rise
 
 def wing_nodes(p, s):
     """Bone positions for one wing. Returns (arm, finger_tips).
 
-    Every wing rests SPREAD: out to the side, in one plane that rises lift per unit outward
-    (a V of 8-40 degrees), never upright. wingDroop is the rest height (it sets lift),
-    wingSpan the bone extent, wingShape broad (short reach, deep chord, little sweep) to
-    falcate (long reach, narrow chord, swept-back tip). d is distance out from the midline.
-    No trig and no pow, so the TS port is exact."""
+    Every wing rests SPREAD and low, as a gull-winged pair: the arm reaches out to the side
+    rising arm_lift per unit outward (8-22 degrees), the hand beyond the wrist flattens or
+    tips down (hand_lift, +2 to -10 degrees), and the fingers further back in the fan fall
+    toward the root's height (FAN_DROP), so the trailing edge sits below the leading one.
+    Low and out, the far wing does not tower over the back and the near wing shows its
+    surface, not its edge, to a three-quarter camera (M3e cycle 1, art D1). No bone is ever
+    below the root. wingDroop is the rest height (it sets both lifts), wingSpan the bone
+    extent, wingShape broad (short reach, deep chord, little sweep) to falcate (long reach,
+    narrow chord, swept-back tip). d is distance out from the midline. No trig and no pow,
+    so the TS port is exact."""
     WS,SH,DR,NF = p["wingSpan"],p["wingShape"],p["wingDroop"],int(p["wingFingers"])
     BL = p["bodyLength"]
     span  = WS
     out   = lerp(1.00, 1.25, SH) * span      # lateral reach
     chord = lerp(1.20, 0.75, SH) * span      # how far back the hand reaches
     sweep = lerp(0.15, 0.70, SH)             # leading tip swept back, per unit of reach
-    lift  = lerp(0.84, 0.14, DR)             # rise per unit outward: wingDroop = rest height
-    def at(x, d): return (x, d*s, WING_ROOT_Z + lift*(d-0.26))
-    wd = 0.26+1.65*out                       # the wrist's reach
-    arm=[(at(0.92*BL, 0.26), 0.115*span),
-         (at(0.78*BL, 0.26+0.85*out), 0.080*span),
-         (at(0.62*BL, wd), 0.055*span),
-         (at(0.62*BL-1.30*sweep*out, wd+1.10*out), 0.028*span)]
+    arm_lift  = lerp(0.40, 0.14, DR)         # the arm's rise per unit outward
+    hand_lift = lerp(0.04, -0.18, DR)        # the hand's, beyond the wrist: high droop tips it down
+    wd = 0.26+1.60*out                       # the wrist's reach
+    zw = WING_ROOT_Z + arm_lift*(wd-0.26)    # the wrist's height
+    def arm_at(x, d):  return (x, d*s, WING_ROOT_Z + arm_lift*(d-0.26))
+    def hand_at(x, d): return (x, d*s, zw + hand_lift*(d-wd))
+    arm=[(arm_at(0.92*BL, 0.26), 0.115*span),
+         (arm_at(0.78*BL, 0.26+0.82*out), 0.080*span),
+         (arm_at(0.62*BL, wd), 0.055*span),
+         (hand_at(0.62*BL-1.30*sweep*out, wd+1.10*out), 0.028*span)]
     # The fingers fan from the wrist, between the leading tip's direction (f = 0) and one
-    # pointing back past the hip (f = 1). A sail's tips sit on the straight chord between
+    # pointing back toward the hip (f = 1). A sail's tips sit on the straight chord between
     # the two; the other forms bulge them outward so the hand is rounded.
     lx,ld = -1.30*sweep*out, 1.10*out
-    rx,rd = -(1.25*BL+0.45*chord), -0.55*out
+    rx,rd = -(1.05*BL+0.40*chord), -0.55*out
     bulge = 0.0 if wing_form(p)=="sail" else 0.55
     tips=[]
     for k in range(NF):
         f=(k+1)/(NF+1)
         g=1.0+bulge*f*(1.0-f)
-        tips.append(at(0.62*BL+lerp(lx,rx,f)*g, wd+lerp(ld,rd,f)*g))
+        t=hand_at(0.62*BL+lerp(lx,rx,f)*g, wd+lerp(ld,rd,f)*g)
+        # fingers further back in the fan fall toward the root's height, never under it
+        tips.append((t[0], t[1], WING_ROOT_Z+(t[2]-WING_ROOT_Z)*(1.0-FAN_DROP*f)))
     return arm, tips
 
 def add_wings(g, idx, p):
+    # A sail's fingers are skinned at the graph's minimum radius, inside the membrane's
+    # thickness: one unbroken panel with no visible finger bones (M3e cycle 1, art).
+    finger_r = 0.0 if wing_form(p)=="sail" else 1.0
     for s in (1,-1):
         arm,tips = wing_nodes(p,s)
         bones=g.chain(idx["shoulder"], arm)
@@ -183,49 +197,56 @@ def add_wings(g, idx, p):
         w2=arm[2][0]                      # wrist position (arm entries are (pos, radius))
         for t in tips:
             mid=((t[0]+w2[0])*0.51, (t[1]+w2[1])*0.5, (t[2]+w2[2])*0.5)
-            g.chain(wrist, [(mid,0.042*p["wingSpan"]),(t,0.018*p["wingSpan"])])
+            g.chain(wrist, [(mid,finger_r*0.032*p["wingSpan"]),(t,finger_r*0.016*p["wingSpan"])])
 
 def _mix(a, b, t):
     return (a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t)
 
-SCALLOP=((0.25,0.24),(0.50,0.32),(0.75,0.24))   # (along the edge, pulled toward the wrist)
-VANE=((0.04,0.00),(0.80,0.40),(0.40,0.50))      # (along the bone, across toward the next rib)
+SCALLOP=((0.25,0.24,0.75),(0.50,0.32,1.00),(0.75,0.24,0.75))  # (along the edge, pulled toward the wrist, sag)
+VANE=((0.04,0.00,0.00),(0.80,0.55,1.00),(0.40,0.65,0.60))     # (along the bone, across toward the next rib, sag)
+MEMBRANE_SAG=0.20    # how far the membrane sags below its bones between them, per unit of wingSpan
+
+def _sag(pt, k, span):
+    """pt moved down by k * MEMBRANE_SAG * span: the membrane's camber between its bones."""
+    return (pt[0], pt[1], pt[2]-k*MEMBRANE_SAG*span)
 
 def membrane_polys(p, s):
     """The membrane before its modifiers: corner positions and faces. Pure math.
 
     Corners 0-3 are the arm (root, elbow, wrist, leading tip), then the finger tips, then
-    the two body anchors A1 (by the hip) and A2 (mid-flank); every form adds its own points
-    after those. The inner membrane (arm to flank) is the same in all three forms. Beyond
-    the wrist the hand is cut into "ribs" -- the leading tip, each finger tip, A1 -- and:
+    the two body anchors A1 (ahead of the hip, so the near wing stays off the tail root) and
+    A2 (mid-flank); every form adds its own points after those. The inner membrane (arm to
+    flank) is the same in all three forms. Beyond the wrist the hand is cut into "ribs" --
+    the leading tip, each finger tip, A1 -- and:
       sail:      one wedge per rib pair, all meeting at the wrist: one straight-edged panel;
-      spread:    the same wedges, each trailing edge pulled in toward the wrist at three
-                 points (SCALLOP), so the edge between two finger tips is a scallop;
+      spread:    the same wedges, each trailing edge pulled in toward the wrist and sagging
+                 at three points (SCALLOP), so the edge between two finger tips is a scallop;
       segmented: no wedges. Each rib but A1 carries its own vane: a quad from 4 % along the
                  bone to the tip, reaching VANE's fraction of the way toward the next rib.
                  The vanes share no corner with each other or the inner membrane."""
     arm,tips = wing_nodes(p,s)
     W0,W1,W2,W3 = [a[0] for a in arm]
     BL=p["bodyLength"]
-    A1,A2 = (-0.62*BL,0.20*s,1.04),(-0.15*BL,0.22*s,1.12)
+    A1,A2 = (-0.35*BL,0.20*s,1.04),(-0.15*BL,0.22*s,1.12)
     V=[W0,W1,W2,W3]+list(tips)+[A1,A2]
     nT=len(tips); iT=4; iA1=4+nT; iA2=iA1+1
     F=[(0,1,2,iA2),(iA2,2,iA1)]
     ribs=[3]+[iT+k for k in range(nT)]+[iA1]
     form=wing_form(p)
+    span=p["wingSpan"]
     for a,b in zip(ribs[:-1],ribs[1:]):
         if form=="sail":
             F.append((2,a,b))
         elif form=="spread":
             prev=a
-            for t,pull in SCALLOP:
-                V.append(_mix(_mix(V[a],V[b],t),W2,pull))
+            for t,pull,k in SCALLOP:
+                V.append(_sag(_mix(_mix(V[a],V[b],t),W2,pull),k,span))
                 F.append((2,prev,len(V)-1)); prev=len(V)-1
             F.append((2,prev,b))
         else:
             q=[]
-            for u,w in VANE:
-                V.append(_mix(_mix(W2,V[a],u),_mix(W2,V[b],u),w)); q.append(len(V)-1)
+            for u,w,k in VANE:
+                V.append(_sag(_mix(_mix(W2,V[a],u),_mix(W2,V[b],u),w),k,span)); q.append(len(V)-1)
             F.append((q[0],a,q[1],q[2]))
     return V, F
 

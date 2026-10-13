@@ -117,8 +117,10 @@ const bounce = new THREE.DirectionalLight(0x9db9f2, 2.5);
 bounce.position.set(8, -8.5, -6.5);
 // The hemisphere is the game's colours at 1.25 rather than its 0.86. In the studio there is
 // no island or sky to bounce light, and at 0.86 the flanks under a folded wing and the far
-// legs crushed to near black, below the bible's value floor (run 12, art A3/A2).
-scene.add(fill, rim, bounce, new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 1.25));
+// legs crushed to near black, below the bible's value floor (run 12, art A3/A2). It is
+// 1.45 since M3e cycle 2: the spread near wing shades the flank and belly beneath it, and
+// at 1.25 those crushed to black on cells A, C and E. Same colours: a fill change only.
+scene.add(fill, rim, bounce, new THREE.HemisphereLight(0x8fb6ff, 0x53608f, 1.45));
 
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(400, 400),

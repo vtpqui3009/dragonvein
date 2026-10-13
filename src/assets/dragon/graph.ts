@@ -224,15 +224,21 @@ export function wingForm(p: Phenotype): WingForm {
 
 /** Height of the wing root; the wing plane rises from here (builder.py `WING_ROOT_Z`). */
 export const WING_ROOT_Z = 1.22;
+/** How far the last finger's tip falls back toward root height, as a fraction of its rise. */
+export const FAN_DROP = 0.35;
 
 /**
  * Bone positions for one wing — `wing_nodes(p, s)`: the arm (4 nodes) and the finger tips.
  *
- * Every wing rests spread: out to the side, in one plane that rises `lift` per unit outward
- * (a V of 8–40°), never upright. wingDroop is the rest height (it sets `lift`),
- * wingSpan the bone extent, wingShape broad (short reach, deep chord, little sweep) to
- * falcate (long reach, narrow chord, swept-back tip). `d` is distance out from the midline.
- * No trig and no pow, so the port stays exact.
+ * Every wing rests spread and low, as a gull-winged pair: the arm reaches out to the side
+ * rising `armLift` per unit outward (8–22°), the hand beyond the wrist flattens or tips down
+ * (`handLift`, +2° to −10°), and the fingers further back in the fan fall toward the root's
+ * height (FAN_DROP), so the trailing edge sits below the leading one. Low and out, the far
+ * wing does not tower over the back and the near wing shows its surface, not its edge, to a
+ * three-quarter camera (M3e cycle 1, art D1). No bone is ever below the root. wingDroop is
+ * the rest height (it sets both lifts), wingSpan the bone extent, wingShape broad (short
+ * reach, deep chord, little sweep) to falcate (long reach, narrow chord, swept-back tip).
+ * `d` is distance out from the midline. No trig and no pow, so the port stays exact.
  */
 export function wingNodes(p: Phenotype, s: number): { arm: [Vec3, number][]; tips: Vec3[] } {
   const { wingSpan: WS, wingShape: SH, wingDroop: DR, bodyLength: BL } = p;
@@ -241,40 +247,51 @@ export function wingNodes(p: Phenotype, s: number): { arm: [Vec3, number][]; tip
   const out = lerp(1.00, 1.25, SH) * span; // lateral reach
   const chord = lerp(1.20, 0.75, SH) * span; // how far back the hand reaches
   const sweep = lerp(0.15, 0.70, SH); // leading tip swept back, per unit of reach
-  const lift = lerp(0.84, 0.14, DR); // rise per unit outward: wingDroop = rest height
-  const at = (x: number, d: number): Vec3 => [x, d * s, WING_ROOT_Z + lift * (d - 0.26)];
-  const wd = 0.26 + 1.65 * out; // the wrist's reach
+  const armLift = lerp(0.40, 0.14, DR); // the arm's rise per unit outward
+  const handLift = lerp(0.04, -0.18, DR); // the hand's, beyond the wrist: high droop tips it down
+  const wd = 0.26 + 1.60 * out; // the wrist's reach
+  const zw = WING_ROOT_Z + armLift * (wd - 0.26); // the wrist's height
+  const armAt = (x: number, d: number): Vec3 => [x, d * s, WING_ROOT_Z + armLift * (d - 0.26)];
+  const handAt = (x: number, d: number): Vec3 => [x, d * s, zw + handLift * (d - wd)];
   const arm: [Vec3, number][] = [
-    [at(0.92 * BL, 0.26), 0.115 * span],
-    [at(0.78 * BL, 0.26 + 0.85 * out), 0.080 * span],
-    [at(0.62 * BL, wd), 0.055 * span],
-    [at(0.62 * BL - 1.30 * sweep * out, wd + 1.10 * out), 0.028 * span],
+    [armAt(0.92 * BL, 0.26), 0.115 * span],
+    [armAt(0.78 * BL, 0.26 + 0.82 * out), 0.080 * span],
+    [armAt(0.62 * BL, wd), 0.055 * span],
+    [handAt(0.62 * BL - 1.30 * sweep * out, wd + 1.10 * out), 0.028 * span],
   ];
   // The fingers fan from the wrist, between the leading tip's direction (f = 0) and one
-  // pointing back past the hip (f = 1). A sail's tips sit on the straight chord between the
+  // pointing back toward the hip (f = 1). A sail's tips sit on the straight chord between the
   // two; the other forms bulge them outward so the hand is rounded.
   const lx = -1.30 * sweep * out, ld = 1.10 * out;
-  const rx = -(1.25 * BL + 0.45 * chord), rd = -0.55 * out;
+  const rx = -(1.05 * BL + 0.40 * chord), rd = -0.55 * out;
   const bulge = wingForm(p) === 'sail' ? 0.0 : 0.55;
   const tips: Vec3[] = [];
   for (let k = 0; k < NF; k++) {
     const f = (k + 1) / (NF + 1);
     const g = 1.0 + bulge * f * (1.0 - f);
-    tips.push(at(0.62 * BL + lerp(lx, rx, f) * g, wd + lerp(ld, rd, f) * g));
+    const t = handAt(0.62 * BL + lerp(lx, rx, f) * g, wd + lerp(ld, rd, f) * g);
+    // Fingers further back in the fan fall toward the root's height: the hand fans down
+    // and back, so the trailing edge sits below the leading one and never under the root.
+    tips.push([t[0], t[1], WING_ROOT_Z + (t[2] - WING_ROOT_Z) * (1.0 - FAN_DROP * f)]);
   }
   return { arm, tips };
 }
 
-/** `add_wings`: an arm from the shoulder, and a two-node finger from the wrist to each tip. */
+/**
+ * `add_wings`: an arm from the shoulder, and a two-node finger from the wrist to each tip.
+ * A sail's fingers are skinned at the graph's minimum radius, inside the membrane's
+ * thickness: one unbroken panel with no visible finger bones (M3e cycle 1, art).
+ */
 export function addWings(g: Graph, idx: Anchors, p: Phenotype): void {
   for (const s of [1, -1]) {
     const { arm, tips } = wingNodes(p, s);
     const bones = g.chain(idx.shoulder, arm);
     const wrist = bones[2]!;
     const w2 = arm[2]![0];
+    const fingerR = wingForm(p) === 'sail' ? 0.0 : 1.0;
     for (const t of tips) {
       const mid: Vec3 = [(t[0] + w2[0]) * 0.51, (t[1] + w2[1]) * 0.5, (t[2] + w2[2]) * 0.5];
-      g.chain(wrist, [[mid, 0.042 * p.wingSpan], [t, 0.018 * p.wingSpan]]);
+      g.chain(wrist, [[mid, fingerR * 0.032 * p.wingSpan], [t, fingerR * 0.016 * p.wingSpan]]);
     }
   }
 }
@@ -338,21 +355,26 @@ export function addCrown(g: Graph, idx: Anchors, p: Phenotype): void {
 
 /** builder.py `_mix`: a + (b − a)·t per component. */
 const mix = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
-/** (along the edge, pulled toward the wrist): the spread form's scallop points. */
-const SCALLOP: readonly (readonly [number, number])[] = [[0.25, 0.24], [0.50, 0.32], [0.75, 0.24]];
-/** (along the bone, across toward the next rib): the segmented form's vane corners. */
-const VANE: readonly (readonly [number, number])[] = [[0.04, 0.00], [0.80, 0.40], [0.40, 0.50]];
+/** (along the edge, pulled toward the wrist, sag): the spread form's scallop points. */
+const SCALLOP: readonly (readonly [number, number, number])[] = [[0.25, 0.24, 0.75], [0.50, 0.32, 1.00], [0.75, 0.24, 0.75]];
+/** (along the bone, across toward the next rib, sag): the segmented form's vane corners. */
+const VANE: readonly (readonly [number, number, number])[] = [[0.04, 0.00, 0.00], [0.80, 0.55, 1.00], [0.40, 0.65, 0.60]];
+/** How far the membrane sags below its bones between them, per unit of wingSpan. */
+export const MEMBRANE_SAG = 0.20;
+/** `p` moved down by k · MEMBRANE_SAG · span: the membrane's camber between its bones. */
+const sag = (p: Vec3, k: number, span: number): Vec3 => [p[0], p[1], p[2] - k * MEMBRANE_SAG * span];
 
 /**
  * `membrane_polys(p, s)`: the wing membrane's corners and faces, before Solidify and Subsurf.
  *
  * Corners 0–3 are the arm (root, elbow, wrist, leading tip), then the finger tips, then the
- * body anchors A1 (by the hip) and A2 (mid-flank); each form adds its own points after
+ * body anchors A1 (ahead of the hip, so the near wing stays off the tail root) and A2
+ * (mid-flank); each form adds its own points after
  * those. The inner membrane (arm to flank) is the same in all three forms. Beyond the wrist
  * the hand is cut into ribs — the leading tip, each finger tip, A1 — and:
  * - sail: one wedge per rib pair, all meeting at the wrist: one straight-edged panel;
- * - spread: the same wedges, each trailing edge pulled in toward the wrist at three points
- *   (SCALLOP), so the edge between two finger tips is a scallop;
+ * - spread: the same wedges, each trailing edge pulled in toward the wrist and sagging at
+ *   three points (SCALLOP), so the edge between two finger tips is a scallop;
  * - segmented: no wedges. Each rib but A1 carries its own vane, a quad from 4 % along the
  *   bone to the tip reaching VANE's fraction of the way toward the next rib. The vanes share
  *   no corner with each other or with the inner membrane.
@@ -361,7 +383,7 @@ export function membranePolys(p: Phenotype, s: number): { v: Vec3[]; f: number[]
   const { arm, tips } = wingNodes(p, s);
   const BL = p.bodyLength;
   const W2 = arm[2]![0];
-  const A1: Vec3 = [-0.62 * BL, 0.20 * s, 1.04];
+  const A1: Vec3 = [-0.35 * BL, 0.20 * s, 1.04];
   const A2: Vec3 = [-0.15 * BL, 0.22 * s, 1.12];
   const v: Vec3[] = [...arm.map((a) => a[0]), ...tips, A1, A2];
   const nT = tips.length, iT = 4, iA1 = 4 + nT, iA2 = iA1 + 1;
@@ -374,16 +396,16 @@ export function membranePolys(p: Phenotype, s: number): { v: Vec3[]; f: number[]
       f.push([2, a, b]);
     } else if (form === 'spread') {
       let prev = a;
-      for (const [t, pull] of SCALLOP) {
-        v.push(mix(mix(v[a]!, v[b]!, t), W2, pull));
+      for (const [t, pull, k] of SCALLOP) {
+        v.push(sag(mix(mix(v[a]!, v[b]!, t), W2, pull), k, p.wingSpan));
         f.push([2, prev, v.length - 1]);
         prev = v.length - 1;
       }
       f.push([2, prev, b]);
     } else {
       const q: number[] = [];
-      for (const [u, w] of VANE) {
-        v.push(mix(mix(W2, v[a]!, u), mix(W2, v[b]!, u), w));
+      for (const [u, w, k] of VANE) {
+        v.push(sag(mix(mix(W2, v[a]!, u), mix(W2, v[b]!, u), w), k, p.wingSpan));
         q.push(v.length - 1);
       }
       f.push([q[0]!, a, q[1]!, q[2]!]);

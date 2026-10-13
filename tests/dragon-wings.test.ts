@@ -18,7 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { breed, wild, type Element, type Genome, type Phenotype } from '../src/core/genome';
-import { WING_FORMS, WING_ROOT_Z, fullGraph, membranePolys, wingForm, wingNodes, type Vec3 } from '../src/assets/dragon/graph';
+import { MEMBRANE_THICKNESS, WING_FORMS, WING_ROOT_Z, fullGraph, membranePolys, wingForm, wingNodes, type Vec3 } from '../src/assets/dragon/graph';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 type Recipe =
@@ -78,6 +78,18 @@ describe('each form is built as its rule says', () => {
     const p = gm.phenotype;
     const form = wingForm(p);
     it(`#${i} ${form}`, () => {
+      // A sail is one unbroken panel: its finger bones sit inside the membrane's thickness.
+      // Spread and segmented wings show theirs (M3e cycle 1: sail and spread alike at 25 %).
+      const { g } = fullGraph(p);
+      for (const s of [1, -1]) {
+        for (const t of wingNodes(p, s).tips) {
+          const tip = g.v.findIndex((q) => q[0] === t[0] && q[1] === t[1] && q[2] === t[2]);
+          expect(tip, 'finger tip in the graph').toBeGreaterThan(0);
+          const midR = g.r[tip - 1]!; // the chain is wrist → mid → tip
+          if (form === 'sail') expect(midR).toBeLessThan(MEMBRANE_THICKNESS / 2);
+          else expect(midR).toBeGreaterThan(MEMBRANE_THICKNESS / 2);
+        }
+      }
       for (const s of [1, -1]) {
         const { v, f } = membranePolys(p, s);
         const NF = p.wingFingers;
@@ -151,34 +163,42 @@ function toSheet([x, y, z]: Vec3): [number, number] {
   return [rx, ty * Math.cos(SHEET_ELEVATION) - rz * Math.sin(SHEET_ELEVATION)];
 }
 
+/** Points along every membrane edge of one wing, and the tail and torso as screen discs. */
+function sheetParts(p: Phenotype, side: number) {
+  const { g } = fullGraph(p);
+  const { v, f } = membranePolys(p, side);
+  const samples: Vec3[] = [];
+  for (const face of f) {
+    for (let k = 0; k < face.length; k++) {
+      const a = v[face[k]!]!, b = v[face[(k + 1) % face.length]!]!;
+      for (let t = 0; t <= 1; t += 0.125) samples.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
+    }
+  }
+  // The membrane's root is inside the body by design; what must not cross is the part
+  // outside it, beyond the torso's widest radius.
+  const torsoR = Math.max(...[4, 5, 6, 7].map((n) => g.r[n]!));
+  const outside = samples.filter(([, y]) => y * side > torsoR);
+  // The tail (nodes 0-3, then the hip, 4) and the torso (4-7), sampled along each segment
+  // with their skin radius: on screen a disc of that radius, in an orthographic camera.
+  // `free` marks the tail samples behind the hip's own sphere: where the tail has left the body.
+  const hipBack = g.v[4]![0] - g.r[4]!;
+  const discs: { at: [number, number]; r: number; tail: boolean; free: boolean }[] = [];
+  for (let n = 0; n < 7; n++) {
+    const a = g.v[n]!, b = g.v[n + 1]!, ra = g.r[n]!, rb = g.r[n + 1]!;
+    for (let t = 0; t <= 1; t += 0.1) {
+      const q: Vec3 = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+      discs.push({ at: toSheet(q), r: ra + (rb - ra) * t, tail: n < 4, free: n < 4 && q[0] < hipBack });
+    }
+  }
+  return { outside, discs };
+}
+
 describe('in the sheet camera the far wing does not cross the tail or the belly', () => {
   sheet.forEach((gm, i) => {
     it(`sheet ${'ABCDEFGH'[i]}`, () => {
-      const p = gm.phenotype;
-      const { g } = fullGraph(p);
       // The far wing is the dragon's left (+y): the sheet camera sits on its right.
-      const { v, f } = membranePolys(p, 1);
-      const samples: Vec3[] = [];
-      for (const face of f) {
-        for (let k = 0; k < face.length; k++) {
-          const a = v[face[k]!]!, b = v[face[(k + 1) % face.length]!]!;
-          for (let t = 0; t <= 1; t += 0.125) samples.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]);
-        }
-      }
-      // The membrane's root is inside the body by design; what must not cross is the part
-      // outside it, beyond the torso's widest radius.
-      const torsoR = Math.max(...[4, 5, 6, 7].map((n) => g.r[n]!));
-      const outside = samples.filter(([, y]) => y > torsoR);
+      const { outside, discs } = sheetParts(gm.phenotype, 1);
       expect(outside.length).toBeGreaterThan(20);
-      // The tail (nodes 0-3, then the hip, 4) and the torso (4-7), sampled along each segment
-      // with their skin radius: on screen a disc of that radius, in an orthographic camera.
-      const discs: { at: [number, number]; r: number; tail: boolean }[] = [];
-      for (let n = 0; n < 7; n++) {
-        const a = g.v[n]!, b = g.v[n + 1]!, ra = g.r[n]!, rb = g.r[n + 1]!;
-        for (let t = 0; t <= 1; t += 0.1) {
-          discs.push({ at: toSheet([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]), r: ra + (rb - ra) * t, tail: n < 4 });
-        }
-      }
       for (const w of outside) {
         const [X, Y] = toSheet(w);
         for (const d of discs) {
@@ -188,6 +208,23 @@ describe('in the sheet camera the far wing does not cross the tail or the belly'
           else if (Math.abs(X - d.at[0]) < d.r) expect(Y, 'far wing below the torso midline').toBeGreaterThan(d.at[1]);
         }
       }
+    });
+  });
+});
+
+describe('in the sheet camera the near wing is not drawn across the tail (M3e cycle 1, A5)', () => {
+  sheet.forEach((gm, i) => {
+    it(`sheet ${'ABCDEFGH'[i]}`, () => {
+      const { outside, discs } = sheetParts(gm.phenotype, -1);
+      expect(outside.length).toBeGreaterThan(20);
+      let worst = Infinity;
+      for (const w of outside) {
+        const [X, Y] = toSheet(w);
+        // The near wing grows from the flank in front of the hip, so it may overlap the hip
+        // itself; it must not be drawn over the tail once the tail has left the body.
+        for (const d of discs) if (d.free) worst = Math.min(worst, Math.hypot(X - d.at[0], Y - d.at[1]) - d.r);
+      }
+      expect(worst, 'near wing over the tail: screen gap to the tail outline').toBeGreaterThan(0);
     });
   });
 });

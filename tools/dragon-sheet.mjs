@@ -3,8 +3,10 @@
  * Render the runtime dragon for review: `node tools/dragon-sheet.mjs` (after `npm run build`).
  *
  *   artifacts/variants/dragon-full.png          the 8-dragon sheet (dragon.html)
- *   artifacts/turntables/dragon-full.webm        one dragon turned through 360° in 4 s
+ *   artifacts/turntables/dragon-full.webm        one dragon turned through 360° in 4 s (slot G, a sail)
  *   artifacts/turntables/dragon-full.frame00.png its first frame, for a quick look
+ *   artifacts/turntables/dragon-spread.webm      the same for the first spread-winged sheet dragon
+ *   artifacts/turntables/dragon-segmented.webm   and the first segmented one (each with a .frame00.png)
  *   artifacts/variants/dragon-full.json          build time, triangle counts, each dragon's wing form
  *   artifacts/variants/dragon-greyscale.png      the same sheet with all colour removed (?grey=1)
  *   artifacts/variants/dragon-silhouette.json    outline numbers from per-dragon masks at the
@@ -103,21 +105,33 @@ try {
   console.log(`  pairwise IoU: mean ${S.meanIoU.toFixed(3)}, min ${S.minIoU.toFixed(3)}, max ${S.maxIoU.toFixed(3)} (${S.mostAlike}); ` +
     `area ${S.area.min}–${S.area.max}, width ${S.width.min}–${S.width.max}, height ${S.height.min}–${S.height.max}`);
 
-  const turn = await open(`?view=turn&i=${TURN_PICK}`, { width: 960, height: 720 });
-  const dir = path.join('artifacts', 'turntables', 'dragon-full.frames');
-  rmSync(dir, { recursive: true, force: true });
-  mkdirSync(dir, { recursive: true });
-  for (let f = 0; f < TURN_FRAMES; f++) {
-    await turn.evaluate((rad) => window.__dragonView.setYaw(rad), (f / TURN_FRAMES) * Math.PI * 2);
-    await turn.screenshot({ path: path.join(dir, `f${String(f).padStart(3, '0')}.png`) });
+  // Turntables: slot G (the default, a sail) as dragon-full, then the first sheet dragon of
+  // each other wing form, so every form is seen turning (M3e cycle 1).
+  const turntables = [{ name: 'dragon-full', slot: TURN_PICK }];
+  for (const form of ['spread', 'segmented']) {
+    const slot = stats.sheet.findIndex((d) => d.wingForm === form);
+    if (slot >= 0 && slot !== TURN_PICK) turntables.push({ name: `dragon-${form}`, slot });
   }
-  const ff = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(TURN_FPS),
-    '-i', path.join(dir, 'f%03d.png'), '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', '-pix_fmt', 'yuv420p',
-    'artifacts/turntables/dragon-full.webm'], { encoding: 'utf8' });
-  if (ff.status !== 0) errors.push(`ffmpeg: ${ff.stderr}`);
-  spawnSync('cp', [path.join(dir, 'f000.png'), 'artifacts/turntables/dragon-full.frame00.png']);
-  rmSync(dir, { recursive: true, force: true });
-  console.log(`turntable: artifacts/turntables/dragon-full.webm — sheet slot ${TURN_PICK}, ${TURN_FRAMES} frames at ${TURN_FPS} fps`);
+  for (const t of turntables) {
+    t.wingForm = stats.sheet[t.slot]?.wingForm ?? null;
+    t.label = stats.sheet[t.slot]?.label ?? null;
+    const turn = await open(`?view=turn&i=${t.slot}`, { width: 960, height: 720 });
+    const dir = path.join('artifacts', 'turntables', `${t.name}.frames`);
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    for (let f = 0; f < TURN_FRAMES; f++) {
+      await turn.evaluate((rad) => window.__dragonView.setYaw(rad), (f / TURN_FRAMES) * Math.PI * 2);
+      await turn.screenshot({ path: path.join(dir, `f${String(f).padStart(3, '0')}.png`) });
+    }
+    await turn.close();
+    const ff = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(TURN_FPS),
+      '-i', path.join(dir, 'f%03d.png'), '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '34', '-pix_fmt', 'yuv420p',
+      `artifacts/turntables/${t.name}.webm`], { encoding: 'utf8' });
+    if (ff.status !== 0) errors.push(`ffmpeg: ${ff.stderr}`);
+    spawnSync('cp', [path.join(dir, 'f000.png'), `artifacts/turntables/${t.name}.frame00.png`]);
+    rmSync(dir, { recursive: true, force: true });
+    console.log(`turntable: artifacts/turntables/${t.name}.webm — sheet slot ${t.slot} (${t.label}, ${t.wingForm} wings), ${TURN_FRAMES} frames at ${TURN_FPS} fps`);
+  }
 
   writeFileSync('artifacts/variants/dragon-full.json', `${JSON.stringify({
     sheetGenomes: 8, sheetTris: stats.tris, sheetBuildMs: Math.round(stats.buildMs * 10) / 10,
@@ -131,6 +145,7 @@ try {
     firstDragonMs: Math.round(stats.buildTimes[0] * 10) / 10,
     budgetMsPerDragon: 120,
     turntable: { slot: TURN_PICK, frames: TURN_FRAMES, fps: TURN_FPS },
+    turntables: turntables.map((t) => ({ file: `artifacts/turntables/${t.name}.webm`, slot: t.slot, label: t.label, wingForm: t.wingForm })),
     // Each sheet cell's wing form: derived from wingFingers and wingShape (graph.ts wingForm).
     dragons: stats.sheet.map((d) => ({ label: d.label, gid: d.gid, wingForm: d.wingForm ?? null,
       wingFingers: d.phenotype.wingFingers, wingShape: Math.round(d.phenotype.wingShape * 1000) / 1000 })),
