@@ -414,3 +414,106 @@ def topology(ob):
             vol[r] = vol.get(r, 0.0) + v6 / 6.0
     return {"open": open_e, "nonManifold": nonman, "shells": len(vol),
             "minVolume": min(vol.values()) if vol else 0.0}
+
+
+# ---------------------------------------------------------------- M5c additions
+# Additive only: nothing above this line changed, so the M5b trees' bytes do not move.
+
+def bark_shade(s):
+    """The bark surface at an explicit brightness multiplier `s` (clamped 0.36..1.55), with
+    `bark`'s 12% dusk. Below `bark`'s floor for the insides of hollows and seams, above it
+    for sunlit buttress ridges. Worst ΔE from `#4a3b2f` about 10.9 at the floor, 10.5 at
+    the top."""
+    s = 0.36 if s < 0.36 else (1.55 if s > 1.55 else s)
+    return tuple((BARK[k] * 0.88 + _DUSK[k] * 0.12) * s for k in range(3))
+
+
+def weathered(t):
+    """Dead, sun-bleached wood on the bark surface: 35% of the way to a neutral grey of the
+    same luminance, 8% dusk, brightness x1.12..1.70 of `#4a3b2f` as `t` goes 0..1. Grey-brown
+    rather than brown, and lighter, but never more than ΔE 10.3 from the swatch."""
+    s = 1.12 + 0.58 * clamp01(t)
+    base = tuple(BARK[k] * 0.92 + _DUSK[k] * 0.08 for k in range(3))
+    y = 0.2126 * base[0] + 0.7152 * base[1] + 0.0722 * base[2]
+    return tuple((base[k] * 0.65 + y * 0.35) * s for k in range(3))
+
+
+def cloud(mesh, lb, seg, rings, zrange, tone, lump_scale=1.0):
+    """One foliage mass, broadleaf's `_lobe`: a lumpy, squashed sphere whose underside hangs
+    a little. `lb` holds c (centre), r, squash, droop, lumps and bumps [(unit dir, amp)].
+    Lumps only push outward, and the shape is a function of direction, so it is the same
+    at every LOD. Colour runs the foliage ramp by normal and by height in `zrange`."""
+    cx, cy, cz = lb["c"]
+    R, sq, droop = lb["r"], lb["squash"], lb["droop"]
+    amp = lb["lumps"] * lump_scale
+    z0, z1 = zrange
+    nk = 1.0 + amp * 0.46
+
+    def place(d):
+        m = 1.0
+        for ax, a in lb["bumps"]:
+            m += amp * a * max(0.0, dot(d, ax)) ** 1.8
+        m /= nk
+        r = R * m
+        x, y, z = d[0] * r, d[1] * r, d[2] * r * sq
+        if d[2] < 0.0:
+            sag = (-d[2]) ** 1.5
+            z -= droop * R * sag
+            x *= 1.0 + droop * 0.30 * sag
+            y *= 1.0 + droop * 0.30 * sag
+        p = (cx + x, cy + y, cz + z)
+        th = (0.64 * (0.5 + 0.5 * d[2])
+              + 0.30 * clamp01((p[2] - z0) / max(1e-6, z1 - z0))
+              + max(-0.10, min(0.10, 0.26 * (m - 1.0))))
+        return p, foliage(clamp01(clamp01(th) ** 1.26 * tone * lb.get("tone", 1.0)))
+
+    blob(mesh, seg, rings, place)
+
+
+def cloud_bottom(lb):
+    """Lowest z a `cloud` can reach (its hanging underside), for ground clearance."""
+    return lb["c"][2] - lb["r"] * (lb["squash"] + lb["droop"])
+
+
+def merge_clouds(lobes, target):
+    """Collapse `cloud` lobes into at most `target`, keeping the envelope: farthest-point
+    seeds from the largest, nearest-seed groups, one lobe covering each group (broadleaf's
+    `_merge_lobes`, so a crown lobe never merges with one on the far side)."""
+    if len(lobes) <= target:
+        return list(lobes)
+    order = sorted(range(len(lobes)), key=lambda i: -lobes[i]["r"])
+    seeds = [order[0]]
+    while len(seeds) < target:
+        best, bd = None, -1.0
+        for i in range(len(lobes)):
+            if i in seeds:
+                continue
+            d = min(length(sub(lobes[i]["c"], lobes[s]["c"])) for s in seeds)
+            if d > bd:
+                best, bd = i, d
+        seeds.append(best)
+    groups = {s: [] for s in seeds}
+    for i in range(len(lobes)):
+        s = min(seeds, key=lambda k: (length(sub(lobes[i]["c"], lobes[k]["c"])), k))
+        groups[s].append(lobes[i])
+    out = []
+    for s in seeds:
+        g = groups[s]
+        if len(g) == 1:
+            out.append(g[0])
+            continue
+        w = [lb["r"] ** 3 * lb["squash"] for lb in g]
+        tw = sum(w)
+        cen = tuple(sum(lb["c"][k] * wi for lb, wi in zip(g, w)) / tw for k in range(3))
+        r = max(math.hypot(lb["c"][0] - cen[0], lb["c"][1] - cen[1]) + lb["r"] for lb in g)
+        top = max(lb["c"][2] + lb["r"] * lb["squash"] for lb in g)
+        bot = min(cloud_bottom(lb) for lb in g)
+        r *= 0.90
+        main = max(g, key=lambda lb: lb["r"])
+        droop = main["droop"]
+        sq = max(0.3, ((top - bot) / r - droop) * 0.5 * 0.95)
+        cz = top - r * sq * 0.97
+        out.append({"c": (cen[0], cen[1], cz), "r": r, "squash": sq, "droop": droop,
+                    "lumps": main["lumps"], "bumps": main["bumps"],
+                    "tone": main.get("tone", 1.0)})
+    return out

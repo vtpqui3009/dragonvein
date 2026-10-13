@@ -1,6 +1,51 @@
 {
   "generatedBy": "assetgen/build_all.py",
   "assets": {
+    "flora/ancientgiant": {
+      "script": "assetgen/flora/ancientgiant.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 6000,
+        "lod1": 2000,
+        "lod2": 500
+      },
+      "palette": {
+        "bark": "#4a3b2f",
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a"
+      },
+      "paletteRoles": {
+        "surfaces": [
+          "bark"
+        ],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/ancientgiant.lod0.glb",
+          "tris": 5850,
+          "sha256": "05e0c211c23634e4beabb19e665faba39d2cd9c7eacb4b838d927c60b3cf86cf"
+        },
+        "lod1": {
+          "file": "flora/ancientgiant.lod1.glb",
+          "tris": 1632,
+          "sha256": "8f4147b3c13476f0f18df647ae37e4eddb000daf52a53545c26393356583f1b6"
+        },
+        "lod2": {
+          "file": "flora/ancientgiant.lod2.glb",
+          "tris": 452,
+          "sha256": "c195fc25cf2597b332ae8c0446f5c3e177fb8c7d3858ddccec6bfd520cc90069"
+        }
+      }
+    },
     "flora/broadleaf": {
       "script": "assetgen/flora/broadleaf.py",
       "family": "flora",
@@ -91,6 +136,42 @@
         }
       }
     },
+    "flora/deadtree": {
+      "script": "assetgen/flora/deadtree.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 6000,
+        "lod1": 2000,
+        "lod2": 500
+      },
+      "palette": {
+        "bark": "#4a3b2f"
+      },
+      "paletteRoles": {
+        "surfaces": [
+          "bark"
+        ],
+        "ramps": []
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/deadtree.lod0.glb",
+          "tris": 2008,
+          "sha256": "3910da11a23dcc969fe14dfa4485c89a0b5a3b91ec346ced1179ee7f34f13d64"
+        },
+        "lod1": {
+          "file": "flora/deadtree.lod1.glb",
+          "tris": 668,
+          "sha256": "d20acff7d4de18ea876e2f8e5ed5c2ba50819e0c6aeda046b08ae9eb0468fc54"
+        },
+        "lod2": {
+          "file": "flora/deadtree.lod2.glb",
+          "tris": 302,
+          "sha256": "b8fad72e985f2d0a38ff4f3d3da95014b0877ce93b8f0f9d1bb66146bec67cd0"
+        }
+      }
+    },
     "flora/fanpalm": {
       "script": "assetgen/flora/fanpalm.py",
       "family": "flora",
@@ -133,6 +214,51 @@
           "file": "flora/fanpalm.lod2.glb",
           "tris": 306,
           "sha256": "51bea56462f9dd7e5409267b829ca4e1c64779e9c15863025434ceacf3de05af"
+        }
+      }
+    },
+    "flora/sapling": {
+      "script": "assetgen/flora/sapling.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 6000,
+        "lod1": 2000,
+        "lod2": 500
+      },
+      "palette": {
+        "bark": "#4a3b2f",
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a"
+      },
+      "paletteRoles": {
+        "surfaces": [
+          "bark"
+        ],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/sapling.lod0.glb",
+          "tris": 1308,
+          "sha256": "108075406ddcbb1fe0d337f06451172662b271430b9e5758f91ec2dc0e0a1a1e"
+        },
+        "lod1": {
+          "file": "flora/sapling.lod1.glb",
+          "tris": 404,
+          "sha256": "97eb6351b54d2378764dbbe72f55a5d39912f1deb298cb958b90b6ea573652f4"
+        },
+        "lod2": {
+          "file": "flora/sapling.lod2.glb",
+          "tris": 146,
+          "sha256": "386da52328e33b992d9bd66e9385036da952ce22ca60c9bd5fd744d05453e233"
         }
       }
     },
