@@ -127,6 +127,49 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-13 · run 25 · M3f — the genome drives the body outline
+
+**Step**: `M3f`, the first step in reading order that is not `DONE`. The marker commit
+precedes this one.
+
+**The defect.** Art cycle 2 of M3e left one major: the eight share one body plan. The
+numbers in `dragon-silhouette.json` at `8e5b5ba`:
+- mean pairwise IoU 0.632, range 0.429–0.785, with A–G the most alike;
+- area 6.50–7.77, height 3.42–4.18, width 5.21–6.51.
+
+That is about a 20 % spread. `docs/GENOME.md` gives the body genes wide ranges, for example:
+- bodyMass 0.70–1.45;
+- neckLength 0.60–1.70, with neckArc 0–1;
+- legLength 0.70–1.40;
+- tailLength 0.60–1.80.
+
+So the question is how weakly `builder.py` turns those genes into outline. GENOME.md is
+not rewritten (§7). If a range itself is wrong, it is raised here and the owner is asked.
+
+**Ownership**: one sequential owner, the integrator, across `assetgen/dragon/`,
+`src/assets/dragon/` and `tools/`. Never a fan-out.
+
+### Acceptance criteria
+
+1. **Each body gene measurably moves the outline.** `tools/silhouette.mjs` gains a
+   one-gene sweep. For each of bodyMass, neckLength, neckArc, legLength, tailLength,
+   headSize, hornCount and crestType, it builds a fixed base genome at the gene's low,
+   middle and high values and records the mask area, width, height and the IoU against the
+   base, in `artifacts/variants/dragon-sweep.json`. Every gene listed must reach
+   **IoU ≤ 0.85** between its low and high ends. hornCount and crestType are judged on head
+   outline, so they may be measured on a head crop.
+2. **The eight separate.** In `dragon-silhouette.json` for the fixed sheet A–H:
+   - **mean pairwise IoU ≤ 0.55**, down from 0.632;
+   - **the most-alike pair ≤ 0.72**, down from 0.785;
+   - **area or height spread (max/min) ≥ 1.35**, up from about 1.20.
+3. **The greyscale test.** `dragon-greyscale.png` reads as eight different creatures. It is
+   judged by the art critic, with no major or blocking defect on the shared body plan.
+4. `gate:parity` is green with the regenerated fixture, `gate:meshgen` is ≤ 120 ms, and
+   `npm run gates` exits 0.
+5. No blocking or major art defect against the dragon sheet or turntables (§4).
+
+---
+
 ## 2026-10-13 · run 24 · M3e DONE (M3 IN_PROGRESS) — wing forms, and the instruments that measure silhouette
 
 **Step**: `M3e`, the first step in reading order that is not `DONE`. The marker commit
@@ -755,4 +798,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-13T08:56Z
