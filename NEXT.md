@@ -10,43 +10,48 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-13** · at commit `0682cb6`, the last commit of run 21 that changed
-code. The close-out commits that wrote this file follow it.
+Last updated: **2026-10-13** · at commit `d14bde0`, the last commit of run 21 that changed
+code. Run 22 is **in flight**. Nothing from it is on `main` except its acceptance criteria.
 
 ---
 
 ## Current step
 
-**M5d — 4 understory generators: bushes, ferns, reeds, grass clumps** · `TODO`
+**M5d — 4 understory generators: bushes, ferns, reeds, grass clumps** · `IN_PROGRESS` (run 22)
 
-M5c closed in run 21 on its first pass: art **8.35** (ancientgiant 8.1, deadtree 8.4,
-sapling 8.0), perf **8.9**, gameplay **8.7**. `assetgen/flora/` now has seven tree kinds:
-- broadleaf, conifer, fanpalm and windtwisted;
-- ancientgiant, deadtree and sapling.
+M5c closed in run 21: art **8.35** (ancientgiant 8.1, deadtree 8.4, sapling 8.0), perf
+**8.9**, gameplay **8.7**. Run 22 wrote the M5d criteria into STATE.md (`d14bde0`):
+- the prop budget is **4000/1200/300**, the PERF_BUDGET row;
+- the generators are built one at a time.
 
-The dead tree is meant to replace the hand-built pale snags at M5e.
+The asset-builder was mid-way through all four when this was written.
 
 ## The single next action
 
-Take M5d in `assetgen/flora/` (asset-builder): four understory generators, `docs/ASSET_PLAN.md`
-§B2.
-- **Four is more than any step has landed in one run.** M5b needed a rework cycle for three.
-  Check the size first. If it will not fit, split it into M5d (bushes, ferns) and the next
-  step (reeds, grass clumps), record the split in STATE.md, and take the first half.
-- **Understory is small and many.** Keep the triangle counts well under the tree budget, and
-  record the budget you choose against docs/PERF_BUDGET.md §Other budgets, whose prop row is
-  4000/1200/300. The perf critic keeps asking for the flora budget to be reconciled.
-- **Follow the M5b and M5c pattern:**
-  - closed, outward meshes;
-  - LODs strictly decreasing on every seed;
-  - the base at z = 0 for `withWind`;
-  - several stratified axes with different irrationals, so seeds do not pair up.
-- **What the art critic keeps flagging:**
-  - near-pairs, about three classes in eight seeds;
-  - blobs on thin stems ("balloons on a stick");
-  - needle tips;
-  - the sheet scale hiding real size;
-  - LOD1 and LOD2 never rendered.
+**Resume M5d from the WIP snapshot. Do not start over.**
+
+1. `git fetch origin wip/m5d`. Branch `wip/m5d` (`c96ac94`, on top of `d14bde0`) holds the
+   builder's **unverified** state:
+   - `assetgen/flora/{bush,fern,reeds,grassclump}.py` and their `.glb` files;
+   - `build_all.py` with the four registered;
+   - a `render_all.py` change;
+   - MANIFEST.
+
+   It is **not gated** and **not scored**, and `main` does not carry it.
+2. Check it out onto `main` with `git checkout origin/wip/m5d -- assetgen public/assets`.
+   Then re-verify every generator against the STATE.md run 22 criteria:
+   - the per-seed × LOD checks;
+   - `build_all --verify` and `--check`;
+   - render, and look at the sheets;
+   - `variant-probe` on all 19 generators;
+   - `check-assets`.
+3. **Review the `render_all.py` diff.** It is shared render code, so give it its own commit
+   and show that the existing sheets are unchanged.
+4. Finish the gate and critic loop: perf alone, then art and gameplay. Close out as usual,
+   then delete the `wip/m5d` branch.
+
+If only some of the four verify, commit those, split the remainder into a new step, and
+record the split in STATE.md.
 
 ## Open items that need the owner, not a run
 
