@@ -130,3 +130,26 @@ recorded here, as §2.6 asks for any addition to the bundle.
 
 Every later generated asset (rocks, landmarks, more flora) loads through the same loader at
 no further bundle cost.
+
+## 2026-10-13 · Look dev moves after the playable loop
+
+**Decision.** `docs/ROADMAP.md` reading order becomes M3 → M5 → M7 → M8 → M9 → playable
+checkpoint → M6 → M10… . M6 Look dev (day/night, cascaded shadows, bloom and ACES, the five
+quality tiers) runs *after* taming, roster, breeding and the gene inspector, not before.
+Milestone numbers are untouched; only the sections moved.
+
+**Why.** At the time of the decision 23 of 66 steps were `DONE` and all 23 were engine or
+asset work. The game had a world and eight dragons in it and nothing a player could do with
+them. The asset steps are also the comfortable ones — a pattern is established, each one
+closes in a run — while every remaining gameplay milestone is a new system. A project in
+that position drifts toward polishing foundations indefinitely.
+
+**What it costs.** The owner's first playthrough happens under a flat sun, with no bloom and
+no tier detection. That is accepted: the checkpoint asks whether the loop is fun, and a loop
+that is not fun will not be rescued by lighting.
+
+**Also recorded, not scheduled:** `docs/ROADMAP.md` §After M16 holds the owner's intent to
+build the game out to full depth once every milestone is `DONE` and the direction has proven
+out, together with the distinction between depth (consistent with the GDD) and live-service
+apparatus (which the GDD and `CLAUDE.md` §7 rule out, and which only the owner may unlock, in
+their own commit).

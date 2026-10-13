@@ -13,6 +13,46 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-13 · owner session · the loop moves ahead of look dev
+
+No code. Two owner decisions, and one session stood down.
+
+**Run 25 was stopped** so the owner's second Pro account could work without two sessions
+pushing to `main`. It had shipped no code — marker, criteria and handoff only — so `main` was
+clean. Its `NEXT.md` still said "run 25 is in flight on M3f"; that was corrected, because a
+handoff claiming work is underway when it is not is the failure this project has paid for
+before. M3f's acceptance criteria stay on `main` for whoever takes the step.
+
+**The resequencing.** Asked and answered by the owner after being shown the honest position:
+**23 of 66 steps `DONE`, every one of them engine or asset, and the loop not started.** The
+reading order now runs M3 → M5 → M7 → M8 → M9 → **▲ playable checkpoint** → M6 → M10… .
+
+Only `## M6 — Look dev` moved, to after M9. That one move is the whole change, and it was
+chosen over trimming M8 or M9: the loop's seven steps are each load-bearing — without
+IndexedDB nothing persists, without the roster there is nothing to look at, and the gene
+inspector *is* the pillar §The genome is visible. There was nothing in the loop worth cutting;
+what was worth deferring was the lighting around it.
+
+Milestone numbers are unchanged, as `docs/ROADMAP.md` §How big a step may be requires, so
+`RUBRIC.md`'s live-from table and every existing `STATE.md` and `FINDINGS.md` reference still
+resolve. §3.1 schedules on reading order, so the move alone redirects the runs.
+
+**The checkpoint is a gate no run passes.** A run that closes M9c stops, writes the question
+into `NEXT.md` and waits for the owner to play it. The question is "is this fun?", and it is
+asked before any run is spent on bloom.
+
+**Also recorded, deliberately unscheduled:** `docs/ROADMAP.md` §After M16 now carries the
+owner's intent to build this out to a full game once every milestone is `DONE` and the
+direction has proven out. It separates depth (more islands, more of the gene space visible,
+more creatures from the same machinery — all consistent with the GDD) from live-service
+apparatus (gacha, energy timers, login streaks, a backend — ruled out by `docs/GDD.md` and
+`CLAUDE.md` §7). Only the owner may unlock the second kind, by changing those files first, in
+their own commit. No run takes anything from that section.
+
+**Next:** M3f, from the criteria already on `main` under a new run heading.
+
+---
+
 ## 2026-10-13 · owner session · M4 closed, and M3e added ahead of M5e
 
 No code. The owner reviewed both artefacts and made a roadmap decision; both are recorded here

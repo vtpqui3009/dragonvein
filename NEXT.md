@@ -22,6 +22,21 @@ appending to run 25's.
 
 ---
 
+## The running order changed — read this before taking a step
+
+**Owner decision, 2026-10-13.** `docs/ROADMAP.md` now runs **M3 → M5 → M7 → M8 → M9 →
+▲ playable checkpoint → M6 → M10…**. **M6 Look dev moved to after M9.** Milestone numbers
+are unchanged, so `RUBRIC.md`, `STATE.md` and `FINDINGS.md` still mean what they said — only
+reading order moved, which is what §3.1 schedules on. Take the first step in reading order
+that is not `DONE`, as always; that rule now lands you on the loop, not on bloom.
+
+**Why.** 23 of 66 steps are `DONE` and every one of them is engine or asset. The loop — tame,
+roster, breed, inspect — has not been started. Day/night light, shadows, bloom and quality
+tiers are an investment in a loop nobody has played yet.
+
+**The checkpoint is a hard stop.** A run that finishes M9c does not start M6. It writes the
+question into this file and waits for the owner to play it.
+
 ## Current step
 
 **M3f — neck arc, body mass and horn count push the outline until `dragon-greyscale.png`

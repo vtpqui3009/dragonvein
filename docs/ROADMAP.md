@@ -263,16 +263,6 @@ They meet §Definition of done:
 3. all three are in MANIFEST.json;
 4. art per generator 8.1 / 8.4 / 8.0.
 
-## M6 — Look dev
-
-| step | done when | status |
-|---|---|---|
-| M6a | orbit camera with touch and mouse, framing the island at every zoom | TODO |
-| M6b | day/night sun — colour, elevation, the sky responding | TODO |
-| M6c | cascaded shadows at the tier resolutions, no acne, no peter-panning | TODO |
-| M6d | bloom and ACES, inside the post-processing budget | TODO |
-| M6e | the five quality tiers, detected at boot, overridable, persisted | TODO |
-
 ## M7 — Dragon animation
 
 | step | done when | status |
@@ -297,6 +287,37 @@ They meet §Definition of done:
 | M9a | pair two dragons, lay an egg, persist the child genome | TODO |
 | M9b | the hatch sequence, and a child mesh visibly its parents' | TODO |
 | M9c | gene inspector — which trait came from which parent, and what is hidden | TODO |
+
+## ▲ Playable checkpoint — the owner plays it and decides
+
+**This is a gate, not a milestone. No run passes it.** When M9c is `DONE` the loop exists
+end to end for the first time: a wild dragon reacts, is tamed, persists through a reload,
+appears in the roster, pairs, lays, hatches, and the child's gene inspector names which
+parent gave which trait.
+
+At that point the owner plays it and answers one question: **is this fun?** Everything below
+this line is an investment in a loop that is assumed to work. Spending runs on day/night
+light, bloom and quality tiers before that answer is how a project ends up with beautiful
+foundations and no game.
+
+A run that reaches this line stops, writes the question into `NEXT.md`, and waits. It does
+not start M6.
+
+Owner decision, 2026-10-13: M6 Look dev was moved from before M7 to after this gate for
+exactly this reason. Milestone numbers are unchanged — `docs/RUBRIC.md`, `STATE.md` and
+`FINDINGS.md` keep meaning what they said — only reading order moved, and reading order is
+what §3.1 schedules on.
+
+
+## M6 — Look dev
+
+| step | done when | status |
+|---|---|---|
+| M6a | orbit camera with touch and mouse, framing the island at every zoom | TODO |
+| M6b | day/night sun — colour, elevation, the sky responding | TODO |
+| M6c | cascaded shadows at the tier resolutions, no acne, no peter-panning | TODO |
+| M6d | bloom and ACES, inside the post-processing budget | TODO |
+| M6e | the five quality tiers, detected at boot, overridable, persisted | TODO |
 
 ## M10 — Ambient life
 
@@ -358,6 +379,45 @@ They meet §Definition of done:
 | M16a | real-GPU **verifications** across Potato through Ultra, logged in `STATE.md` | TODO |
 | M16b | onboarding and the first-session flow | TODO |
 | M16c | the final pass — bundle, boot time, every budget | TODO |
+
+## After M16 — what "a full game" would mean here
+
+**Owner intent, 2026-10-13: once every milestone above is `DONE` and the direction has
+proven out, build this into a game with the depth of a real one.** Recorded so it is not
+forgotten, and deliberately *not* scheduled: nothing here is a commitment, and no run takes
+anything from this section. It is reopened by the owner after M16, in the light of what the
+playable checkpoint and M16's own numbers actually showed.
+
+Two different things could be meant by "full features", and they are not the same decision.
+
+**Depth — consistent with `docs/GDD.md`, and the likely direction.** More of what the game
+already is, rather than a different kind of game:
+
+- more islands, biomes and wild populations, with altitude as real progression;
+- more of the gene space made visible — fusions, rare alleles, pattern genes, a gene library
+  worth screenshotting;
+- creature variety beyond dragons, built from the same genome machinery;
+- deeper taming and bonding, with behaviour that rewards reading an animal;
+- more buildings, higher tiers, a real island economy;
+- weather, seasons, and time-of-day events that change what is out in the world;
+- quests or expeditions that give the collection somewhere to go.
+
+**Live-service apparatus — would contradict what is already written down.** `docs/GDD.md`
+§What we are not building rules out gacha, energy timers, login streaks and a story campaign,
+and `CLAUDE.md` §7 rules out telemetry, ads, a backend, a login and anything collecting
+personal data. Multiplayer is excluded "at launch", so it is the one item here that a later
+phase could take up without contradicting anything.
+
+If the owner later wants any of the ruled-out items, **`docs/GDD.md` and `CLAUDE.md` are
+changed first, by the owner, in their own commit** — never by a run, and never quietly as a
+side effect of building something. §7 exists because a target that gets edited to match what
+was built stops being a target.
+
+**The honest prerequisite.** A game earns more features by being good at what it already
+does. The playable checkpoint above answers whether the core loop is fun; M16's real-hardware
+numbers answer whether it runs where it claims to. Both answers should be yes before this
+section is opened, because every item here makes the thing bigger, and bigger is only better
+when the middle already holds.
 
 ## When each rubric line goes live
 
