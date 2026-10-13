@@ -10,43 +10,44 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-12** · at commit `e377e1d`, the last commit of run 19 that changed
+Last updated: **2026-10-13** · at commit `02a0495`, the last commit of run 20 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M5b — 3 canopy tree generators with passing variant sheets** · `TODO`
+**M5c — 2 more trees, and saplings** · `TODO`
 
-M5a closed in run 19 on its first pass: art **8.4**, perf **8.4**, gameplay **9.2**.
-- `src/render/wind.ts` sways 220 instanced trees in the vertex shader.
-- The trees are the committed `flora/broadleaf` GLBs, the first `assetgen/` asset in the
-  game: 8 at LOD0 on the hero island and groves on all 13 companions.
-- Draws 28, triangles 174 012, heap within budget.
-- GLTFLoader is loaded on demand. It cost +28.8 kB gzipped, recorded in docs/DECISIONS.md.
+M5b closed in run 20 after one rework cycle. Final scores: art **8.55** (conifer 8.7,
+fanpalm 8.2, windtwisted 8.1), perf **8.4**, gameplay **8.8**. Cycle 1 had fanpalm at 7.7,
+with detached blades on wire stems, and windtwisted at 8.0, mostly upright with a dish pad.
+
+`assetgen/flora/` now holds broadleaf, conifer, fanpalm and windtwisted. The shared kit
+`treekit.py` has closed primitives (`tube`, `blob`, `revolve`, `thick_grid`) and
+`topology`.
 
 ## The single next action
 
-Take M5b in `assetgen/flora/` (asset-builder). `docs/ASSET_PLAN.md` §B1 lists the canopy
-trees: broadleaf (done), conifer, fan-palm, wind-twisted, ancient giant. Build three of the
-four that remain. Pick ones that read as three different tree kinds.
-
-- **Copy the pattern of `flora/broadleaf.py`** and the M4 rock generators:
-  - `plan(seed)` and the declarations;
-  - LODs strictly decreasing on **every** seed, within broadleaf's 6000/2000/500;
-  - 0 inward faces and 0 open edges.
-- **Each tree needs a clean base at z = 0 and a vertical trunk axis**, so `withWind` in
-  `src/render/wind.ts` can sway it by height. The sway is quadratic in height above the
-  instance base.
-- **What the critics flagged that applies to trees:**
-  - in-game the 220 broadleaves are one seed, so variety comes from more generators and
-    seeds;
-  - the generated trunks render near-black in game but brown on the sheet. Check the
-    instanced material's ambient and normals when trees are placed (an M5e or `src` item,
-    not this step).
-- Placing the new trees in the game is **not** M5b. That is M5e, through the same
-  `withWind` material.
+Take M5c in `assetgen/flora/` (asset-builder).
+- **Pick the two trees.** `docs/ASSET_PLAN.md` §B1 has only **ancient giant** left. The step
+  asks for two trees, so the second needs choosing and recording in STATE.md: a variant
+  kind the set lacks, such as a dead or bare tree or a weeping tree, read against concept 03.
+  The **saplings** are B2 (understory), and young versions of the existing kinds are the
+  natural reading.
+- **Check the size.** Three generators fit in run 20 only with a rework cycle. If it will
+  not fit, split it.
+- **Follow the M5b pattern:**
+  - every seed has 0 inward, open and non-manifold edges;
+  - LODs strictly decrease;
+  - the base sits at z = 0 with a vertical trunk;
+  - the bark reads brown.
+- **What the art critic keeps flagging:**
+  - near-sibling seeds;
+  - tiny seeds that vanish at 25 %;
+  - thin necks under foliage (lollipops);
+  - fronds or pads clipping the trunk;
+  - LOD1 and LOD2 are never rendered in any artefact.
 
 ## Open items that need the owner, not a run
 
@@ -79,6 +80,14 @@ four that remain. Pick ones that read as three different tree kinds.
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
+- Trees (M5b):
+  - fanpalm seeds 1/4 and windtwisted 2/6 and 1/5 are near-pairs;
+  - fanpalm seed 3 reads as a banana plant;
+  - windtwisted seeds 2, 5 and 7 are small;
+  - the flora `triBudget` of 6000/2000/500 differs from the PERF_BUDGET prop row of
+    4000/1200/300. Reconcile it or record why.
+
+  **Placement (M5e) must merge the tree kinds per LOD.** Heap headroom is about 2 draws.
 - Wind and trees (M5a):
   - the sway is very subtle, about 1 px at 720p;
   - the conifers are rigid next to the swaying broadleaves;
