@@ -167,6 +167,57 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-13 · run 27 · M5e — flowering shrub and ground cover generators
+
+**Step**: `M5e`, the first step in reading order that is not `DONE`. The marker commit
+precedes this one.
+
+**Split first** (CLAUDE.md §4b.4). M5e as written is two different jobs:
+- four more generators, in `assetgen/` (asset-builder);
+- dressing the island, the first placement of generated flora at scale in `src/main.ts`
+  (integrator), under a binding heap constraint of about 2–4 draws of headroom.
+
+Different owners and a different risk. So:
+- **M5e (this run):** the four generators.
+- **M5f:** dress the island with the generated flora and rocks, merging the kinds per LOD
+  into shared draws. The generated dead tree replaces the hand-built snags.
+
+**The four**, from `docs/ASSET_PLAN.md`: the last §B2 understory kind and three §B3 ground
+covers.
+- `flora/flowershrub`: a flowering shrub. Its blossoms are on bible palette entries,
+  declared as a role.
+- `flora/moss`: a low mound or carpet patch.
+- `flora/lichen`: a crusty, rosette-shaped flat patch, meant for rocks and bark.
+- `flora/fallenleaves`: a scatter of leaves and twigs on the ground.
+
+§B3's "grass cards" is left out, because `flora/grassclump` already covers grass.
+
+**Budget**: the prop row, 4 000 / 1 200 / 300. Ground cover is placed by the hundreds, so its
+LOD0 should sit far below the cap.
+
+### Acceptance criteria
+
+1. Each of the four follows the M5d pattern:
+   - `plan(seed)`, with stratified axes on different irrationals;
+   - the declarations;
+   - LOD0/1/2 strictly decreasing **on every seed 1–8**, within the prop budget;
+   - 0 inward, open and non-manifold edges at every LOD on every seed;
+   - the base at z = 0, nothing below −0.1 m;
+   - colours on the bible ramps, with optional roles declared;
+   - flat ground cover still renders as closed thin solids, not planes.
+2. **Pipeline.** All four are registered.
+   - `--verify` is byte-identical.
+   - `--check` and `check:assets` pass.
+   - The existing 57 files are unchanged.
+3. **Seen.** `artifacts/variants/{flowershrub,moss,lichen,fallenleaves}.png` and a turntable
+   each. Ground cover is framed so that it reads, with a high sheet camera.
+4. **Probed.** `variant-probe` passes for all four, and every existing generator still passes.
+5. `npm run gates` exits 0.
+6. No blocking or major art defect against any of the four generators' sheets or turntables
+   (§4).
+
+---
+
 ## 2026-10-13 · run 26 · M3f DONE, M3 DONE — taken over from stopped run 25
 
 **Step**: `M3f`, still the first step in reading order that is not `DONE` under the new order
@@ -723,4 +774,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-13T14:11Z
