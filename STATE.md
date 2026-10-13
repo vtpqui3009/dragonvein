@@ -439,6 +439,7 @@ that its record lives here. This is that record.
 |---|---|---|---|---|---|---|---|
 | 2026-10-10 | `c429d4a` | sighting | owner's machine, Chrome on Windows; GPU model not recorded | ~1365×610 browser window | auto-detected, not recorded | ~60 FPS sustained | PASS (ceiling only) |
 | 2026-10-12 | `3ab6e84` | sighting | owner's machine, Chrome on Windows; GPU model not recorded | ~1919×943 browser window (from the owner's screenshot) | default, `medium-equivalent` | ~60 FPS sustained | PASS (ceiling only) |
+| 2026-10-13 | `def6526` | sighting (meshgen) | owner's machine, Chrome on Windows; GPU model not recorded | ~1919×1030 browser window | default | not shown on `dragon.html` | PASS — see the M3 sighting note |
 
 **What that row does and does not establish.** The owner opened
 `https://vtpqui3009.github.io/dragonvein/` and read the overlay: build `v0.0.1+c429d4a`,
@@ -450,6 +451,34 @@ per `docs/PERF_BUDGET.md` §Two grades of evidence.
 
 It is also the first time any human has seen this build run, which is what `CLAUDE.md` §7
 requires before a milestone may be marked `DONE`.
+
+**The M3 sighting, 2026-10-13 — `§7` is satisfied for M3.** The owner opened
+`https://vtpqui3009.github.io/dragonvein/dragon.html` in Chrome on Windows and sent a
+screenshot. Eight dragons rendered, labelled and lit, with the page footer reading
+**"runtime dragons, built in a worker · 8 in 56 ms after a 313 ms warm-up · 62690 tris"**.
+
+What that establishes, beyond the §7 requirement:
+
+- **The breeding chain is real and visible in the mesh.** A–F are wild gen 0, one per element
+  (ember, tide, stone, gale, jade, umbra). **G is `child of A × B`, ember/tide, gen 1**, and
+  **H is `child of G × C`, stone/ember, gen 2** — a grandchild. Two generations of descent
+  built from genomes in a worker on the owner's own machine, which is the project's hook
+  doing the thing the hook claims.
+- **Meshgen on real hardware: 8 dragons in 56 ms, about 7 ms each**, against `CLAUDE.md` §2.3's
+  120 ms per dragon. `gate:meshgen` measures 27.3 ms in the SwiftShader container, so real
+  hardware is roughly 4× faster than the gate's figure, and the gate is the conservative one.
+  The 313 ms warm-up is one-off and is not per-dragon cost.
+- 62 690 triangles for eight dragons at once, against the 900 000 scene budget.
+
+**What it does not establish.** `dragon.html` shows no FPS overlay, so this row carries no
+frame-cost evidence and does not touch P1. It is a `sighting` of meshgen and of the hook, not
+a `verification` of anything. The verification-grade real-GPU row is still open.
+
+**What the owner saw that the art-critic has been saying for three milestones.** In the
+screenshot every one of the eight carries the same upright flat triangular sail where
+`docs/concept/` shows spread bat wings, and the eight silhouettes differ far less than the
+eight hues do. That is `NEXT.md` §The reference dragon's design, now confirmed by a human at
+full size rather than inferred from a variant sheet. It is recorded here as owner-seen.
 
 **Second row, 2026-10-12.** The owner opened the deployed page at HEAD and sent a screenshot
 of the overlay: build `v0.0.1+3ab6e84`, **FPS 60, DRAWS 27, TRIS 42268**. Draws and triangles

@@ -108,10 +108,12 @@ editing it to move a scorer's number is the inverse of the rule.
   shows the nine 8-seed sheets and their turntables: island, stratified, columnar, boulders,
   shard, eroded, arch and floatshard. Every critic has passed them; no human has seen them.
 
-- **Please look at the dragons, so M3 can close (CLAUDE.md §7).** Open
-  https://vtpqui3009.github.io/dragonvein/dragon.html after the Pages deploy. You should see
-  8 dragons built from genomes in a worker, draggable and zoomable. Say what you saw and on
-  which machine.
+- ~~Please look at the dragons, so M3 can close~~ — **done, 2026-10-13. §7 is satisfied for
+  M3.** The owner opened `dragon.html` in Chrome on Windows and sent a screenshot: eight
+  dragons, **8 built in 56 ms after a 313 ms warm-up, 62 690 tris**, with **G a child of
+  A × B (gen 1)** and **H a child of G × C (gen 2)**. Two generations of descent, meshed in a
+  worker on real hardware at ~7 ms each against §2.3's 120 ms. Logged in `STATE.md`
+  §Real-GPU verification log. No FPS overlay on that page, so it carries no P1 evidence.
 
 - **The reference dragon's design (art keeps scoring M3 under 8.0 on these).** All in
   `assetgen/dragon/builder.py`, so only a change there moves them, and the TS port follows:
