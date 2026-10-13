@@ -98,7 +98,8 @@ at `3ab6e84`; M2's code is not yet imported by the game, so nothing visible chan
 | M3b | wings, crown, membrane and tail ornament; the creature reads as the Python one | DONE |
 | M3c | built in a worker inside 120 ms on Medium; `gate:meshgen` green | DONE |
 | M3d | `gate:parity` green between the two builders on the fixed genome set | DONE |
-| **M3e** | **the genome drives the SILHOUETTE, not mainly the hue — wing form, neck arc, body mass and horn count each change the outline visibly** | **TODO** |
+| **M3e** | **wing form from the genome (sail, spread membrane, segmented), spread at rest; the greyscale sheet and outline numbers that measure silhouette** | **TODO** |
+| M3f | neck arc, body mass and horn count push the outline until `dragon-greyscale.png` reads as eight creatures; no blocking or major defect on the dragon's sheet or turntable | TODO |
 
 M3a closed on 2026-10-12 at `e015a48` (run 11), on its STATE.md criteria with gates green. The
 graph is identical to the reference on 32 genomes, and the skin is closed and outward-wound.
@@ -130,7 +131,7 @@ art 7.4, perf 8.15 and gameplay 8.5.
 and the thing holding it down is what the owner saw at full size. **M3e is that work**, added
 on the owner's decision of 2026-10-13 to take it ahead of M5e.
 
-**M3e — what it must deliver.** Every one of the eight dragons on `dragon.html` carries the
+**M3e and M3f — what they must deliver** (M3e split in run 24: instruments and wing forms first, then the silhouette push they measure). Every one of the eight dragons on `dragon.html` carries the
 same upright flat triangular sail where `docs/concept/` shows spread bat wings, and the eight
 silhouettes differ far less than the eight hues do. §0 says the genome *is* the parameter set
 the mesh is built from, and that an unclear call goes to whatever makes the genetics more

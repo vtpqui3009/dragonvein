@@ -127,6 +127,61 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-13 · run 24 · M3e — wing forms, and the instruments that measure silhouette
+
+**Step**: `M3e`, the first step in reading order that is not `DONE`. The marker commit
+precedes this one.
+
+**Split first** (CLAUDE.md §4b.4). M3e as written has three parts:
+- a new render tool;
+- a wing-form change in two builders that must stay byte-exact under `gate:parity`;
+- an open-ended push on neck, mass and horns until eight greyscale silhouettes read as
+  eight creatures.
+
+That is more than one run. The seam NEXT.md proposed is the instruments and the wing forms
+first, then the silhouette push measured by them:
+- **M3e (this run):** the greyscale sheet, the outline numbers, and the three wing forms
+  (criteria 1, 4 and 5 of the old M3e, plus the instruments for criteria 2 and 3).
+- **M3f:** neck arc, body mass and horn count pushed until the greyscale sheet reads as
+  eight creatures (old criteria 2, 3 and 6).
+
+**Owner decision, 2026-10-13 (asked this run).** The wing form is **derived from existing
+genes**: `wingFingers` (2–4) and `wingShape` (0–1). It is not a new gene, so
+`docs/GENOME.md` is unchanged. The genome layout, every gid and the Rng and genome parity
+vectors stay valid, and breeding inherits the form through the two genes.
+
+**Ownership**: one sequential owner, the integrator, across `assetgen/dragon/`,
+`src/assets/dragon/` and `tools/` (CLAUDE.md §2.4). Never a fan-out.
+
+### Acceptance criteria
+
+1. **Three wing forms, from the genome.**
+   - **sail**: the current single panel.
+   - **spread membrane**: a bat wing, spread out from the body, with a scalloped trailing
+     edge between the fingers.
+   - **segmented**: separate feather-like or finned vanes on the finger chains.
+
+   The form is a pure function of `wingFingers` and `wingShape`. It is written once in
+   `assetgen/dragon/builder.py` and mirrored in `src/assets/dragon/graph.ts`, and its rule
+   is stated in a comment in both. The 8-seed sheet `artifacts/variants/dragon-full.png`
+   (A–H) shows all three forms, and its `.json` lists each dragon's form.
+2. **Spread wings.** Every form rests spread outward from the body, not upright, and the far
+   wing does not cross the tail or belly in the sheet camera. This is the M3 art defect.
+3. **Greyscale sheet.** A tool writes `artifacts/variants/dragon-greyscale.png`: the same
+   eight, same cameras, all colour removed (flat albedo, lit), from the built game page. It
+   runs inside the existing dragon-sheet tool or alongside it.
+4. **Outline numbers.** The same tool writes `artifacts/variants/dragon-silhouette.json`.
+   For each of the eight it records the silhouette area, width, height and the IoU against
+   every other dragon, measured from a flat-colour mask render. It also records which genes
+   differ between each pair. This is the instrument M3f is judged by.
+5. **Parity.** `npm run gate:parity` stays green: the skin graphs are exact and the limb
+   anchors and box are within tolerance. `gate:meshgen` stays under 120 ms. `npm run gates`
+   exits 0.
+6. No `blocking` or `major` art defect against the dragon sheet or turntable that points at
+   the wings.
+
+---
+
 ## 2026-10-13 · run 23 · M5d — the critic round
 
 **Step**: `M5d`, still the first step in reading order that is not `DONE`. Run 22 landed the
@@ -701,4 +756,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-13T06:48Z
