@@ -10,59 +10,49 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-13** · at commit `3364460`, the last commit of run 23 that changed
-code. The close-out docs commits follow it. Run 23 is **finished**; nothing is in flight.
+Last updated: **2026-10-13** · at commit `3aaec92`. Run 24 is **in flight** on M3e. Only its
+split and acceptance criteria are on `main` so far.
 
 ---
 
 ## Current step
 
-**M3e — the genome drives the SILHOUETTE, not mainly the hue** · `TODO` · the first step in
-reading order that is not `DONE`.
+**M3e — wing form from the genome (sail, spread membrane, segmented), spread at rest; the
+greyscale sheet and outline numbers that measure silhouette** · `IN_PROGRESS` (run 24)
 
-**M5d closed** at `3364460`: art 8.5 · perf 8.3 · gameplay 9.7, gates green, all four
-understory generators passing. **M4 closed** on the owner's sighting. M5e is deliberately
-*behind* M3e — the owner chose that on 2026-10-13, because M3's art score is 7.4 for one
-reason and more flora cannot move it.
+Run 24 **split the old M3e**, recorded in STATE.md run 24 and ROADMAP:
+- **M3e** is the instruments plus the wing forms;
+- **M3f** is the neck, mass and horn push until `dragon-greyscale.png` reads as eight
+  creatures.
+
+**Owner decision (2026-10-13).** The wing form is **derived from `wingFingers` and
+`wingShape`**. There is no new gene and `docs/GENOME.md` is unchanged. M5e waits behind
+M3e and M3f.
 
 ## The single next action
 
-**Start M3e. Read `docs/ROADMAP.md` §M3e for the six acceptance criteria before planning.**
+If you are reading this because run 24 was cut off, check `git log` first: the integrator's
+work is committed only once it is green.
 
-The defect, in the owner's own sighting: all eight dragons on `dragon.html` wear the same
-upright flat triangular sail where `docs/concept/` shows spread bat wings, and the eight
-outlines differ far less than the eight hues. §0 says the genome *is* the parameter set the
-mesh is built from — a creature set that reads as one shape in eight colours is that promise
-unmet.
+1. If no `feat`/`asset(dragon)` commit has landed after `3aaec92`, take M3e from the STATE.md
+   run 24 criteria, with **one sequential owner** (the integrator) across `assetgen/dragon/`,
+   `src/assets/dragon/` and `tools/`. Work in this order, keeping the tree green at each
+   stage:
+   1. the greyscale and silhouette instruments on the current dragons, with the baseline
+      numbers recorded;
+   2. the wing forms in Python and TS, the fixture regenerated, `gate:parity` green;
+   3. re-measure.
+2. If some of it landed, continue from the first criterion that does not hold.
+3. Then run the critics: perf alone, then art and gameplay. Close out.
 
-**Three things to settle before writing code:**
-
-1. **This is one sequential owner across two directories, never a fan-out.** §1.5 binds
-   `assetgen/dragon/` (the Python reference) and `src/assets/dragon/` (the TypeScript runtime)
-   to the same creature from the same genome, and `gate:parity` compares their skin graphs
-   exactly. Two parallel builders will diverge and fail parity. Use the `integrator`, or one
-   builder taking the two in sequence (`CLAUDE.md` §2.4).
-2. **The greyscale test is the load-bearing criterion** (`artifacts/variants/dragon-greyscale.png`:
-   the eight with all colour removed must still read as eight creatures). It does not exist
-   yet — `tools/` has no greyscale renderer, so **building that artefact is part of the step**.
-   Write it before the generator work, so the shape change can be measured as it lands rather
-   than argued about afterwards.
-3. **`docs/GENOME.md` is the arbiter and must not be rewritten to match what gets built**
-   (§7). If a wing-form gene needs to exist, check whether the spec already has one before
-   inventing it; if the spec is wrong, say so in `STATE.md` and ask.
-
-**Budget note.** The step touches two directories, needs a new render tool, and must keep
-`gate:parity` and `gate:meshgen` green. It is plausibly larger than one run. If so, that is a
-roadmap defect, not a failed run (`CLAUDE.md` §4b.4): say so in `STATE.md`, propose the split
-— the greyscale tool and the wing-form gene are the natural seam — and take the part that fits.
-
-**Traps, measured this run:**
-- **`artifacts/` is git-ignored, so no run inherits another's renders, `perf.json` or shots.**
-  A critic round costs a full `assets:render` (~3 min per asset) plus `npm run gates` (~9 min)
-  before any critic can be spawned. Budget for it. This is why run 22's perf score could not
-  simply be adopted.
-- A dragon sheet is slower than a flora sheet: `node tools/dragon-sheet.mjs` needs
-  `npm run build` first, and the Blender reference sheet takes about a minute on top.
+**Traps:**
+- `gate:parity` compares the skin graphs **exactly**. Change both builders identically, then
+  regenerate `docs/fixtures/dragon-graphs.json` with `assetgen/dragon_vectors.py`. Never loosen
+  the tolerance.
+- `artifacts/` is git-ignored. Re-render with `npm run build`, then
+  `node tools/dragon-sheet.mjs`, then the Blender reference
+  (`LIBGL_ALWAYS_SOFTWARE=1 python3 -I assetgen/dragon_sheet.py`).
+- Per-asset acceptance is decided by defects, not sub-scores (CLAUDE.md §4).
 
 ## Open items that need the owner, not a run
 
