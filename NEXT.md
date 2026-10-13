@@ -34,7 +34,8 @@ missing asset — read the next section before doing any work.
 
 ## The single next action
 
-**Decide how criterion 6 is measured, then close M5d. Do not start M5e until it is closed.**
+**Criterion 6 is ruled (`CLAUDE.md` §4, defects not sub-scores). Fix fern's `major` A4
+near-pairs — seeds 1/8 and 3/5 — then close M5d. Do not start M5e until it is closed.**
 
 The blocker is that the per-generator art estimate is not stable enough to accept a step on.
 Cycle 2 scored `bush`, `reeds` and `grassclump` **lower than cycle 1 while their files were
@@ -81,17 +82,23 @@ editing it to move a scorer's number is the inverse of the rule.
 
 ## Open items that need the owner, not a run
 
-- **Rule on criterion 6, so M5d can close.** See §The single next action. Two honest critic
-  rounds disagree by up to 0.8 on byte-identical assets. Either accept the step on the
-  whole-sheet art score plus the reproducible `variant-probe` A4 number, or say that the
-  per-generator estimate stands and M5d needs more generator work. A run cannot settle this
-  without inventing a rule.
+- ~~Rule on criterion 6~~ — **ruled, 2026-10-13, now `CLAUDE.md` §4.** Per-asset acceptance is
+  decided by **defects, not sub-scores**: a generator fails when a critic lists a `blocking`
+  or `major` defect against that generator's own sheet or turntable. A per-generator number is
+  commentary and never decides a step. Applied to cycle 2, **fern still fails** on its `major`
+  A4 near-pairs, so M5d stays open — the rule changed the measurement, not the verdict. Bush,
+  reeds and grassclump carry only minors and pass. §4 also now requires a critic to state its
+  coverage, because cycle 2's read three of fourteen shots and opened no turntables.
 
-- **The newest real-GPU row cites a commit that does not exist.** `STATE.md`
-  §Real-GPU verification log line 459 records a 2026-10-12 sighting at `3ab6e84`;
-  `git log -1 3ab6e84` returns "unknown revision". Please correct the hash or drop the row.
-  Both perf rounds scored P1 down over it, and they disagreed about how many rows the table
-  even has, which cost 0.5 of a point between cycle 1 and cycle 2.
+- ~~The newest real-GPU row cites a commit that does not exist~~ — **withdrawn, 2026-10-13. It
+  exists.** `3ab6e84` is `docs(next): the owner's real-GPU command, now that it can pass`,
+  2026-10-12 08:13, and `git merge-base --is-ancestor 3ab6e84 main` confirms it is on main's
+  history (210 commits, full clone). Run 23 read "unknown revision" because a build container's
+  checkout is **shallow** — `clone_depth` defaults to 50 and that commit is further back. The
+  row is sound and the owner need do nothing. **Hazard for every run: `git cat-file` and
+  `git log` failing on an older hash means your clone is shallow, not that history is wrong.
+  `git rev-parse --is-shallow-repository` says which.** Both perf rounds deducted P1 over this
+  and disagreed about the table's row count, which cost 0.5 between cycle 1 and cycle 2.
 
 - **A verification-grade real-GPU row, and a Potato row** (M16 requires both). Run
   `npm run gate:perf -- --real-gpu` on a GPU machine at 1920×1080, and once with

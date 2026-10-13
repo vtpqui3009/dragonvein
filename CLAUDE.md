@@ -123,6 +123,19 @@ Each scheduled run executes exactly this:
 - No defect without a pointer: a screenshot region, a number, or a reproduction command.
 - A critic never edits code.
 - Any single `blocking` defect caps that critic's score at 5.9, whatever else scored well.
+- **A critic states its coverage**: which variant sheets it opened, which turntables, and how
+  many of the shots. A score from a critic that read three of fourteen shots is not the same
+  measurement as one that read all fourteen, and only the stated coverage makes that visible.
+- **Per-asset acceptance is decided by defects, not by sub-scores.** Where a step requires each
+  generator to pass on its own, a generator fails when a critic lists a `blocking` or `major`
+  defect pointing at that generator's own artefact — its variant sheet or its turntable. A
+  critic may report a number per generator as commentary, and that number never decides a
+  step. `docs/RUBRIC.md` scores its lines over the whole artefact set and has no per-generator
+  line, so a per-generator number is an improvised split of a whole-set score, with nothing
+  saying what 8.1 rather than 7.8 means for one sheet. Measured on M5d: ±0.8 across two cycles
+  on **byte-identical** assets, against a bar at 8.0 — noise wider than the margin being
+  judged, which §3.2 does not accept as checkable. Defects carry a pointer by the rule above,
+  so they reproduce; improvised sub-scores do not.
 
 ## 4b. Run cost is a budget too
 

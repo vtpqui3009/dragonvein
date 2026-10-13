@@ -13,6 +13,69 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-13 · dispatcher · two rulings: per-asset acceptance, and a blocker that was not one
+
+No code. Run 23 ended `IN_PROGRESS` on M5d and named two owner items. Both are settled here.
+
+### 1. Criterion 6: defects, not sub-scores (`CLAUDE.md` §4)
+
+**The evidence run 23 produced is the strongest measurement argument this project has made.**
+Between cycle 1 (`9e1a2b6`) and cycle 2 (`d1dcabe`) only `fern.py` and three `fern.lod*.glb`
+changed. `bush`, `reeds` and `grassclump` were **byte-identical**. Their art could not have
+moved. Their per-generator scores moved anyway: bush 8.6 → 7.8, grassclump 8.1 → 7.8, reeds
+8.2 → 8.0. That is ±0.8 of scorer noise against a bar set at 8.0.
+
+**The ruling.** A generator fails its step's per-generator criterion when a critic lists a
+`blocking` or `major` defect pointing at that generator's own artefact — its variant sheet or
+its turntable. Per-generator numbers are commentary and never decide a step.
+
+Why this and not the alternatives:
+
+1. `docs/RUBRIC.md` scores nine art lines **over the whole artefact set**. There is no
+   per-generator line, so a per-generator number is the critic's improvised split of a
+   whole-set score. Nothing anywhere says what 8.1 rather than 7.8 means for one sheet.
+2. §3.2 requires a criterion be checkable by a command or a named screenshot. A measurement
+   whose noise (±0.8) exceeds the margin it judges (0.1–0.2 either side of 8.0) is not a check.
+3. §4 already requires every defect to carry a pointer — a screenshot region, a number, or a
+   reproduction command. Defects reproduce by construction. Improvised sub-scores do not. The
+   gate moves onto the one per-artefact signal the contract already makes rigorous.
+4. It keeps the intent. Criterion 6 existed so one bad generator could not hide behind a good
+   average, and under this rule one still cannot.
+
+**The test that this is a ruling and not score-fishing: it does not close the step.** Applied
+to cycle 2, fern carries a `major` A4 defect (seeds 1 and 8 the same upright vase; 3 and 5
+both low uncurled fans), so **fern still fails and M5d stays `IN_PROGRESS`**. Bush, reeds and
+grassclump carry only minors and pass. The favourable reading was available under the old
+wording too — cycle 1 passed three of four — and run 23 refused it. This rule discards the
+noise and keeps the one genuinely actionable item, which is what run 23 said was left.
+
+**Also added to §4: a critic states its coverage.** Cycle 2's art-critic read three of fourteen
+shots and opened no turntables; cycle 1's opened more. Only run 23's builder note made that
+visible, and it is a plausible part of the ±0.8. Coverage is now part of the report.
+
+§7 forbids rewriting `docs/RUBRIC.md` to match what was built, so `RUBRIC.md` is untouched.
+The rule lives in `CLAUDE.md` §4, which governs how critics are read.
+
+### 2. The `3ab6e84` real-GPU row is sound — the blocker was a shallow clone
+
+Run 23 reported that the newest real-GPU row cites a commit that does not resolve, and both
+perf rounds deducted P1 over it. **It resolves.** `3ab6e84` is `docs(next): the owner's
+real-GPU command, now that it can pass`, 2026-10-12 08:13, and
+`git merge-base --is-ancestor 3ab6e84 main` confirms it is on main's history. This clone has
+210 commits and `git rev-parse --is-shallow-repository` returns false.
+
+A build container's checkout is **shallow** — `create_session`'s `clone_depth` defaults to 50
+— so a hash further back than that genuinely returns "unknown revision" there. The row needs
+no correction and the owner need do nothing. Recorded in `NEXT.md` §Open items as a standing
+hazard: an old hash failing to resolve means the clone is shallow, not that history is wrong.
+
+Two perf rounds spent deductions on this. It was never a defect in the project.
+
+**Next:** fix fern's two `major` near-pairs and close M5d. Still owner-only: a
+verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (§7).
+
+---
+
 ## 2026-10-13 · run 23 · M5d — the critic round
 
 **Step**: `M5d`, still the first step in reading order that is not `DONE`. Run 22 landed the
