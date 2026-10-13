@@ -112,7 +112,8 @@ def plan(seed):
     habit_t = T.stratify(seed, PI_M3, 0.004, rng)
     twig_t = T.stratify(seed, SQRT6M2, 0.004, rng)
     shape_t = T.stratify(seed, T.GOLDEN, 0.004, rng)
-    season = T.stratify(seed, T.PLASTIC, 0.04, rng)
+    # the green end is early autumn, never a plain green sprig: 0.15 .. 1
+    season = 0.15 + 0.85 * T.stratify(seed, T.PLASTIC, 0.04, rng)
     dens = T.stratify(seed, INV_E, 0.05, rng)
     habit = HABITS[min(3, int(habit_t * 4.0))]
     shape = SHAPES[min(3, int(shape_t * 4.0))]
@@ -186,7 +187,7 @@ def plan(seed):
         s = T.clamp01(season + rng.range(-0.22, 0.22))
         if s < 0.30:        # green, some turning
             ramp, t = "green", T.lerp(0.35, 0.95, rng.next())
-            if rng.next() < s / 0.30 * 0.6:
+            if rng.next() < 0.58 + s / 0.30 * 0.35:
                 ramp, t = "autumn", rng.range(0.70, 1.0)
         elif s < 0.72:      # autumn: orange and gold
             ramp, t = "autumn", T.lerp(0.40, 1.0, rng.next()) * T.lerp(1.0, 0.85, s)
@@ -198,6 +199,23 @@ def plan(seed):
                        "curl": rng.range(0.0, 0.12), "ramp": ramp, "t": t,
                        "stalk": rng.range(0.14, 0.24), "stalkAz": rng.range(-0.3, 0.3),
                        "tilt": (rng.range(-0.12, 0.12), rng.range(-0.12, 0.12))})
+
+    if habit in ("drift", "clumps"):
+        # a pile is stacked, not interpenetrating: each leaf, flatter than a lone one, rests
+        # on top of the earlier leaves it overlaps
+        for j, lf in enumerate(leaves):
+            lf["cup"] *= 0.45
+            lf["curl"] *= 0.3
+            lf["fold"] *= 0.55
+            sl = math.hypot(lf["slope"][0] + lf["tilt"][0], lf["slope"][1] + lf["tilt"][1])
+            lf["relief"] = (lf["cup"] * lf["wid"] + lf["curl"] * lf["len"]
+                            + sl * 0.5 * lf["len"])
+            z = lf["z"]
+            for o in leaves[:j]:
+                if math.hypot(lf["x"] - o["x"], lf["y"] - o["y"]) < 0.42 * (lf["len"]
+                                                                          + o["len"]):
+                    z = max(z, o["z"] + 0.55 * o["relief"] + THICK + 0.001)
+            lf["z"] = z
 
     tw = []
     if twigs:
@@ -296,7 +314,7 @@ def _leaf(mesh, lf, side, shape, stalk):
         p0 = world(u0 + 0.02 * L, 0.0, THICK * 0.5)
         p1 = world(u0 - lf["stalk"] * L * math.cos(a), lf["stalk"] * L * math.sin(a),
                    THICK * 0.5)
-        T.tube(mesh, [p0, (p1[0], p1[1], max(p1[2], 0.0028))], [0.0028, 0.0020], 3,
+        T.tube(mesh, [p0, (p1[0], p1[1], max(p1[2], 0.0028))], [0.0036, 0.0026], 3,
                lambda uu, mm: _ramp(names, T.clamp01(lf["t"] - 0.18)))
 
 

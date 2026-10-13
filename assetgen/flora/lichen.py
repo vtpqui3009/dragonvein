@@ -8,18 +8,18 @@ Shape
 -----
 A flat patch at z = 0 meant to be laid on a rock face or a trunk. Every piece is a closed
 thin solid a few millimetres thick (treekit's `lobed_patch`, or a closed shell of
-revolution for the cups), never a plane. Four habits:
+revolution for the cups), never a plane. Four habits, each in two forms that differ in
+structure (cycle 2 of M5e: a pair that differs only in colour is one object):
 
-- **rosette** (foliose, Parmelia / Xanthoria): one to three rosettes of radiating lobes
-  with round, slightly up-curled tips, the old centre darker than the growing margin;
-- **crust** (crustose map lichen): a cracked mosaic of flat areolae inside a ragged
-  outline, ground showing in the cracks;
-- **ring**: an old colony dead in the middle, a ring of radial lobes round a bare centre;
-- **cups** (Cladonia pyxie cups): a crust of small leafy scales with goblets standing up
-  out of it.
-
-Half the seeds carry a second tier: a smaller rosette on top of the first, round fruiting
-discs (apothecia) on the crust and the ring, cups growing out of the rims of cups.
+- **rosette** (foliose, Parmelia / Xanthoria): *tiered*, one big rosette of radiating
+  round-tipped lobes with a younger rosette growing on top of it; or a *colony* of five or
+  six small rosettes grown into one another;
+- **crust**: a *map*, a contiguous cracked mosaic of flat areolae; or *scales*, separate
+  scales strewn wide with round fruiting discs (apothecia) on the biggest;
+- **ring**, an old colony dead in the middle: a *single* ring of radial lobes, or a
+  *double* ring, wider, with a second wave inside it and a bare gap between;
+- **cups** (Cladonia): a *bed* of short pyxie cups on a crust of leafy scales, or tall
+  *goblets*, 8-11 cm, each with a second cup growing from the floor of the first.
 
 Colour
 ------
@@ -30,9 +30,9 @@ centre, pale yellow-green on the margins, like Flavoparmelia) and **orange** `du
 
 Axes
 ----
-Habit is stratified on pi - 3 (each habit twice in seeds 1..8), the colourway on
-sqrt(6) - 2 (which splits every habit pair), the tier on the golden ratio, size on the
-plastic number and lobing on 1/e.
+Habit is stratified on pi - 3 (each habit twice in seeds 1..8), the form on sqrt(6) - 2
+(which splits every habit pair), the colourway on the golden ratio, size on the plastic
+number and lobing on 1/e.
 
 `plan(seed)` draws everything; `build(seed, lod)` only tessellates.
 """
@@ -70,17 +70,21 @@ PI_M3 = 0.14159265358979312        # pi - 3: the habit, each twice in seeds 1..8
 SQRT6M2 = 0.4494897427831779       # sqrt(6) - 2: the colourway, splits every habit pair
 INV_E = 0.36787944117144233        # 1 / e: lobing
 HABITS = ("rosette", "crust", "ring", "cups")
+#: each habit's two forms, split by the variant on sqrt(6) - 2 (which splits every habit
+#: pair of seeds 1..8): the pair differs in structure, never only in colour
+FORMS = {"rosette": ("tiered", "colony"), "crust": ("map", "scales"),
+         "ring": ("single", "double"), "cups": ("bed", "goblets")}
 SINK = -0.002                      # the flat bottom, just under the surface it grows on
 EDGE = 0.0015
 
 PARAMS = {
-    "habit": (0.0, 1.0, "stratified on pi - 3, in quarters: rosette (radiating round-tipped "
-                        "lobes), crust (a cracked map of flat areolae), ring (radial lobes "
-                        "round a dead centre), cups (scales with standing goblets)"),
-    "colour": (0.0, 1.0, "stratified on sqrt(6) - 2, in halves: pale (rock mid -> foliage "
-                         "light -> UI accent) or orange (dusk -> sky horizon -> UI accent)"),
-    "tier": (0.0, 1.0, "stratified on the golden ratio, in halves: a second tier (a rosette "
-                       "on the rosette, fruiting discs, cups on cups)"),
+    "habit": (0.0, 1.0, "stratified on pi - 3, in quarters: rosette, crust, ring, cups"),
+    "form": (0.0, 1.0, "stratified on sqrt(6) - 2, in halves: rosette tiered / colony; "
+                       "crust cracked map / strewn scales with fruiting discs; ring single / "
+                       "double; cups short bed / tall stacked goblets"),
+    "colour": (0.0, 1.0, "stratified on the golden ratio, in halves: pale (rock mid -> "
+                         "foliage light -> UI accent) or orange (dusk -> sky horizon -> UI "
+                         "accent)"),
     "size": (0.0, 1.0, "stratified on the plastic number: 0.15-0.5 m across"),
     "lobing": (0.0, 1.0, "stratified on 1/e: lobe count and how ragged the outline is"),
 }
@@ -159,36 +163,47 @@ def plan(seed):
     seed = int(seed)
     rng = Rng(seed)
     habit_t = T.stratify(seed, PI_M3, 0.004, rng)
-    col_t = T.stratify(seed, SQRT6M2, 0.004, rng)
-    tier_t = T.stratify(seed, T.GOLDEN, 0.004, rng)
+    var_t = T.stratify(seed, SQRT6M2, 0.004, rng)
+    col_t = T.stratify(seed, T.GOLDEN, 0.004, rng)
     size = T.stratify(seed, T.PLASTIC, 0.05, rng)
     rag = T.stratify(seed, INV_E, 0.05, rng)
     habit = HABITS[min(3, int(habit_t * 4.0))]
+    form = FORMS[habit][1 if var_t >= 0.5 else 0]
     colour = "orange" if col_t >= 0.5 else "pale"
-    tier = tier_t >= 0.5
     t0 = rng.range(0.16, 0.30)
     az0 = rng.range(0.0, 2.0 * math.pi)
-    P, cups = [], []
-    if habit == "rosette":
-        R0 = T.lerp(0.10, 0.17, size)
-        nl = int(round(T.lerp(9, 15, rag)))
+    P, cups, discs = [], [], []
+    if form == "tiered":        # one big old rosette, a younger one growing on top of it
+        R0 = T.lerp(0.13, 0.19, size)
+        nl = int(round(T.lerp(10, 15, rag)))
         P.append(_rosette(rng, (0.0, 0.0), R0, nl, rag, 0.005, {0: (56, 2), 1: (32, 2),
                                                                 2: (20, 1)}, t0))
-        for j in range(1 if rag < 0.5 else 2):
-            a = az0 + j * 2.4
-            r = R0 * rng.range(0.45, 0.62)
-            d = R0 * 0.95 + r * 0.55
+        a = az0
+        r = R0 * rng.range(0.45, 0.55)
+        d = R0 * 0.95 + r * 0.55
+        P.append(_rosette(rng, (math.cos(a) * d, math.sin(a) * d), r, int(round(nl * 0.7)),
+                          rag, 0.004, {0: (32, 2), 1: (20, 2), 2: (12, 1)}, t0 + 0.04))
+        top = _rosette(rng, (R0 * 0.12, -R0 * 0.08), R0 * 0.50, int(round(nl * 0.8)), rag,
+                       0.004, {0: (40, 2), 1: (22, 2), 2: (12, 1)}, t0 + 0.10)
+        top["lift"] = 0.006
+        P.append(top)
+    elif form == "colony":      # five or six small rosettes grown into one another
+        n = 5 if rag < 0.5 else 6
+        Rk = T.lerp(0.055, 0.075, size)
+        for j in range(n):
+            a = az0 + j * 2.39996 + rng.range(-0.3, 0.3)
+            d = 0.0 if j == 0 else Rk * 1.45 * math.sqrt(j) * rng.range(0.85, 1.05)
+            r = Rk * rng.range(0.75, 1.15)
             P.append(_rosette(rng, (math.cos(a) * d, math.sin(a) * d), r,
-                              int(round(nl * 0.7)), rag, 0.004,
-                              {0: (32, 2), 1: (20, 2), 2: (12, 1)}, t0 + 0.04))
-        if tier:    # a younger rosette on top of the old one
-            top = _rosette(rng, (R0 * 0.12, -R0 * 0.08), R0 * 0.48, int(round(nl * 0.8)), rag,
-                           0.004, {0: (40, 2), 1: (22, 2), 2: (12, 1)}, t0 + 0.10)
-            top["lift"] = 0.006
-            P.append(top)
-    elif habit == "crust":
-        R0 = T.lerp(0.13, 0.20, size)
-        g = T.lerp(0.054, 0.068, size)
+                              int(round(T.lerp(7, 9, rag))), rag, 0.0045,
+                              {0: (26, 2), 1: (16, 2), **({2: (10, 1)} if j % 2 == 0
+                                                          else {})},
+                              t0 + rng.range(-0.04, 0.08)))
+            if j % 2 == 0:
+                P[-1]["lod2R"] = r * 1.3
+    elif form == "map":         # a contiguous cracked map of areolae
+        R0 = T.lerp(0.12, 0.17, size)
+        g = T.lerp(0.050, 0.060, size)
         harm = [(k, R0 * T.lerp(0.10, 0.22, rag) * rng.range(0.4, 1.0) / (k - 1),
                  rng.range(0.0, 6.3)) for k in (2, 3, 4, 5)]
         out = _piece((0.0, 0.0), R0, 0.0, {}, harm=harm)
@@ -202,7 +217,7 @@ def plan(seed):
                 if f > 1.0:
                     continue
                 # areolae of uneven size, irregular outline, cracks a few millimetres wide
-                r = g * rng.range(0.46, 0.62) * (1.0 - 0.40 * max(0.0, f - 0.6))
+                r = g * rng.range(0.50, 0.64) * (1.0 - 0.40 * max(0.0, f - 0.6))
                 hh = [(k, r * rng.range(0.06, 0.16), rng.range(0.0, 6.3)) for k in (2, 3, 5)]
                 P.append(_piece((x, y), r, rng.range(0.0018, 0.0034),
                                 {0: (7, 1), 1: (5, 1), **({2: (5, 1)} if (i + j) % 3 == 0
@@ -211,28 +226,46 @@ def plan(seed):
                                 tr=0.10, curl=0.3))
                 if (i + j) % 3 == 0:    # LOD2: one areola in three stands for its neighbours
                     P[-1]["lod2R"] = r * 1.8
-    elif habit == "ring":
-        Rr = T.lerp(0.09, 0.15, size)
-        nl = int(round(T.lerp(16, 21, rag)))
-        for j in range(nl):
-            a = az0 + j * 2.0 * math.pi / nl + rng.range(-0.08, 0.08)
-            rr = Rr * rng.range(0.94, 1.06)
-            ln = Rr * rng.range(0.34, 0.46)
-            P.append(_piece((math.cos(a) * rr, math.sin(a) * rr), ln * 0.60, 0.004,
-                            {0: (9, 1), 1: (6, 1), **({2: (5, 1)} if j % 2 == 0 else {})},
-                            stretch=(a, 0.42), curl=1.0, t0=t0 + 0.05, tr=0.30,
-                            harm=[(3, ln * 0.04, rng.range(0.0, 6.3))],
-                            lod2R=ln * 0.55 * 1.25 if j % 2 == 0 else None))
-        # fragments of the old colony scattered in the centre
-        for j in range(int(round(T.lerp(3, 5, rag)))):
-            a = rng.range(0.0, 2.0 * math.pi)
-            d = Rr * rng.range(0.1, 0.5)
-            P.append(_piece((math.cos(a) * d, math.sin(a) * d), Rr * rng.range(0.07, 0.11),
-                            0.0025, {0: (7, 1), 1: (5, 1)},
-                            harm=[(3, Rr * 0.02, rng.range(0.0, 6.3))], t0=t0 - 0.06, tr=0.1))
-    else:   # cups
-        R0 = T.lerp(0.11, 0.17, size)
-        ns = int(round(T.lerp(9, 12, rag)))
+    elif form == "scales":      # separate scales strewn wide, fruiting discs on the big ones
+        Rs = T.lerp(0.22, 0.28, size)
+        n = int(round(T.lerp(15, 19, rag)))
+        for j in range(n):
+            a = az0 + j * 2.39996 + rng.range(-0.3, 0.3)
+            d = Rs * math.sqrt((j + 0.5) / n) * rng.range(0.85, 1.1)
+            r = rng.range(0.020, 0.034) * (1.2 - 0.4 * d / Rs)
+            hh = [(k, r * rng.range(0.10, 0.22), rng.range(0.0, 6.3)) for k in (3, 4, 5)]
+            P.append(_piece((math.cos(a) * d, math.sin(a) * d), r, rng.range(0.0025, 0.0035),
+                            {0: (7, 1), 1: (5, 1), **({2: (5, 1)} if j % 2 == 0 else {})},
+                            harm=hh, curl=0.9, t0=t0 + rng.range(-0.02, 0.14), tr=0.20,
+                            lod2R=r * 1.35 if j % 2 == 0 else None))
+        big = sorted(range(len(P)), key=lambda k: -P[k]["R0"])[:int(round(T.lerp(5, 7, rag)))]
+        for k in big:
+            pc = P[k]
+            discs.append(_piece(pc["c"], min(0.014, pc["R0"] * 0.55), 0.003,
+                                {0: (7, 1), 1: (5, 1)}, lift=pc["thick"] + 0.0005,
+                                t0=0.04 if colour == "pale" else 0.62, tr=-0.03, curl=1.6,
+                                kind="disc"))
+    elif form in ("single", "double"):
+        Rr = T.lerp(0.09, 0.13, size) if form == "single" else T.lerp(0.15, 0.19, size)
+        rings = [(Rr, int(round(T.lerp(16, 20, rag))), 1.0)]
+        if form == "double":    # an inner ring, the colony's second wave, and a bare gap
+            rings = [(Rr, int(round(T.lerp(17, 20, rag))), 0.80),
+                     (Rr * 0.46, int(round(T.lerp(9, 11, rag))), 0.70)]
+        for q, (R, nl, sc) in enumerate(rings):
+            for j in range(nl):
+                a = az0 + 0.5 * q + j * 2.0 * math.pi / nl + rng.range(-0.08, 0.08)
+                rr = R * rng.range(0.94, 1.06)
+                ln = Rr * rng.range(0.34, 0.46) * sc
+                P.append(_piece((math.cos(a) * rr, math.sin(a) * rr), ln * 0.60, 0.004,
+                                {0: (9 if q == 0 else 7, 1), 1: (6, 1),
+                                 **({2: (5, 1)} if j % 2 == 0 else {})},
+                                stretch=(a, 0.42), curl=1.0, t0=t0 + 0.05 - 0.06 * q, tr=0.30,
+                                harm=[(3, ln * 0.04, rng.range(0.0, 6.3))],
+                                lod2R=ln * 0.55 * 1.25 if j % 2 == 0 else None))
+    else:   # cups: "bed" short cups on a squamule bed, or "goblets" tall stacked goblets
+        tall = form == "goblets"
+        R0 = T.lerp(0.14, 0.18, size) if not tall else T.lerp(0.12, 0.15, size)
+        ns = int(round(T.lerp(10, 13, rag))) if not tall else 5
         for j in range(ns):
             a = az0 + j * 2.39996 + rng.range(-0.2, 0.2)
             d = R0 * 0.80 * math.sqrt((j + 0.5) / ns)
@@ -242,37 +275,29 @@ def plan(seed):
                               {0: (10, 1), 1: (6, 1), **({2: (5, 1)} if j % 3 == 0 else {})},
                               t0 - 0.04))
             P[-1]["lod2R"] = r * 1.7 if j % 3 == 0 else None
-        nc = int(round(T.lerp(4, 6, size)))
+        nc = int(round(T.lerp(5, 7, size))) if not tall else (4 if rag < 0.5 else 5)
         for j in range(nc):
             a = az0 + 0.7 + j * 2.39996 + rng.range(-0.3, 0.3)
             d = R0 * 0.75 * math.sqrt((j + 0.3) / nc)
-            h = rng.range(0.030, 0.055) * T.lerp(0.9, 1.15, size)
-            rr = h * rng.range(0.36, 0.46)
+            if tall:
+                h = rng.range(0.075, 0.10) * T.lerp(0.9, 1.1, size)
+                rr = h * rng.range(0.20, 0.25)
+            else:
+                h = rng.range(0.024, 0.036) * T.lerp(0.9, 1.1, size)
+                rr = h * rng.range(0.42, 0.50)
             base = (math.cos(a) * d, math.sin(a) * d, 0.0)
-            cups.append({"base": base, "h": h, "rr": rr, "lean": (rng.range(-0.12, 0.12),
-                                                                    rng.range(-0.12, 0.12)),
-                         "t": rng.range(0.0, 0.15), "lod2": j < 4})
-            if tier and j % 2 == 0:     # a cup growing out of this cup's rim
-                aa = rng.range(0.0, 2.0 * math.pi)
-                b2 = (base[0] + math.cos(aa) * rr * 0.75, base[1] + math.sin(aa) * rr * 0.75,
-                      h - 0.004)
-                cups.append({"base": b2, "h": h * 0.55, "rr": rr * 0.65,
-                             "lean": (math.cos(aa) * 0.25, math.sin(aa) * 0.25),
-                             "t": rng.range(0.1, 0.25), "lod2": False})
-    # fruiting discs (apothecia) on the crust and the ring
-    discs = []
-    if tier and habit in ("crust", "ring"):
-        hosts = [pc for pc in P if pc["R0"] > 0.012]
-        nd = int(round(T.lerp(6, 10, rag)))
-        for j in range(nd):
-            pc = hosts[(j * 7 + 3) % len(hosts)]
-            rd = rng.range(0.008, 0.013)
-            discs.append(_piece((pc["c"][0] + rng.range(-0.3, 0.3) * pc["R0"],
-                                 pc["c"][1] + rng.range(-0.3, 0.3) * pc["R0"]), rd, 0.003,
-                                {0: (7, 1), 1: (5, 1)}, lift=pc["thick"] + 0.0005,
-                                t0=0.04 if colour == "pale" else 0.62, tr=-0.03, curl=1.6,
-                                kind="disc"))
-    return {"seed": seed, "habit": habit, "colour": colour, "tier": tier, "size": size,
+            cp = {"base": base, "h": h, "rr": rr, "neck": 0.62 if tall else 0.35,
+                  "lean": (rng.range(-0.12, 0.12), rng.range(-0.12, 0.12)),
+                  "t": rng.range(0.0, 0.15), "lod2": j < 4}
+            cups.append(cp)
+            if tall:    # a second cup grows from the floor of the first: a stacked goblet
+                fz = h * (1.0 - 0.32)
+                lx, ly = cp["lean"]
+                b2 = (base[0] + lx * fz, base[1] + ly * fz, fz)
+                cups.append({"base": b2, "h": h * 0.55, "rr": rr * 0.80, "neck": 0.55,
+                             "lean": (lx * 1.4, ly * 1.4), "t": rng.range(0.1, 0.25),
+                             "lod2": j < 2})
+    return {"seed": seed, "habit": habit, "form": form, "colour": colour, "size": size,
             "rag": rag, "pieces": P, "cups": cups, "discs": discs}
 
 
@@ -366,7 +391,7 @@ def metrics(seed, lod=0):
                     inside += 1
                     break
     return {
-        "seed": int(seed), "habit": pl["habit"], "colourway": pl["colour"], "tier": pl["tier"],
+        "seed": int(seed), "habit": pl["habit"], "form": pl["form"], "colourway": pl["colour"],
         "width": round(2.0 * reach, 3),
         "sheetWidth": round(2.0 * reach, 3),
         "height": round(max(p[2] for p in v), 4),

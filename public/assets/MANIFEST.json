@@ -275,17 +275,17 @@
         "lod0": {
           "file": "flora/fallenleaves.lod0.glb",
           "tris": 836,
-          "sha256": "3a5685af0192a1f761249cc6cc3f2e289fabd6fc3b8b5dac8bb93ff7aba62b31"
+          "sha256": "ff33ccbee0d7a8c9998ab17d15e1f19cf63623c92a9523a8a35809d893f75a85"
         },
         "lod1": {
           "file": "flora/fallenleaves.lod1.glb",
           "tris": 532,
-          "sha256": "f8241834b5e8e18b0d3578413c0b7a16c1807ab8688c4b134c7fa5c4ab054448"
+          "sha256": "d81ca002454103daec3814bb5afb2e138392f0fe3a10c906d56ee99ff2b35513"
         },
         "lod2": {
           "file": "flora/fallenleaves.lod2.glb",
           "tris": 200,
-          "sha256": "835bf11b1b9c2e2b33363a3abb419050e3603b0ab0a6f98daec3201e10e3ab70"
+          "sha256": "5536c2c2aaa52f74a3aca40e294e1ae999248a72e518a9758e4115ffb7213537"
         }
       }
     },
@@ -523,17 +523,17 @@
         "lod0": {
           "file": "flora/lichen.lod0.glb",
           "tris": 768,
-          "sha256": "341c5c0795adb8a4e24d5f1553c3c4e51211998b73db0c22d9a4fef29a23738a"
+          "sha256": "c5f4ecd1b0e42154e0b5b49e3b1bedfcf7bee150710d003d10d62dc0bf032ceb"
         },
         "lod1": {
           "file": "flora/lichen.lod1.glb",
           "tris": 444,
-          "sha256": "833e8a86e79d459a9ccc1acfa9c0aa7e1a17f6aba800b01f72ea8f6b22704cc7"
+          "sha256": "29c8dcacec5d193791eee1c9c5aa84abad7045c459b32227889a8ecc2048b611"
         },
         "lod2": {
           "file": "flora/lichen.lod2.glb",
           "tris": 176,
-          "sha256": "344fcfc322cf48ea18104d5463ce0f1e138cdaa205a807a4052ea48d8cb18872"
+          "sha256": "0d1f0188d955f928e44b46a5225a0b146aeca845f301251649b70a8cca524fed"
         }
       }
     },
@@ -574,18 +574,18 @@
       "lods": {
         "lod0": {
           "file": "flora/moss.lod0.glb",
-          "tris": 720,
-          "sha256": "d8a8364137b2d1a08c9b624cc5d30e13696d1671922007a08a6edcb661808970"
+          "tris": 912,
+          "sha256": "ec0ccf9c2ea2bfc0eb8081dd67c961be5dc79a69a42a950e41b84a1217a8190c"
         },
         "lod1": {
           "file": "flora/moss.lod1.glb",
-          "tris": 480,
-          "sha256": "871d1a327f92e7f1b7596ec22a2d5031c617b366d814ab1bb4f82c7774c54272"
+          "tris": 600,
+          "sha256": "7de9ae46342721f368399574be10ceaac6d475afb75857cf8227a1c10a18184d"
         },
         "lod2": {
           "file": "flora/moss.lod2.glb",
           "tris": 192,
-          "sha256": "6a6008e5263ff67551536084245857e134cc1d8b31b04718361b158eee4f4a13"
+          "sha256": "da02e9b26f8ca1636d9253d78b9c30363c5c291d59a1a0d960f4a1631a364c1a"
         }
       }
     },
