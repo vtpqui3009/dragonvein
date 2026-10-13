@@ -167,6 +167,21 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-13 · run 26 · M3f — taken over from stopped run 25
+
+**Step**: `M3f`, still the first step in reading order that is not `DONE` under the new order
+(M3 → M5 → M7 → M8 → M9 → ▲ playable checkpoint → M6 …, owner decision `67941df`).
+
+**Criteria**: **run 25's five criteria, reused unchanged**, as NEXT.md asks.
+
+**Run 26 picks up run 25's builder.** It started building in this session before run 25 was
+stood down: the sweep instrument in `tools/silhouette.mjs` and `dragon-view.ts`, and
+`graph.ts`. That work was uncommitted, so it was not on `main` when `6dd4794` described run
+25 as having shipped nothing. Run 26 continues it here, in the order written: the sweep
+first, then the genes. Nothing lands on `main` until `npm run gates` is green.
+
+---
+
 ## 2026-10-13 · run 25 · M3f — the genome drives the body outline
 
 **Step**: `M3f`, the first step in reading order that is not `DONE`. The marker commit

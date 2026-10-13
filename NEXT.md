@@ -10,15 +10,12 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-13** · at commit `8aafd7f`. **Run 25 is stopped, not in flight** — the
-owner stood it down at 09:0x UTC so their second Pro account could take over without two
-sessions pushing to `main`. It shipped **no code**: `cf4f17e` (marker), `7e1e364` (criteria)
-and `8aafd7f` (this file) are all it pushed, so `main` is clean and nothing is half-landed.
-
-**M3f is yours to take from the top.** Its acceptance criteria are already written on `main`
-in `STATE.md` run 25 — reuse them, do not re-derive them — in the order written there:
-**instrument the sweep first, then strengthen the genes.** Open a new run heading rather than
-appending to run 25's.
+Last updated: **2026-10-13** · at commit `67941df`. **Run 26 is in flight on M3f**, in the
+owner's main session. It reuses run 25's criteria (STATE.md run 25). The sweep instrument
+and gene work are being built, and nothing is committed until gates are green. **Do not start
+M3f from a second session while this line stands.** Two runs pushing the same dragon
+builders will break `gate:parity`. If you find this file unchanged hours later with no
+`feat(dragon)` commit after `67941df`, run 26 died: take M3f from the top.
 
 ---
 
