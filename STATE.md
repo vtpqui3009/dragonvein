@@ -13,6 +13,50 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-13 · run 21 · M5c — two more trees and saplings
+
+**Step**: `M5c`, the first step in reading order that is not `DONE`. The marker commit
+precedes this one.
+
+**Ownership**: `assetgen/flora/` (asset-builder), sequential.
+
+**The choice.** `docs/ASSET_PLAN.md` §B1 has one tree left, the **ancient giant**. M5c asks
+for two trees, so the second is chosen to fill the gap the set has: **`flora/deadtree`**, a
+bare, weathered dead tree. The scene already has hand-built pale snags (`src/main.ts`
+§snag). The art critic read them as untextured poles (FINDINGS M5a), so a generated dead tree
+is the asset that replaces them at M5e.
+
+**Saplings** (§B2) are **`flora/sapling`**: young trees whose kind comes from the seed
+(broadleaf, conifer or palm), small and slender, for the edges of groves.
+
+### Acceptance criteria
+
+1. **The three generators.**
+   - **`flora/ancientgiant`**: a massive, buttressed trunk, a broad multi-limbed crown and
+     visible roots.
+   - **`flora/deadtree`**: bare forked limbs, broken stubs and weathered grey-brown bark.
+     The bark is on the bark surface, and it carries no canopy unless the ramp is declared
+     optional.
+   - **`flora/sapling`**.
+
+   Each follows the M5b pattern:
+   - `plan(seed)`, with the main silhouette axis stratified on the seed;
+   - the declarations;
+   - LOD0/1/2 strictly decreasing **on every seed 1–8**, within 6 000 / 2 000 / 500;
+   - 0 inward faces, 0 open edges and 0 non-manifold edges at every LOD on every seed;
+   - the base at z = 0 with a vertical trunk axis;
+   - bark ΔE ≤ 12 and the canopy ramp ΔE ≤ 3.
+2. **Pipeline.** All three are registered.
+   - `--verify` is byte-identical.
+   - `--check` and `check:assets` are OK.
+   - The existing 36 files are unchanged.
+3. **Seen.** `artifacts/variants/{ancientgiant,deadtree,sapling}.png` and a turntable each.
+4. **Probed.** `variant-probe` passes for all three, and the existing generators still pass.
+5. `npm run gates` exits 0.
+6. Art per generator is ≥ 8.0.
+
+---
+
 ## 2026-10-12 · run 20 · M5b DONE — three canopy tree generators
 
 **Step**: `M5b`, the first step in reading order that is not `DONE`. Step 0 pushed `72da549`.
@@ -511,4 +555,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-13T00:24Z
