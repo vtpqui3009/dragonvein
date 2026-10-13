@@ -10,44 +10,43 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-13** · at commit `02a0495`, the last commit of run 20 that changed
+Last updated: **2026-10-13** · at commit `0682cb6`, the last commit of run 21 that changed
 code. The close-out commits that wrote this file follow it.
 
 ---
 
 ## Current step
 
-**M5c — 2 more trees, and saplings** · `TODO`
+**M5d — 4 understory generators: bushes, ferns, reeds, grass clumps** · `TODO`
 
-M5b closed in run 20 after one rework cycle. Final scores: art **8.55** (conifer 8.7,
-fanpalm 8.2, windtwisted 8.1), perf **8.4**, gameplay **8.8**. Cycle 1 had fanpalm at 7.7,
-with detached blades on wire stems, and windtwisted at 8.0, mostly upright with a dish pad.
+M5c closed in run 21 on its first pass: art **8.35** (ancientgiant 8.1, deadtree 8.4,
+sapling 8.0), perf **8.9**, gameplay **8.7**. `assetgen/flora/` now has seven tree kinds:
+- broadleaf, conifer, fanpalm and windtwisted;
+- ancientgiant, deadtree and sapling.
 
-`assetgen/flora/` now holds broadleaf, conifer, fanpalm and windtwisted. The shared kit
-`treekit.py` has closed primitives (`tube`, `blob`, `revolve`, `thick_grid`) and
-`topology`.
+The dead tree is meant to replace the hand-built pale snags at M5e.
 
 ## The single next action
 
-Take M5c in `assetgen/flora/` (asset-builder).
-- **Pick the two trees.** `docs/ASSET_PLAN.md` §B1 has only **ancient giant** left. The step
-  asks for two trees, so the second needs choosing and recording in STATE.md: a variant
-  kind the set lacks, such as a dead or bare tree or a weeping tree, read against concept 03.
-  The **saplings** are B2 (understory), and young versions of the existing kinds are the
-  natural reading.
-- **Check the size.** Three generators fit in run 20 only with a rework cycle. If it will
-  not fit, split it.
-- **Follow the M5b pattern:**
-  - every seed has 0 inward, open and non-manifold edges;
-  - LODs strictly decrease;
-  - the base sits at z = 0 with a vertical trunk;
-  - the bark reads brown.
+Take M5d in `assetgen/flora/` (asset-builder): four understory generators, `docs/ASSET_PLAN.md`
+§B2.
+- **Four is more than any step has landed in one run.** M5b needed a rework cycle for three.
+  Check the size first. If it will not fit, split it into M5d (bushes, ferns) and the next
+  step (reeds, grass clumps), record the split in STATE.md, and take the first half.
+- **Understory is small and many.** Keep the triangle counts well under the tree budget, and
+  record the budget you choose against docs/PERF_BUDGET.md §Other budgets, whose prop row is
+  4000/1200/300. The perf critic keeps asking for the flora budget to be reconciled.
+- **Follow the M5b and M5c pattern:**
+  - closed, outward meshes;
+  - LODs strictly decreasing on every seed;
+  - the base at z = 0 for `withWind`;
+  - several stratified axes with different irrationals, so seeds do not pair up.
 - **What the art critic keeps flagging:**
-  - near-sibling seeds;
-  - tiny seeds that vanish at 25 %;
-  - thin necks under foliage (lollipops);
-  - fronds or pads clipping the trunk;
-  - LOD1 and LOD2 are never rendered in any artefact.
+  - near-pairs, about three classes in eight seeds;
+  - blobs on thin stems ("balloons on a stick");
+  - needle tips;
+  - the sheet scale hiding real size;
+  - LOD1 and LOD2 never rendered.
 
 ## Open items that need the owner, not a run
 
@@ -80,6 +79,12 @@ Take M5c in `assetgen/flora/` (asset-builder).
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
+- Trees (M5c):
+  - the ancient giant reads as a big broadleaf, with no monumental cue (girth, buttress,
+    scale);
+  - the dead tree is dark clay-brown, not the pale snag it replaces;
+  - the sapling has three classes in eight seeds;
+  - the seed labels overlap the giant's roots.
 - Trees (M5b):
   - fanpalm seeds 1/4 and windtwisted 2/6 and 1/5 are near-pairs;
   - fanpalm seed 3 reads as a banana plant;
