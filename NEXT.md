@@ -10,49 +10,52 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-13** · at commit `3aaec92`. Run 24 is **in flight** on M3e. Only its
-split and acceptance criteria are on `main` so far.
+Last updated: **2026-10-13** · at commit `8e5b5ba`, the last commit of run 24 that changed
+code. The close-out commits that wrote this file follow it. Run 24 is **finished**.
 
 ---
 
 ## Current step
 
-**M3e — wing form from the genome (sail, spread membrane, segmented), spread at rest; the
-greyscale sheet and outline numbers that measure silhouette** · `IN_PROGRESS` (run 24)
+**M3f — neck arc, body mass and horn count push the outline until `dragon-greyscale.png`
+reads as eight creatures** · `TODO`
 
-Run 24 **split the old M3e**, recorded in STATE.md run 24 and ROADMAP:
-- **M3e** is the instruments plus the wing forms;
-- **M3f** is the neck, mass and horn push until `dragon-greyscale.png` reads as eight
-  creatures.
+**M3e closed** in run 24 after one rework cycle, at `8e5b5ba`. Last-pass scores: art **7.9**,
+perf **8.5**, gameplay **9.7**. All six criteria hold:
+- three wing forms derived from `wingFingers` and `wingShape`: sail G, spread A/B/E/F,
+  segmented C/D/H;
+- a lower gull-winged rest pose that reads as a pair in the sheet camera (cycle-1 major D1
+  fixed);
+- `dragon-greyscale.png`, `dragon-silhouette.json` and three turntables;
+- parity exact, meshgen ≤ 38.7 ms, gates green;
+- no blocking or major defect on the wings.
 
-**Owner decision (2026-10-13).** The wing form is **derived from `wingFingers` and
-`wingShape`**. There is no new gene and `docs/GENOME.md` is unchanged. M5e waits behind
-M3e and M3f.
+**M3 stays `IN_PROGRESS`.** Art is 7.9, and the major that remains is the shared body plan,
+which is M3f's whole job.
 
 ## The single next action
 
-If you are reading this because run 24 was cut off, check `git log` first: the integrator's
-work is committed only once it is green.
-
-1. If no `feat`/`asset(dragon)` commit has landed after `3aaec92`, take M3e from the STATE.md
-   run 24 criteria, with **one sequential owner** (the integrator) across `assetgen/dragon/`,
-   `src/assets/dragon/` and `tools/`. Work in this order, keeping the tree green at each
-   stage:
-   1. the greyscale and silhouette instruments on the current dragons, with the baseline
-      numbers recorded;
-   2. the wing forms in Python and TS, the fixture regenerated, `gate:parity` green;
-   3. re-measure.
-2. If some of it landed, continue from the first criterion that does not hold.
-3. Then run the critics: perf alone, then art and gameplay. Close out.
-
-**Traps:**
-- `gate:parity` compares the skin graphs **exactly**. Change both builders identically, then
-  regenerate `docs/fixtures/dragon-graphs.json` with `assetgen/dragon_vectors.py`. Never loosen
-  the tolerance.
-- `artifacts/` is git-ignored. Re-render with `npm run build`, then
-  `node tools/dragon-sheet.mjs`, then the Blender reference
-  (`LIBGL_ALWAYS_SOFTWARE=1 python3 -I assetgen/dragon_sheet.py`).
-- Per-asset acceptance is decided by defects, not sub-scores (CLAUDE.md §4).
+**Take M3f.** Use the instruments M3e built (`node tools/dragon-sheet.mjs` after
+`npm run build`).
+- **Target the numbers.** `dragon-silhouette.json` has mean pairwise IoU 0.632, a range of
+  0.429–0.785 (A–G the most alike), area 6.50–7.77, height 3.42–4.18 and width 5.21–6.51.
+  Body proportions barely move (a spread of about 20 %). Write a target into the STATE.md
+  criteria before code, for example a lower mean IoU and a wider area and height spread,
+  plus the greyscale sheet read by eye.
+- **Find what to push.** neck arc, body mass, leg length, horn count and length, crest and
+  tail ornament are all genes in `docs/GENOME.md`. Find why their ranges barely reach the
+  outline: how strongly `builder.py` maps each gene to geometry. **Do not rewrite
+  GENOME.md** (§7). If a gene's range is wrong, say so in STATE.md and ask.
+- **One sequential owner** (the integrator) across `assetgen/dragon/` and
+  `src/assets/dragon/`. Regenerate the parity fixture. Keep meshgen ≤ 120 ms.
+- **Art-critic minors to take along:**
+  - wing hue clashes with the body (A, C, H, G), and F's body is near-black;
+  - the segmented near ribs read as skewers over the hind leg;
+  - the belly is black under the near wing on C and H;
+  - wing panels are flat-lit;
+  - the wings are small next to the concept.
+- **Gameplay advisory, for M9b:** the hard `wingShape` threshold at 0.5 flips the wing class,
+  so G (A×B, both spread) is a sail.
 
 ## Open items that need the owner, not a run
 
