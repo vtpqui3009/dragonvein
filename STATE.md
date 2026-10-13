@@ -56,6 +56,93 @@ run 22 pushed `1a617ef` in between, which is a race, not a credential fault.
 5. **Closed out** per the `run-closeout` skill: `NEXT.md` rewritten first, this entry given
    its result, the archive rotated, the evidence page republished to the same URL, pushed.
 
+### Result — M5d stays `IN_PROGRESS`, blocked on how criterion 6 is measured
+
+**Scores.** Cycle 1 at `9e1a2b6`: art 8.3 · perf 8.65 · gameplay 9.7. Cycle 2 at `d1dcabe`:
+art 8.0 · perf 8.15 · gameplay 9.7. `npm run gates` exits 0 at both. No blocking defect in
+either round. Every criterion 1–5 holds; **criterion 6 does not**, and criteria 1–4 of this
+run's own list were met (artefacts regenerated, gates green, both rounds recorded with
+`SCORE_MACHINE` lines and per-generator estimates).
+
+**What shipped.** `d1dcabe`, the fern rework. Cycle 1 scored fern 7.7 — below the
+per-generator bar — on three majors: fronds were single wide serrated blades so it read as an
+agave; eight seeds gave three silhouettes; the croziers were invisible. All three were fixed
+in the generator, not by reseeding. A frond is now a stipe, a tapering rachis and discrete
+pinnae; a discrete `habit` axis stratified on π−3 gives four architectures at two seeds each
+(vase, spread, fountain, bracken-on-a-rhizome); croziers scale off the plant's measured apex
+with a per-head tilt. LOD0/1/2 strictly decreasing and inside 4000/1200/300 on every seed,
+scanned to seed 64 (worst 3412/1002/256); 0 inward, open and non-manifold edges at every LOD
+on every seed; `--verify` reproduces all 57 files byte-for-byte; `treekit.py` untouched, so
+the other generators stay byte-identical.
+
+**A real bug found on the way.** The `droop` axis was dead. The old generator straightened any
+frond that threatened the ground (`turn *= 0.86`, up to 16 times), which zeroed the arch on
+five of eight seeds — run 22 had renamed the axis from `curl` to `droop` after a low probe
+score without finding this cause. The rachis turn is now solved by bisection so the tip lands
+at the commanded fraction *and* clears the ground. The probe reads 0.045–0.376 where five
+seeds read 0.0.
+
+**Why the step did not close.** Criterion 6 is per generator, and the two rounds disagree about
+assets that did not change. Between `9e1a2b6` and `d1dcabe` only `fern.py` and the three
+`flora/fern.lod*.glb` changed, yet:
+
+| generator | cycle 1 | cycle 2 | delta | file changed? |
+|---|---|---|---|---|
+| bush | 8.6 | 7.8 | −0.8 | **no — byte-identical** |
+| reeds | 8.2 | 8.0 | −0.2 | **no — byte-identical** |
+| grassclump | 8.1 | 7.8 | −0.3 | **no — byte-identical** |
+| fern | 7.7 | 7.4 | −0.3 | yes, rebuilt |
+
+Roughly **±0.8 of scorer variance on an unchanged artefact**, against a bar the step is being
+accepted on. Under cycle 1's numbers three of four generators pass; under cycle 2's, one does.
+`docs/RUBRIC.md` has no per-generator line — the per-generator estimate is a prompt-level
+request, which is why it is not reproducible. **This is a defect in how the step is measured,
+not in the assets**, and it is the blocker handed to the owner in `NEXT.md`.
+
+What this run refused to do, recorded so a later reader can audit it: it did not average the
+two cycles, did not adopt cycle 1 because it was kinder, and did not spawn a third art-critic
+hoping for a friendlier number. All three are score-fishing (`CLAUDE.md` §4, `critic-round`
+§4). It also ran **no cycle 3**, because a third cycle would have to "fix" `bush` and
+`grassclump` — files that have not changed since cycle 1 scored them 8.6 and 8.1. There is no
+defect in that code; editing it to move a scorer's number is the inverse of the rule.
+
+**Perf was re-run rather than inherited, deliberately.** Run 22's perf-critic scored the same
+code tree 8.6 before its session died, and the dispatcher offered that number on the ground
+that the code had not moved. It had not — `1a617ef..9e1a2b6` touches `STATE.md` only. But
+`artifacts/` is git-ignored, so run 22's `perf.json` never reached this container; it was
+measured on another machine under another load and cannot be read or reproduced here. P1
+scores a *reproducible measurement*, so the measurement is the artefact, and adopting the
+number would have attached a score to a file no critic in this run had seen. Cycle 1's
+independent 8.65 landed 0.05 from it, which is corroboration, not proof the re-run was waste.
+
+**A factual error in a critic report, recorded without changing its score.** Cycle 2's
+perf-critic scored P1's real-hardware half 0, reading the §Real-GPU verification log as having
+"one row only" (2026-10-10, `c429d4a`). The log has **two** rows — line 459 adds a 2026-10-12
+`3ab6e84` sighting it did not see — and cycle 1's perf-critic read that newer row and scored
+the same half 0.5. That single misread is the entire 0.5 between 8.65 and 8.15. Per
+`critic-round` §3 the score stands as given and a builder note was added instead. Separately
+and more usefully: **`3ab6e84` does not resolve in this repo** (`git log -1 3ab6e84` →
+"unknown revision"), so the project's newest real-GPU record points at a commit that does not
+exist. That is now an owner item.
+
+**Forward risk for M5e, now agreed by three independent perf rounds** (run 22's, and this
+run's two): heap headroom is about 4 355 B of 40 960 at 28 draws — roughly **two draws** at
+PERF_BUDGET's ~1.8 kB per draw — and `uncorrectedBytesPerFrame` is already 45 200, passing
+only via the idle-baseline subtraction. Placing the four understory types as separate draws,
+or one draw per LOD, will trip the heap gate. Placement must use one `InstancedMesh` per plant
+type with LOD inside the instance.
+
+**Open blockers.** (1) How criterion 6 is measured — owner. (2) The `3ab6e84` real-GPU row —
+owner. (3) No verification-grade real-GPU or Potato row — owner, M16. (4) fern seeds 1/8 and
+3/5 near-pairs — the next run's only actionable M5d art defect. (5) The evidence page's old
+URL (`Pgkt22EifnK5hUzmXqssoj`) is not reachable from this account — `artifact not found` —
+so run 23 published to https://claude.ai/artifact/HXPyJnjvcwr5tayAwbpD9a instead. The owner
+chooses which link stands; a third must not be created.
+
+**Step 0.** The push proof succeeded, on the second attempt: the first was rejected
+non-fast-forward because run 22 pushed `1a617ef` in between, which is a race and not a
+credential fault. `1a617ef..3812835`, then rebased and pushed.
+
 ## 2026-10-13 · run 22 · M5d — four understory generators
 
 **Step**: `M5d`, the first step in reading order that is not `DONE`. The marker commit
@@ -112,188 +199,6 @@ recurring question for this family.
   arch was not reaching the geometry; the generator was fixed first, then the axis changed.
 - Criterion 6, art per generator, waits on the critics.
 - `wip/m5d` is superseded by `main`, but is **not deleted**: the push that deletes it is refused by the remote ("remote end hung up"). The owner may delete it; nothing reads it.
-
----
-
-## 2026-10-13 · run 21 · M5c DONE — two more trees and saplings
-
-**Step**: `M5c`, the first step in reading order that is not `DONE`. The marker commit
-precedes this one.
-
-**Ownership**: `assetgen/flora/` (asset-builder), sequential.
-
-**The choice.** `docs/ASSET_PLAN.md` §B1 has one tree left, the **ancient giant**. M5c asks
-for two trees, so the second is chosen to fill the gap the set has: **`flora/deadtree`**, a
-bare, weathered dead tree. The scene already has hand-built pale snags (`src/main.ts`
-§snag). The art critic read them as untextured poles (FINDINGS M5a), so a generated dead tree
-is the asset that replaces them at M5e.
-
-**Saplings** (§B2) are **`flora/sapling`**: young trees whose kind comes from the seed
-(broadleaf, conifer or palm), small and slender, for the edges of groves.
-
-### Acceptance criteria
-
-1. **The three generators.**
-   - **`flora/ancientgiant`**: a massive, buttressed trunk, a broad multi-limbed crown and
-     visible roots.
-   - **`flora/deadtree`**: bare forked limbs, broken stubs and weathered grey-brown bark.
-     The bark is on the bark surface, and it carries no canopy unless the ramp is declared
-     optional.
-   - **`flora/sapling`**.
-
-   Each follows the M5b pattern:
-   - `plan(seed)`, with the main silhouette axis stratified on the seed;
-   - the declarations;
-   - LOD0/1/2 strictly decreasing **on every seed 1–8**, within 6 000 / 2 000 / 500;
-   - 0 inward faces, 0 open edges and 0 non-manifold edges at every LOD on every seed;
-   - the base at z = 0 with a vertical trunk axis;
-   - bark ΔE ≤ 12 and the canopy ramp ΔE ≤ 3.
-2. **Pipeline.** All three are registered.
-   - `--verify` is byte-identical.
-   - `--check` and `check:assets` are OK.
-   - The existing 36 files are unchanged.
-3. **Seen.** `artifacts/variants/{ancientgiant,deadtree,sapling}.png` and a turntable each.
-4. **Probed.** `variant-probe` passes for all three, and the existing generators still pass.
-5. `npm run gates` exits 0.
-6. Art per generator is ≥ 8.0.
-
----
-
-### Result — M5c DONE (M5 IN_PROGRESS)
-
-All six criteria hold at `0682cb6`:
-
-1. **Geometry and colour checks.** Every seed 1–8 and every LOD has 0 inward, open and
-   non-manifold edges, and positive shell volume. The base sits at z = 0, sunk at most
-   0.069 m, with a vertical trunk. Bark ΔE is at most 10.34 and the canopy ramp ΔE at most
-   0.15.
-
-   | generator | LOD0 range |
-   |---|---|
-   | ancientgiant | 4194–5900 |
-   | deadtree | 1328–2850 |
-   | sapling | 764–1308 |
-
-2. `--verify` reproduces 45 files byte-for-byte, and `--check` and `check:assets` pass. The
-   36 existing files are unchanged.
-3. The sheets and turntables are rendered.
-   `render_all.py` sizes the sheet ground plane to a row wider than 150 m, in its own commit
-   `f54d970`. The ancient giant's row is about 175 m. The other sheets are unchanged.
-4. **Probes.** The most alike pairs are 23.4 / 26.4 / 27.7 %.
-   The giant's probe axes (height, width, rootSpan, daylight, layers) were picked over an
-   earlier set that put seeds 2/4 at 18.9 %. All five are visible properties, and the choice
-   is stated in the asset commit. The art critic, judging by eye, still names 1/6/8 as one
-   class.
-5. `npm run gates` exits 0.
-6. Art per generator: 8.1 / 8.4 / 8.0.
-
-**Scores (cycle 1):** art 8.35, perf 8.9, gameplay 8.7.
-
-**Open, carried to FINDINGS:**
-- the giant has no monumental cue;
-- the dead tree is dark, not pale like the snags it replaces;
-- the sapling has three classes in eight seeds;
-- the flora budget is not reconciled with PERF_BUDGET.
-
-**Blockers.** None for M5d. M3 and M4 wait on the owner (NEXT.md §Open items).
-
----
-
-## 2026-10-12 · run 20 · M5b DONE — three canopy tree generators
-
-**Step**: `M5b`, the first step in reading order that is not `DONE`. Step 0 pushed `72da549`.
-
-**Ownership**: `assetgen/flora/` (asset-builder), sequential.
-
-**The three**, from `docs/ASSET_PLAN.md` §B1, chosen to read as three tree *kinds* beside
-broadleaf:
-- `flora/conifer`, a tiered spire;
-- `flora/fanpalm`, a bare curved trunk under a crown of fronds;
-- `flora/windtwisted`, a gnarled, leaning trunk with a flag-shaped crown.
-
-The ancient giant goes to M5c, with the saplings.
-
-### Acceptance criteria
-
-1. **Each of the three** follows `flora/broadleaf.py`:
-   - `plan(seed)`, with the main silhouette axis stratified on the seed;
-   - the declarations (`FAMILY`, `NAME`, `BUDGET`, `PALETTE`, `PALETTE_ROLES`,
-     `METRIC_AXES`, `SHEET`);
-   - LOD0/1/2 strictly decreasing **on every seed 1–8**, within broadleaf's 6 000 / 2 000 /
-     500;
-   - 0 inward faces and 0 open edges at every LOD on every seed;
-   - colours only on the ART_BIBLE bark surface and foliage ramp, like broadleaf.
-
-   Each tree stands on a base at z = 0 with a vertical trunk axis, so `src/render/wind.ts`
-   can sway it by height.
-2. **Pipeline.** All three are registered.
-   - `--verify` is byte-identical.
-   - `--check` and `check:assets` are OK.
-   - The existing 27 files are unchanged.
-3. **Seen.** `artifacts/variants/{conifer,fanpalm,windtwisted}.png` and a turntable each.
-4. **Probed.** `variant-probe` passes for all three, and the nine existing generators still
-   pass.
-5. `npm run gates` exits 0.
-6. Art per generator is ≥ 8.0.
-
----
-
-### Result — M5b DONE (M5 IN_PROGRESS)
-
-All six criteria hold at `02a0495`:
-1. **The three generators meet the per-seed checks.** Every seed 1–8 and every LOD has
-   0 inward, open and non-manifold edges and positive shell volume. The base sits at z = 0,
-   sunk at most 0.067 m, and the trunk axis is vertical. The bark ΔE is at most 9.3 (limit
-   12). LOD0 ranges:
-
-   | generator | LOD0 range |
-   |---|---|
-   | conifer | 1308–2628 |
-   | fanpalm | 3524–5682 |
-   | windtwisted | 1838–2976 |
-
-2. `--verify` reproduces 36 files byte-for-byte, and `--check` and `check:assets` pass. The
-   27 existing files are unchanged.
-3. The sheets and turntables are rendered.
-4. **Probes.** The most alike pairs are conifer 24.7 %, fanpalm 22.1 % and windtwisted
-   23.9 %. The other ten generators are unchanged.
-5. `npm run gates` exits 0. It was run after each cycle.
-6. **Art per generator:** conifer 8.7, fanpalm 8.2, windtwisted 8.1.
-
-**Scores.**
-
-| critic | cycle 1 at `4852e51` | cycle 2 at `02a0495` |
-|---|---|---|
-| art | 8.25 (fanpalm **7.7**, windtwisted 8.0) | **8.55** |
-| perf | 8.4 | carried |
-| gameplay | 8.8 | carried |
-
-**Rework (cycle 2).**
-- **fanpalm:**
-  - thick petioles, with the blade growing out of the tip;
-  - a rachis on the feather fronds;
-  - at least 9 fronds per crown;
-  - a stratified habit: single, skirted or clump;
-  - a clearance pass that keeps fronds off the trunk.
-- **windtwisted:**
-  - four stratified archetypes (flag, cascade, arm, twin);
-  - lean 0.65–0.91;
-  - solid domed pads;
-  - branches of believable thickness;
-  - a trunk clearance pass;
-  - the probe axis `pads` is now `trunkTip`.
-
-**Usage limit.** The run hit the usage limit at about 00:00 UTC, while the cycle-2 art
-critic was starting. Everything green was already pushed at `02a0495`. The critic re-ran
-after the reset.
-
-**Open, carried to FINDINGS:**
-- near-pairs (fanpalm 1/4, windtwisted 2/6 and 1/5);
-- small windtwisted seeds;
-- the flora `triBudget` against the PERF_BUDGET prop row;
-- placement (M5e) must merge the kinds per LOD, since heap headroom is about 2 draws.
-
-**Blockers.** None for M5c. M3 and M4 wait on the owner (NEXT.md §Open items).
 
 ---
 

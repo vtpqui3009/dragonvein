@@ -182,7 +182,7 @@ sheets on the evidence page is what closes it (NEXT.md).
 | M5a | wind vertex shader, proven on one tree at 200+ instances inside budget | DONE |
 | M5b | 3 canopy tree generators with passing variant sheets | DONE |
 | M5c | 2 more trees, and saplings | DONE |
-| **M5d** | **4 understory generators — bushes, ferns, reeds, grass clumps** | **TODO** |
+| **M5d** | **4 understory generators — bushes, ferns, reeds, grass clumps** | **IN_PROGRESS** |
 | M5e | 4 more understory plus ground cover, dressed into the island | TODO |
 
 M5a closed on 2026-10-12 at `e377e1d` (run 19) on its first pass: art 8.4, perf 8.4,
@@ -206,6 +206,20 @@ gameplay 8.7. The pieces are:
 - `flora/ancientgiant`, the last §B1 tree;
 - `flora/deadtree`, the second tree, chosen in run 21 to replace the hand-built snags;
 - `flora/sapling`, the young broadleaf, conifer and palm.
+
+**M5d is `IN_PROGRESS`, blocked on how its criterion 6 is measured, not on the assets.** All
+four generators are built, gated and on `main` (`3bf104e`, and `d1dcabe` for the fern
+rework). Two full critic rounds are scored (`FINDINGS.md`): cycle 1 at `9e1a2b6` art 8.3,
+perf 8.65, gameplay 9.7; cycle 2 at `d1dcabe` art 8.0, perf 8.15, gameplay 9.7. `npm run
+gates` exits 0 at both, with no blocking defect, and criteria 1-5 hold.
+
+Criterion 6 is "art >= 8.0 **per generator**", and the two rounds disagree about generators
+whose files did not change. Only fern changed between the two commits, yet cycle 2 scored
+`bush` 8.6 -> 7.8, `reeds` 8.2 -> 8.0 and `grassclump` 8.1 -> 7.8 on byte-identical assets.
+That is about +/-0.8 of scorer variance against the bar the step is accepted on, and
+`docs/RUBRIC.md` has no per-generator line - the estimate is a prompt-level request, which is
+why it does not reproduce. The owner is asked in `NEXT.md` to rule on how criterion 6 is
+measured. Run 23 did not average the cycles, adopt the kinder one, or re-roll a third critic.
 
 They meet §Definition of done:
 1. most alike pairs 23.4 / 26.4 / 27.7 % apart;

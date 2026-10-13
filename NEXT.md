@@ -113,12 +113,14 @@ editing it to move a scorer's number is the inverse of the rule.
   1/8 of body length where the bible asks for chunky and front-heavy at about 1/5.
   Should a run re-design these in the reference, or wait for M7 (wing animation)?
 
-- **The evidence page could not be republished this run.** Reading
-  `https://claude.ai/artifact/Pgkt22EifnK5hUzmXqssoj` from this session returns
-  "artifact not found", so it is not reachable from the account this run used — most likely
-  it belongs to the second Pro account. The HTML was still generated at
-  `artifacts/evidence/run-evidence.html` (git-ignored). Either re-share that artifact to the
-  account the scheduled runs use, or let a run on the owning account republish it.
+- **The evidence page moved, because the old link is unreachable from the scheduled runs'
+  account.** Reading `https://claude.ai/artifact/Pgkt22EifnK5hUzmXqssoj` returns "artifact
+  not found" here, so it most likely belongs to the second Pro account. Run 23's evidence is
+  published instead at **https://claude.ai/artifact/HXPyJnjvcwr5tayAwbpD9a** — M5d's four
+  sheets, five turntables, 14 smoke shots, both critic rounds and the 9 asks. Please either
+  re-share the original artifact to the account the scheduled runs use, and tell the next run
+  to go back to it, or adopt the new link as the standing one. **Until that is decided, a run
+  publishing to the new URL keeps one link; do not create a third.**
 
 - **`wip/m5d` can be deleted.** Run 23 confirmed it differs from `main` only in `NEXT.md` and
   `STATE.md` — no code or asset delta — so its content is fully on `main`. The push that
@@ -202,8 +204,9 @@ editing it to move a scorer's number is the inverse of the rule.
   mesh), `critic-round` (freeze, perf alone, prompt template, FINDINGS format) and
   `run-closeout` (the end-of-run order). Load the one you need. Their text is not in every
   prompt.
-- **Owner's evidence page**: `node tools/evidence-page.mjs`, republished every run to
-  https://claude.ai/artifact/Pgkt22EifnK5hUzmXqssoj (see `run-closeout`). Its "Needs you"
+- **Owner's evidence page**: `node tools/evidence-page.mjs`, republished every run. The URL
+  changed at run 23 to https://claude.ai/artifact/HXPyJnjvcwr5tayAwbpD9a because the old one
+  (`Pgkt22EifnK5hUzmXqssoj`) is not reachable from this account — see §Open items. Its "Needs you"
   box is §Open items below, verbatim.
 - `node tools/dragon-sheet.mjs` (after `npm run build`): the runtime dragon sheet and
   turntable, `artifacts/variants/dragon-full.png` (+ `.json`, per-dragon build times) and
