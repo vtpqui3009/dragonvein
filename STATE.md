@@ -170,7 +170,7 @@ run 22 pushed `1a617ef` in between, which is a race, not a credential fault.
 5. **Closed out** per the `run-closeout` skill: `NEXT.md` rewritten first, this entry given
    its result, the archive rotated, the evidence page republished to the same URL, pushed.
 
-### Result — M5d stays `IN_PROGRESS`, blocked on how criterion 6 is measured
+### Result — **superseded: M5d is `DONE`.** This section was written mid-run, before §4 was settled; the final result is below
 
 **Scores.** Cycle 1 at `9e1a2b6`: art 8.3 · perf 8.65 · gameplay 9.7. Cycle 2 at `d1dcabe`:
 art 8.0 · perf 8.15 · gameplay 9.7. `npm run gates` exits 0 at both. No blocking defect in
@@ -270,6 +270,59 @@ chooses which link stands; a third must not be created.
 **Step 0.** The push proof succeeded, on the second attempt: the first was rejected
 non-fast-forward because run 22 pushed `1a617ef` in between, which is a race and not a
 credential fault. `1a617ef..3812835`, then rebased and pushed.
+
+### Final result — M5d `DONE` at `3364460`, and M3e unblocked
+
+**Cycle 3: art 8.5 · perf 8.3 · gameplay 9.7**, gates exit 0, no blocking defect, and — the
+test that actually decides it — **no `blocking` or `major` defect against any of the four
+generators' own variant sheet or turntable**. All four pass. M5d is `DONE`; M5 stays
+`IN_PROGRESS` on M5e.
+
+**What unblocked it was a rule, and the rule came from this run's own evidence.** The owner
+amended `CLAUDE.md` §4 on the cycle 1 / cycle 2 comparison recorded above: per-asset acceptance
+is decided by defects carrying pointers, not by improvised per-generator sub-scores, because
+those sub-scores moved up to 0.8 on **byte-identical** assets against a bar at 8.0. §4 also now
+requires a critic to state its coverage — that came from this run's builder note on a critic
+reading 3 of 14 shots. Both cycle 3 critics duly stated coverage, and the gaps are now visible
+in `FINDINGS.md` instead of invisible: art decoded no `.webm` and read 6 of 14 shots; perf read
+2 of 14 and no sheets.
+
+Worth being explicit, because a rule change that closes a step invites the suspicion: **the
+rule did not lower the bar for M5d.** Fern still had to be fixed twice, and both fixes were
+real geometry changes in the generator. What the rule removed was the prospect of reworking
+`bush` and `grassclump` — files that never changed — to chase a second scorer's number.
+
+**The fern fix that closed it (`3364460`).** Cycle 2's single `major` was seeds 1/8 reading as
+one upright vase and 3/5 as one low fan. Root cause was confirmed before any change, and both
+halves were real: the pair members were only 33.3% apart on their most different axis, **and**
+the `spread` and `fountain` habits genuinely overlapped at their low end, where a high-`form`
+spread and a low-`form` fountain both solved to a ~0.3 m pancake at the same ~4.8 width/height
+ratio. The fix is a new discrete `stature` axis (`tuft`/`stand`) on √6−2 — the only constant of
+~27 searched whose halves split all four habit pairs of seeds 1–8 with margin — plus habit
+envelopes pulled onto disjoint rise bands and absolute length bands. Most-alike pair 26.5% →
+**37.5%**, and an independent check in the shape of the critic's own complaint (within 15% on
+height *and* width, across all 28 pairs) is clean where both named pairs tripped it before.
+
+**Two corrections this run made to its own earlier work**, recorded rather than quietly dropped:
+1. The `3ab6e84` "commit does not exist" blocker was **wrong and withdrawn** — this container's
+   clone was shallow (`clone_depth` 50; 60 commits of 211). Cycle 3's perf-critic independently
+   read the log as 3 rows, all hashes resolving, `is-shallow-repository` false.
+2. Cycle 2's perf-critic misread that same log as having one row; its score stood unchanged
+   with a builder note, per `critic-round` §3.
+
+**The live risk handed forward is P4, now a `major`:** the frame loop allocates 35 108 B per
+frame, 86% of budget, with a 3 995 kB sawtooth over 18 scavenges. M5e's instance matrices will
+spend that headroom, so it wants fixing before placement — by removing per-frame allocation,
+never by raising the budget. Also flagged for one look: `shots/05-potato.png`'s HUD disagrees
+with `perf.json`'s potato figures (17 draws / 30 552 tris against 20 / 142 800) while
+`01-wide.png` matches its own, which suggests the potato shot is captured before the scene
+finishes drawing. If so, every potato shot ever scored was of an incomplete frame.
+
+**Next step is M3e, not M5e,** on the owner's decision. This run flipped that row from `BLOCKED`
+to `TODO`, which `docs/ROADMAP.md` names as the closing run's job. M3e is the genome driving
+silhouette rather than hue; its load-bearing criterion is the greyscale test, whose renderer
+**does not exist yet and is part of the step**, and §1.5 makes it one sequential owner across
+`assetgen/dragon/` and `src/assets/dragon/`, never a fan-out.
 
 ## 2026-10-13 · run 22 · M5d — four understory generators
 

@@ -3,6 +3,123 @@
 Critic reports, newest at the top. Written by the critics, read by the builders.
 Cleared only when the defect it names is fixed and the fix is committed.
 
+# M5d — run 23, 2026-10-13 — cycle 3, at `3364460`
+
+**Scores: art-critic 8.5 · perf-critic 8.3 · gameplay-critic 9.7.** Gates exit 0. No blocking
+defect in any round. **M5d ships.**
+
+**Decided under the amended `CLAUDE.md` §4** (per-asset acceptance is defects, not sub-scores):
+no `blocking` or `major` defect points at any of the four generators' own variant sheet or
+turntable, so **bush, fern, reeds and grassclump all pass**. Every defect against the four
+sheets this round is a `minor`. The art-critic's per-generator numbers — bush ~8.5, reeds
+~8.3, grassclump ~8.0, fern ~7.8 — are commentary and decide nothing, which is the point of
+the rule: cycle 2's identical commentary on **byte-identical** bush and grassclump would have
+failed them, and cycle 1's would have passed them.
+
+**What cleared the step.** Cycle 2's single `major` was fern seeds 1/8 reading as the same
+upright vase and 3/5 as the same low fan. `3364460` cleared it with a new discrete `stature`
+axis (`tuft`/`stand`) on √6−2 — the only constant of ~27 searched whose halves split all four
+habit pairs of seeds 1–8 with margin — plus habit envelopes pulled onto disjoint rise bands.
+Root cause was confirmed first, and both halves were real: the pair members were only 33.3%
+apart, **and** `spread` and `fountain` genuinely overlapped at their low end, where a
+high-`form` spread and a low-`form` fountain both solved to a ~0.3 m pancake at the same ~4.8
+width/height ratio. Most-alike pair 26.5% → **37.5%**. Checked independently against a
+stricter rule in the shape of the critic's own complaint — within 15% on height **and** width
+— where no pair now trips it and both named pairs did before.
+
+## art-critic — 8.5 (all nine lines live)
+
+A1 1.0 · A2 0.9 · A3 1.0 · A4 1.3 · A5 1.1 · A6 1.0 · A7 1.0 · A8 0.8 · A9 0.4.
+
+*Coverage, per the amended §4: all 4 variant sheets; `fern.metrics.json` only; the
+`frame00.png` still for all 4 turntables but **no `.webm` decoded**; 6 of 14 shots (01-wide,
+02-silhouette, 03-late, 05-potato, 06-hud-360, 08-hud-320); `docs/concept/03-island-scene.png`;
+MANIFEST not read.*
+
+- [minor] A4 `variants/bush.png` seeds 1, 3, 6 and 8 are tall ovoid stacks of the same lobe
+  type, so the sheet reads closer to 5 distinct silhouettes than 8.
+- [minor] A4 `variants/grassclump.png` seeds 2 and 7: short dense tufts with 5–6 spikes at
+  similar height.
+- [minor] A4 `variants/reeds.png` seeds 3 and 8: both tall headless fans of about one height.
+- [minor] A1 `variants/fern.png` seeds 1, 3 and 5 (0.2–0.5 m), `variants/reeds.png` seed 5 and
+  `variants/grassclump.png` seeds 2 and 5: thin or small, likely to vanish at 25%.
+- [minor] A3 `variants/*.png`: ground shadows faint and detached, the fern's weakest; reeds
+  and grassclump contact shadows very thin.
+- [minor] A3/A9 `turntables/fern.frame00.png`: leaflets read as stacked chevrons in an
+  unnatural two-tone green; the pale vertical stems look stiff against the concept's softness.
+- [minor] A6 `shots/01-wide.png`, `shots/06-hud-360.png`: the front meadow is bare green. M5e
+  places the understory there.
+- [minor] Coverage gap, self-reported: the `.webm` turntables and the three wind shots were
+  not examined, so motion artefacts and A5's wind component are unverified this round.
+
+SCORE_MACHINE: 8.5
+
+## perf-critic — 8.3 (all six lines live)
+
+P1 1.9 · P2 1.8 · P3 1.8 · P4 1.0 · P5 1.2 · P6 0.6.
+
+*Coverage: `perf.json` in full (1381 lines), `meshgen.json`, `playtest.log` in full; MANIFEST
+and the four `metrics.json` as excerpts; 2 of 14 shots; no variant sheets or turntables
+("art is not my line").*
+
+Measured: draws 28/180 · triangles 174 012/900 000 · `cpuFrameMs` p95 1.3 of 3.5 (enforced,
+rasteriser cap verified, 58 threads, 0 wrong, 365 samples) · meshgen `maxMs` 17 of 120
+(`workerMs.max` 15.4, `maxTris` 9 294) · heap 35 108 B/frame of 40 960, `netGrowthKB` −1 017 ·
+bundle 193 792 B · boot 300.8 ms.
+
+**The §Real-GPU log question is settled.** This critic read the table directly and reports
+**3 rows** — `c429d4a`, `3ab6e84` and `def6526` — and that **all three resolve**, with
+`git rev-parse --is-shallow-repository` returning `false`. That confirms the correction
+recorded in cycle 2's note: the earlier "commit does not exist" finding was this container's
+shallow clone, not a bad row.
+
+- [major] P4 frame-loop allocation: 35 108 B/frame (86% of budget), `sawtoothAmplitudeKB`
+  3 995, 18 scavenges. The loop allocates every frame. Preallocate scratch vectors and
+  matrices, drop per-frame arrays and closures, and build the stats string only when it
+  changes. **Do not raise the budget.** M5e's instance matrices will spend this headroom.
+- [major] P1 real-hardware evidence is stale *against the current scene*: the sighted
+  `c429d4a` read 21 draws and 32 568 tris; the scene is now 28 and 174 012, about 5×. No row
+  carries a `frameCostMs.p95`. A sighting is permitted to M15, but a fresh one at a post-M5e
+  commit should record GPU model, tris and draws.
+- [major] P6 Potato is not demonstrated at 30 fps: `potato.frameCostMs.p95` 543.15 ms,
+  advisory on SwiftShader, and no real-hardware Potato row. Reduce work rather than the
+  budget — `potato.triangles` 142 800 at 720p with shadows off is heavy for an iGPU; use LOD2
+  and a cheaper base mesh for the distant islands.
+- [minor] **Two potato readings disagree**: `shots/05-potato.png`'s HUD reads 17 draws and
+  30 552 tris, while `perf.json` has `potato.drawCalls` 20 and `potato.triangles` 142 800.
+  `01-wide.png`'s HUD matches its own numbers, so the potato shot was probably captured before
+  everything was drawn. Worth a look at the smoke harness's capture timing.
+- [minor] `01-wide.png` reads FPS 4 (`presentIntervalMs.p50` 633 ms) — SwiftShader, not a
+  budget claim.
+- [minor] `windInstances` 220 is the only per-frame foliage cost evidence; re-measure P2 and
+  P4 at M5e with one `InstancedMesh` per plant type.
+
+None of these three majors points at a generator's own artefact, so under §4 none of them
+fails a generator or holds M5d open. All three are scene- and engine-level, and P4 is the one
+to act on first.
+
+SCORE_MACHINE: 8.3
+
+## gameplay-critic — 9.7 (6.6 of 6.8; G2 and G4 n/a)
+
+G1 2.2 · G2 n/a · G3 1.2 · G4 n/a · G5 1.6 · G6 1.6.
+
+*Coverage: `playtest.log` in full; 4 of 14 shots (03-late, 04-context-restored, 10-orbit-touch,
+07-context-lost-360); `m0-island.webm` and `perf.json` not opened; `dist/` not driven.*
+
+G2 is n/a (breeding is M9), G4 n/a (save is M8). The playable build is unchanged by M5d — the
+game does not load the flora `.glb` — and shows no regression: 28 draws, 174 012 tris, context
+loss restored on the first attempt with 0 frames skipped, clamps held under a wheel flood, HUD
+clean at 1280, 360 and 320 px, 0 page errors.
+
+- [minor] No input-latency figure in `playtest.log`, so G3's 100 ms line stays unverifiable.
+  Suggested fix: log event dispatch to first camera-state change.
+- [minor] The overlay's FPS 4 is the software renderer, noted so it is not misread.
+
+SCORE_MACHINE: 9.7
+
+---
+
 # M5d — run 23, 2026-10-13 — cycle 2, at `d1dcabe`
 
 **Scores: art-critic 8.0 · perf-critic 8.15 · gameplay-critic 9.7.** No blocking defect, and

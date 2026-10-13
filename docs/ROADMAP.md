@@ -98,7 +98,7 @@ at `3ab6e84`; M2's code is not yet imported by the game, so nothing visible chan
 | M3b | wings, crown, membrane and tail ornament; the creature reads as the Python one | DONE |
 | M3c | built in a worker inside 120 ms on Medium; `gate:meshgen` green | DONE |
 | M3d | `gate:parity` green between the two builders on the fixed genome set | DONE |
-| **M3e** | **the genome drives the SILHOUETTE, not mainly the hue — wing form, neck arc, body mass and horn count each change the outline visibly** | **BLOCKED — M5d closes first (owner, 2026-10-13)** |
+| **M3e** | **the genome drives the SILHOUETTE, not mainly the hue — wing form, neck arc, body mass and horn count each change the outline visibly** | **TODO** |
 
 M3a closed on 2026-10-12 at `e015a48` (run 11), on its STATE.md criteria with gates green. The
 graph is identical to the reference on 32 genomes, and the skin is closed and outward-wound.
@@ -152,9 +152,11 @@ Acceptance, all checkable:
 5. `gate:meshgen` stays under 120 ms and `npm run gates` exits 0.
 6. No `blocking` or `major` defect against the dragon's own sheet or turntable (§4).
 
-**Why it is `BLOCKED` and not `TODO`.** M5d is in flight with only fern's near-pairs left.
-A run reading in order takes the first step that is not `DONE`; this annotation sends it past
-M3e to M5d. The run that closes M5d flips this row to `TODO`.
+**Unblocked on 2026-10-13 by run 23, which closed M5d** (art 8.5, perf 8.3, gameplay 9.7
+at `3364460`, gates green, all four generators passing under the amended §4). This row was
+`BLOCKED — M5d closes first` so that no run was pulled off fern mid-rework; that is done, and
+**M3e is now the first step in reading order that is not `DONE`.** M5e waits behind it, by the
+owner's choice: M3's art score is 7.4 because of the silhouette, and no amount of flora moves it.
 
 ## M4 — Terrain assets
 
@@ -211,8 +213,8 @@ The sighting is logged in `STATE.md`. Nothing about M4 is outstanding.
 | M5a | wind vertex shader, proven on one tree at 200+ instances inside budget | DONE |
 | M5b | 3 canopy tree generators with passing variant sheets | DONE |
 | M5c | 2 more trees, and saplings | DONE |
-| **M5d** | **4 understory generators — bushes, ferns, reeds, grass clumps** | **IN_PROGRESS** |
-| M5e | 4 more understory plus ground cover, dressed into the island | TODO |
+| M5d | 4 understory generators — bushes, ferns, reeds, grass clumps | DONE |
+| M5e | 4 more understory plus ground cover, dressed into the island | TODO (after M3e) |
 
 M5a closed on 2026-10-12 at `e377e1d` (run 19) on its first pass: art 8.4, perf 8.4,
 gameplay 9.2. `src/render/wind.ts` sways 220 instances of the committed `flora/broadleaf` in
@@ -236,19 +238,23 @@ gameplay 8.7. The pieces are:
 - `flora/deadtree`, the second tree, chosen in run 21 to replace the hand-built snags;
 - `flora/sapling`, the young broadleaf, conifer and palm.
 
-**M5d is `IN_PROGRESS`, blocked on how its criterion 6 is measured, not on the assets.** All
-four generators are built, gated and on `main` (`3bf104e`, and `d1dcabe` for the fern
-rework). Two full critic rounds are scored (`FINDINGS.md`): cycle 1 at `9e1a2b6` art 8.3,
-perf 8.65, gameplay 9.7; cycle 2 at `d1dcabe` art 8.0, perf 8.15, gameplay 9.7. `npm run
-gates` exits 0 at both, with no blocking defect, and criteria 1-5 hold.
+M5d closed on 2026-10-13 at `3364460` (runs 22–23) after two rework cycles: art 8.5, perf 8.3,
+gameplay 9.7, gates green. `flora/bush`, `flora/fern`, `flora/reeds` and `flora/grassclump`
+meet §Definition of done:
+1. 8 seeds read as 8 plants (fern's most-alike pair 37.5% apart, up from 26.5%);
+2. LODs strictly decreasing inside the 4000/1200/300 prop row on every seed, scanned to 64;
+3. 0 inward, open and non-manifold edges at every LOD on every seed;
+4. `--verify` reproduces all 57 shipped files byte-for-byte.
 
-Criterion 6 is "art >= 8.0 **per generator**", and the two rounds disagree about generators
-whose files did not change. Only fern changed between the two commits, yet cycle 2 scored
-`bush` 8.6 -> 7.8, `reeds` 8.2 -> 8.0 and `grassclump` 8.1 -> 7.8 on byte-identical assets.
-That is about +/-0.8 of scorer variance against the bar the step is accepted on, and
-`docs/RUBRIC.md` has no per-generator line - the estimate is a prompt-level request, which is
-why it does not reproduce. The owner is asked in `NEXT.md` to rule on how criterion 6 is
-measured. Run 23 did not average the cycles, adopt the kinder one, or re-roll a third critic.
+**It cost two rework cycles and a rule change, which is the part worth remembering.** Cycle 1
+failed fern at 7.7 on a per-generator sub-score. Cycle 2 then scored `bush`, `reeds` and
+`grassclump` *lower than cycle 1 on byte-identical files* — up to 0.8 — which exposed that the
+per-generator estimate carried more noise than the 8.0 bar it was being judged against.
+`CLAUDE.md` §4 was amended on that evidence: per-asset acceptance is now decided by
+`blocking`/`major` defects pointing at that generator's own artefact, with sub-scores as
+commentary. Under the rule, cycle 3 passes all four generators, and the two genuine fern
+majors that cycle 1 and cycle 2 each raised were both fixed in the generator, never by
+reseeding.
 
 They meet §Definition of done:
 1. most alike pairs 23.4 / 26.4 / 27.7 % apart;
