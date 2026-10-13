@@ -596,6 +596,8 @@ that its record lives here. This is that record.
 | 2026-10-10 | `c429d4a` | sighting | owner's machine, Chrome on Windows; GPU model not recorded | ~1365×610 browser window | auto-detected, not recorded | ~60 FPS sustained | PASS (ceiling only) |
 | 2026-10-12 | `3ab6e84` | sighting | owner's machine, Chrome on Windows; GPU model not recorded | ~1919×943 browser window (from the owner's screenshot) | default, `medium-equivalent` | ~60 FPS sustained | PASS (ceiling only) |
 | 2026-10-13 | `def6526` | sighting (meshgen) | owner's machine, Chrome on Windows; GPU model not recorded | ~1919×1030 browser window | default | not shown on `dragon.html` | PASS — see the M3 sighting note |
+| 2026-10-13 | `6b06392` | sighting | owner's machine, Chrome on Windows; GPU model not recorded | ~1919×943 browser window (owner's screenshot) | default (Medium-equivalent), shadows on | ~60 FPS on the HUD; DRAWS 28, TRIS 174 012, so the 220 wind-swayed trees are loaded | PASS (ceiling only) |
+| 2026-10-13 | `6b06392` | sighting | same machine and window | ~1919×943 | `?tier=potato` (shadows off) | ~60 FPS on the HUD; DRAWS 20, TRIS 142 800 | PASS (ceiling only), the first real-hardware Potato reading |
 
 **What that row does and does not establish.** The owner opened
 `https://vtpqui3009.github.io/dragonvein/` and read the overlay: build `v0.0.1+c429d4a`,

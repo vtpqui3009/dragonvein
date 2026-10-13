@@ -59,13 +59,14 @@ which is M3f's whole job.
 
 ## Open items that need the owner, not a run
 
-- **A verification-grade real-GPU row, and a Potato row** (M16 requires both). Run
-  `npm run gate:perf -- --real-gpu` on a GPU machine at 1920×1080, and once with
-  `?tier=potato`. Potato's 30 fps is still demonstrated nowhere: `potato.frameCostMs.p95` is
-  543 ms on SwiftShader, which is advisory. The three logged rows are all sightings, and the
-  newest frame-rate one predates a scene that is now ~5× the triangles it was measured at
-  (21 draws / 32 568 tris then, 28 / 174 012 now).
-
+- **A verification-grade real-GPU row is still owed before M16.** On 2026-10-13 the owner
+  logged two sightings at `6b06392`: ~60 FPS at Medium (28 draws, 174 012 triangles) and
+  ~60 FPS at Potato (20 draws, 142 800). They cover the current scene, including the first
+  real-hardware Potato reading. A sighting is a ceiling, not a p95. For the
+  verification-grade row, follow NEXT.md history: clone, `npm ci`,
+  `npx playwright install chromium`, `npm run build`, then `npm run gate:perf -- --real-gpu`,
+  and send back `artifacts/perf.json`. Recording the GPU model (`chrome://gpu`,
+  GL_RENDERER) would also help.
 - **The M3 design questions are now M3e's subject, not open questions.** The wings being
   upright flat sails, the far wing panel crossing the tail, and the head at ~1/8 of body
   length where the bible asks ~1/5 — the owner's 2026-10-13 decision answers "re-design in
