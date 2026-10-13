@@ -52,12 +52,23 @@ recurring question for this family.
 
 ---
 
-### Status at 02:46 UTC — handoff before the usage limit (owner request)
+### Status — generators on `main`, critics pending
 
-The asset-builder had written all four generators, but had not reported or verified them.
-To keep `main` green, they are **not** committed there. They are pushed unverified as branch
-`wip/m5d` (`c96ac94`). The next step is in NEXT.md: restore that snapshot, re-verify all
-four against the criteria above, gate, run the critics, and close out.
+- The asset-builder finished all four. Its unverified snapshot went to branch `wip/m5d`
+  meanwhile, as the owner asked, before the usage limit.
+- `npm run gates` exits 0.
+- `1cd78f5` adds per-sheet spacing to `render_all.py`. Its defaults are the old constants,
+  so the existing sheets are unchanged.
+- `3bf104e` adds the four generators.
+- Criteria 1–5 hold:
+  - LOD0 852–1752, within 4000/1200/300;
+  - 0 inward, open and non-manifold edges on every seed and LOD;
+  - `--verify` reproduces 57 files byte-for-byte;
+  - the probes pass (bush 27.0 %, fern 22.8 %, reeds 27.7 %, grassclump 30.4 %).
+- The fern's probe axis `curl` became `droop`. A low score (16.2 %) exposed that the frond
+  arch was not reaching the geometry; the generator was fixed first, then the axis changed.
+- Criterion 6, art per generator, waits on the critics.
+- `wip/m5d` is deleted.
 
 ---
 

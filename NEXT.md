@@ -10,8 +10,9 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-13** · at commit `d14bde0`, the last commit of run 21 that changed
-code. Run 22 is **in flight**. Nothing from it is on `main` except its acceptance criteria.
+Last updated: **2026-10-13** · at commit `3bf104e`, the last commit of run 22 that changed
+code. Run 22 is **in flight**: the generators are on `main` and gated, and the critics have
+not scored them yet.
 
 ---
 
@@ -19,39 +20,35 @@ code. Run 22 is **in flight**. Nothing from it is on `main` except its acceptanc
 
 **M5d — 4 understory generators: bushes, ferns, reeds, grass clumps** · `IN_PROGRESS` (run 22)
 
-M5c closed in run 21: art **8.35** (ancientgiant 8.1, deadtree 8.4, sapling 8.0), perf
-**8.9**, gameplay **8.7**. Run 22 wrote the M5d criteria into STATE.md (`d14bde0`):
-- the prop budget is **4000/1200/300**, the PERF_BUDGET row;
-- the generators are built one at a time.
+All four are built, verified and on `main`.
+- `1cd78f5` lets a generator's sheet set its own spacing (`gap`, `band`, `drop`). Existing
+  sheets are unchanged.
+- `3bf104e` adds `flora/{bush,fern,reeds,grassclump}`:
+  - prop budget 4000/1200/300, LOD0 852–1752;
+  - every seed has 0 inward, open and non-manifold edges;
+  - 57 files byte-reproducible.
 
-The asset-builder was mid-way through all four when this was written.
+`npm run gates` exits 0. All 19 probes pass: bush 27.0 %, fern 22.8 %, reeds 27.7 %,
+grassclump 30.4 %.
 
 ## The single next action
 
-**Resume M5d from the WIP snapshot. Do not start over.**
+**Run the M5d critic round on the frozen tree at `3bf104e`.** Do not rebuild.
+1. Run perf-critic alone, then art-critic and gameplay-critic in parallel. Ask art for a
+   per-generator estimate; each needs ≥ 8.0.
+2. Record the round in FINDINGS. If any generator is under 8.0, run a rework cycle on it.
+   Up to 3 cycles.
+3. Close out:
+   - ROADMAP: M5d `DONE`, M5e bold;
+   - STATE: run 22 result;
+   - archive run 20 and M5b;
+   - republish the evidence page.
 
-1. `git fetch origin wip/m5d`. Branch `wip/m5d` (`c96ac94`, on top of `d14bde0`) holds the
-   builder's **unverified** state:
-   - `assetgen/flora/{bush,fern,reeds,grassclump}.py` and their `.glb` files;
-   - `build_all.py` with the four registered;
-   - a `render_all.py` change;
-   - MANIFEST.
-
-   It is **not gated** and **not scored**, and `main` does not carry it.
-2. Check it out onto `main` with `git checkout origin/wip/m5d -- assetgen public/assets`.
-   Then re-verify every generator against the STATE.md run 22 criteria:
-   - the per-seed × LOD checks;
-   - `build_all --verify` and `--check`;
-   - render, and look at the sheets;
-   - `variant-probe` on all 19 generators;
-   - `check-assets`.
-3. **Review the `render_all.py` diff.** It is shared render code, so give it its own commit
-   and show that the existing sheets are unchanged.
-4. Finish the gate and critic loop: perf alone, then art and gameplay. Close out as usual,
-   then delete the `wip/m5d` branch.
-
-If only some of the four verify, commit those, split the remainder into a new step, and
-record the split in STATE.md.
+**Known weaknesses the critics may raise:**
+- bush seed 5 reads as a flat slab, and the blossoms use the UI-accent colour;
+- fern leaflets are a zigzag, and seeds 1 and 3 are both upright V shapes;
+- reeds seeds 3 and 8 are both headless stands;
+- grass seed heads look like small cattails.
 
 ## Open items that need the owner, not a run
 
