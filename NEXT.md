@@ -10,12 +10,9 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-13** · at commit `67941df`. **Run 26 is in flight on M3f**, in the
-owner's main session. It reuses run 25's criteria (STATE.md run 25). The sweep instrument
-and gene work are being built, and nothing is committed until gates are green. **Do not start
-M3f from a second session while this line stands.** Two runs pushing the same dragon
-builders will break `gate:parity`. If you find this file unchanged hours later with no
-`feat(dragon)` commit after `67941df`, run 26 died: take M3f from the top.
+Last updated: **2026-10-13** · at commit `61a228b`, the last commit of run 26 that changed
+code. The close-out commits that wrote this file follow it. Run 26 is **finished**, and
+nothing is in flight.
 
 ---
 
@@ -36,45 +33,49 @@ question into this file and waits for the owner to play it.
 
 ## Current step
 
-**M3f — neck arc, body mass and horn count push the outline until `dragon-greyscale.png`
-reads as eight creatures** · `TODO` (run 25 stopped before writing any code)
+**M5e — 4 more understory plus ground cover, dressed into the island** · `TODO`. It is the
+first step in reading order that is not `DONE`. M5 comes next, then M7, M8, M9, and then
+the playable checkpoint.
 
-**M3e closed** in run 24 after one rework cycle, at `8e5b5ba`. Last-pass scores: art **7.9**,
-perf **8.5**, gameplay **9.7**. All six criteria hold:
-- three wing forms derived from `wingFingers` and `wingShape`: sail G, spread A/B/E/F,
-  segmented C/D/H;
-- a lower gull-winged rest pose that reads as a pair in the sheet camera (cycle-1 major D1
-  fixed);
-- `dragon-greyscale.png`, `dragon-silhouette.json` and three turntables;
-- parity exact, meshgen ≤ 38.7 ms, gates green;
-- no blocking or major defect on the wings.
+**M3 the milestone is `DONE`** (run 26, at `61a228b`). M3f closed on its first pass: art
+**8.2**, perf **9.5**, gameplay **9.7**, with no blocking or major defect. M3 meets all three
+closing conditions: every step is `DONE`, the last pass is ≥ 8.0 everywhere, and the owner's
+dragon sighting is logged (§7).
 
-**M3 stays `IN_PROGRESS`.** Art is 7.9, and the major that remains is the shared body plan,
-which is M3f's whole job.
+What M3f delivered:
+- the body genes drive the outline. In `dragon-sweep.json`, every swept gene's low-vs-high
+  IoU is ≤ 0.79;
+- the sheet's mean pairwise IoU went from 0.632 to 0.523, and the most-alike pair from 0.785
+  to 0.677;
+- the height spread is 1.42×;
+- the greyscale sheet reads as eight individuals.
 
 ## The single next action
 
-**Take M3f.** Use the instruments M3e built (`node tools/dragon-sheet.mjs` after
-`npm run build`).
-- **Target the numbers.** `dragon-silhouette.json` has mean pairwise IoU 0.632, a range of
-  0.429–0.785 (A–G the most alike), area 6.50–7.77, height 3.42–4.18 and width 5.21–6.51.
-  Body proportions barely move (a spread of about 20 %). Write a target into the STATE.md
-  criteria before code, for example a lower mean IoU and a wider area and height spread,
-  plus the greyscale sheet read by eye.
-- **Find what to push.** neck arc, body mass, leg length, horn count and length, crest and
-  tail ornament are all genes in `docs/GENOME.md`. Find why their ranges barely reach the
-  outline: how strongly `builder.py` maps each gene to geometry. **Do not rewrite
-  GENOME.md** (§7). If a gene's range is wrong, say so in STATE.md and ask.
-- **One sequential owner** (the integrator) across `assetgen/dragon/` and
-  `src/assets/dragon/`. Regenerate the parity fixture. Keep meshgen ≤ 120 ms.
-- **Art-critic minors to take along:**
-  - wing hue clashes with the body (A, C, H, G), and F's body is near-black;
-  - the segmented near ribs read as skewers over the hind leg;
-  - the belly is black under the near wing on C and H;
-  - wing panels are flat-lit;
-  - the wings are small next to the concept.
-- **Gameplay advisory, for M9b:** the hard `wingShape` threshold at 0.5 flips the wing class,
-  so G (A×B, both spread) is a sail.
+**Take M5e** in `assetgen/flora/` and the island scene. This is **the first step that places
+generated assets into the game at scale**, so it crosses two directories. Use one sequential
+owner (the integrator), or an asset-builder first and then the integrator, never in parallel.
+- **What to place.** The four further understory generators from `docs/ASSET_PLAN.md`
+  §B2/§B3: flowering shrubs, ground cover, moss and fallen leaves, or the subset that fits.
+  Then dress the island with the existing flora and rocks.
+- **Check the size first.** Four generators plus dressing is two things. If it does not fit
+  in one run, split it: the generators first, then the dressing. Record the split in
+  STATE.md.
+- **The perf constraint that binds** (perf critic, M5b to M5d): heap headroom is about 2–4
+  draws, at `heap.bytesPerFrame` ~31–38 kB of 40 960. **Merge the plant kinds per LOD into a
+  shared instanced or batched draw.** Do not add one `InstancedMesh` per kind per LOD, and
+  never raise the budget. All the flora shares one vertex-colour material.
+- **Carry along:**
+  - the generated dead tree replaces the hand-built pale snags;
+  - the trunks render near-black in game, so check the ambient and normals on the instanced
+    material;
+  - the conifers stay rigid next to the swaying broadleaves.
+- **Dragon minors carried from M3f**, not blocking, for a later dragon step:
+  - wing hue clashes with the body (A, G, C, H), and F's body is near-black;
+  - the segmented ribs read as skewers over the hind leg;
+  - a black belly wedge under the near wing (C, H);
+  - the dragons are slimmer and longer-tailed than the bible's "chunky, front-heavy";
+  - G2 advisory: G shows little of parent B.
 
 ## Open items that need the owner, not a run
 
