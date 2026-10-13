@@ -22,6 +22,8 @@ from .builder import (
     # skeleton and appendages
     skeleton,
     add_limbs,
+    WING_FORMS,
+    wing_form,
     wing_nodes,
     add_wings,
     membrane,
@@ -46,6 +48,8 @@ __all__ = [
     "bez",
     "skeleton",
     "add_limbs",
+    "WING_FORMS",
+    "wing_form",
     "wing_nodes",
     "add_wings",
     "membrane",

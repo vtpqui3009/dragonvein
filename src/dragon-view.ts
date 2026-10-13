@@ -7,6 +7,16 @@
  *                                children of dragons on the sheet (see SHEET)
  *   dragon.html?view=turn&i=K    sheet dragon K alone, for a turntable; the page exposes
  *                                `__dragonView.setYaw(rad)` so a driver can step it
+ *   dragon.html?grey=1           the sheet with every colour removed: one neutral albedo on
+ *                                every part, the same lights, and the canvas desaturated, so
+ *                                only shape can tell the eight apart (M3e's greyscale test)
+ *   dragon.html?mask=1           the sheet as flat white silhouettes on black, no ground, no
+ *                                labels; `__dragonView.showOnly(k)` leaves one dragon in view,
+ *                                so tools/dragon-sheet.mjs can measure each outline at the
+ *                                sheet camera
+ *
+ * Every mode exposes `__dragonView.sheet`: each cell's label, gid, phenotype and wing form,
+ * which is what the silhouette numbers are compared against.
  *
  * The genome code is the one tests/genome.test.ts proves equal to assetgen/genome.py, and
  * the graph the one tests/dragon-graph.test.ts proves equal to the reference's.
@@ -16,8 +26,9 @@
  * the neutral studio grey the variant sheets use.
  */
 import * as THREE from 'three';
-import { breed, wild, type Element, type Genome } from './core/genome';
+import { GENES, breed, wild, type Element, type Genome, type Phenotype } from './core/genome';
 import { DragonMesher } from './assets/dragon/mesher';
+import { wingForm, type WingForm } from './assets/dragon/graph';
 
 /**
  * The sheet: six wild dragons, one per element, on seeds 1-6 taken in order (not picked),
@@ -51,6 +62,10 @@ for (const r of SHEET) genomes.push(r.op === 'wild' ? wild(r.seed, r.element) : 
 
 const params = new URLSearchParams(location.search);
 const turn = params.get('view') === 'turn';
+/** All colour removed: the greyscale sheet. */
+const grey = params.get('grey') === '1';
+/** Flat silhouettes for the outline numbers. Always the sheet camera. */
+const mask = !turn && params.get('mask') === '1';
 const pick = Math.min(Math.max(Number(params.get('i') ?? 0) | 0, 0), SHEET.length - 1);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -67,11 +82,23 @@ const scene = new THREE.Scene();
 // The ground fades into the backdrop instead of ending at a hard horizon line. The
 // backdrop is a fogged sphere, not `scene.background`: the background skips tone mapping
 // and fog does not, so the two greys met in a visible seam.
-scene.fog = new THREE.Fog(0x5d6063, turn ? 40 : 95, turn ? 95 : 140);
-scene.add(new THREE.Mesh(
-  new THREE.SphereGeometry(150, 24, 12),
-  new THREE.MeshBasicMaterial({ color: 0x5d6063, side: THREE.BackSide }),
-));
+if (mask) {
+  scene.background = new THREE.Color(0x000000);
+  document.body.style.background = '#000';
+} else {
+  scene.fog = new THREE.Fog(0x5d6063, turn ? 40 : 95, turn ? 95 : 140);
+  scene.add(new THREE.Mesh(
+    new THREE.SphereGeometry(150, 24, 12),
+    new THREE.MeshBasicMaterial({ color: 0x5d6063, side: THREE.BackSide }),
+  ));
+}
+// Greyscale: the lights keep their warm and cool tints, so the canvas is desaturated as well
+// as the albedo flattened. What is left is light and shape.
+// A filtered canvas is painted as its own layer, over the labels, unless they are lifted.
+if (grey) {
+  renderer.domElement.style.filter = 'grayscale(1)';
+  for (const id of ['labels', 'note']) document.getElementById(id)!.style.zIndex = '1';
+}
 
 const sun = new THREE.DirectionalLight(0xfff1e2, 2.55);
 sun.position.set(-14, 22, 16);
@@ -99,19 +126,23 @@ const ground = new THREE.Mesh(
 );
 ground.rotation.x = -Math.PI / 2;
 ground.receiveShadow = true;
-scene.add(ground);
+if (!mask) scene.add(ground);
 
 // One material per geometry group (src/assets/dragon/builder.ts MATERIAL_OF), with the
 // reference's roughness (builder.py `mats`): scale 0.38, membrane 0.50, horn 0.30. Under
 // three.js's lights 0.50 still put a glassy streak on the flat membranes, so the membrane
 // sits at 0.85 to read matte, as the reference's Cycles render does.
-const materials = [
-  new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.42, metalness: 0 }),
-  new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0 }),
-  new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0, flatShading: true }),
-];
+// The greyscale sheet keeps each material's roughness and shading but one neutral albedo
+// (sRGB 0.70) for all of them, eyes included. The mask is unlit white.
+const GREY_ALBEDO = 0xb3b3b3;
+const lit = (roughness: number, flatShading = false) => grey
+  ? new THREE.MeshStandardMaterial({ color: GREY_ALBEDO, roughness, metalness: 0, flatShading })
+  : new THREE.MeshStandardMaterial({ vertexColors: true, roughness, metalness: 0, flatShading });
+const materials: THREE.Material[] = mask
+  ? [0, 1, 2].map(() => new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, toneMapped: false }))
+  : [lit(0.42), lit(0.85), lit(0.32, true)];
 
-interface Placed { mesh: THREE.Mesh; label: HTMLDivElement; anchor: THREE.Vector3 }
+interface Placed { mesh: THREE.Mesh; label: HTMLDivElement; anchor: THREE.Vector3; cell: number }
 const placed: Placed[] = [];
 const labels = document.getElementById('labels')!;
 let tris = 0;
@@ -156,9 +187,10 @@ for (const [k, gi] of shown.entries()) {
   const el = gm.element[0] === gm.element[1] ? gm.element[0] : `${gm.element[0]} / ${gm.element[1]}`;
   const r = SHEET[gi]!;
   const origin = r.op === 'wild' ? `wild, seed ${r.seed}` : `child of ${SHEET[r.a]!.label} × ${SHEET[r.b]!.label}`;
-  label.innerHTML = `${r.label} · ${origin}<br><small>${el} · gen ${gm.generation} · ${gm.gid()}</small>`;
+  label.innerHTML = `${r.label} · ${origin}<br><small>${el} · gen ${gm.generation} · ${wingForm(gm.phenotype)} wings · ${gm.gid()}</small>`;
   labels.appendChild(label);
-  placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 3.4)) });
+  if (mask) label.style.display = 'none';
+  placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 3.4)), cell: gi });
 }
 const buildMs = performance.now() - t0;
 mesher.dispose();
@@ -190,7 +222,7 @@ const ext = turn ? 7 : 22;
 Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext, near: 1, far: 80 });
 sun.shadow.camera.updateProjectionMatrix();
 
-document.getElementById('note')!.textContent =
+document.getElementById('note')!.textContent = mask ? '' :
   `runtime dragons, built in a worker · ${shown.length} in ${buildMs.toFixed(0)} ms after a ${startupMs.toFixed(0)} ms warm-up · ${tris} tris`;
 
 function frame(): void {
@@ -200,7 +232,7 @@ function frame(): void {
     v.copy(turn ? new THREE.Vector3(0, 0, 0) : p.anchor).project(camera);
     p.label.style.left = `${((v.x + 1) / 2) * innerWidth}px`;
     p.label.style.top = `${((1 - v.y) / 2) * innerHeight + (turn ? 150 : 0)}px`;
-    p.label.style.display = turn ? 'none' : '';
+    p.label.style.display = turn || mask ? 'none' : '';
   }
 }
 
@@ -208,6 +240,12 @@ declare global {
   interface Window {
     __dragonView?: {
       ready: boolean; buildMs: number; buildTimes: number[]; startupMs: number; tris: number; setYaw(rad: number): void;
+      /** Every sheet cell, whichever are shown: label, gid, expressed genes. */
+      sheet: { label: string; gid: string; phenotype: Phenotype; wingForm: WingForm }[];
+      /** The gene table, name -> [lo, hi, kind], for telling which genes differ. */
+      genes: typeof GENES;
+      /** Leave only sheet cell k visible (all of them for null), and redraw. */
+      showOnly(k: number | null): void;
     };
   }
 }
@@ -219,6 +257,12 @@ window.__dragonView = {
   tris,
   setYaw(rad: number) {
     for (const p of placed) p.mesh.parent!.rotation.y = rad;
+    frame();
+  },
+  genes: GENES,
+  sheet: SHEET.map((r, i) => ({ label: r.label, gid: genomes[i]!.gid(), phenotype: { ...genomes[i]!.phenotype }, wingForm: wingForm(genomes[i]!.phenotype) })),
+  showOnly(k: number | null) {
+    for (const p of placed) p.mesh.visible = k === null || p.cell === k;
     frame();
   },
 };

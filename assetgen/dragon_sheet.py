@@ -61,7 +61,8 @@ def main():
         loc = (cell[0] - cx * math.cos(YAW), cell[1] - cx * math.sin(YAW), 0.0)
         D.place(gm, location=loc, rotz=YAW, name=f"d{k}")
         print(f"  {SHEET[k][0]} {gm.gid()} {gm.element} horns={int(p['hornCount'])} "
-              f"crest={int(p['crestType'])} spines={int(p['spineCount'])} tail={int(p['tailTip'])}", flush=True)
+              f"crest={int(p['crestType'])} spines={int(p['spineCount'])} tail={int(p['tailTip'])} "
+              f"wings={B.wing_form(p)} (fingers={int(p['wingFingers'])} shape={p['wingShape']:.3f})", flush=True)
     ground((0.36, 0.33, 0.33)); sky((0.36, 0.37, 0.38), (0.36, 0.37, 0.38), (0.36, 0.37, 0.38), 1.0); studio()
     aim_ortho(TARGET, 90 - ELEVATION_DEG, 0, 60, ORTHO_WIDTH)
     os.makedirs(os.path.dirname(OUT), exist_ok=True)

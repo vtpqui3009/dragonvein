@@ -17,6 +17,7 @@ genome.py, so this fixture and that one cannot describe different dragons.
 Stages:
 - `body`: skeleton + add_limbs (M3a).
 - `full`: skeleton, add_limbs, add_wings, add_crown, in place()'s order (M3b).
+- `wingForm`: the wing form `wing_form` derives from wingFingers and wingShape (M3e).
 - `placed`: the whole dragon as `place()` builds it, its bounding box over face vertices (M3d,
   for gate:parity).
 - `parts`: the pieces that are not skin graph (M3b). Each holds:
@@ -154,8 +155,9 @@ def main():
     data = {
         "builderSha256": sha256(os.path.join(HERE, "dragon", "builder.py")),
         "genomeSha256": sha256(os.path.join(HERE, "genome.py")),
-        "stages": ["body", "full", "parts", "placed"],
-        "graphs": [jsonable({"gid": gm.gid(), "body": body_graph(gm.phenotype),
+        "stages": ["body", "full", "parts", "placed", "wingForm"],
+        "graphs": [jsonable({"gid": gm.gid(), "wingForm": B.wing_form(gm.phenotype),
+                             "body": body_graph(gm.phenotype),
                              "full": full_graph(gm.phenotype), "parts": parts(gm.phenotype),
                              "placed": placed_bbox(gm)})
                    for gm in genomes],
@@ -164,8 +166,9 @@ def main():
         json.dump(data, fh, indent=1, sort_keys=True)
         fh.write("\n")
     nodes = [len(g["full"]["v"]) for g in data["graphs"]]
+    forms = {f: sum(g["wingForm"] == f for g in data["graphs"]) for f in B.WING_FORMS}
     print(f"wrote {os.path.relpath(OUT, REPO)}: {len(nodes)} genomes, full graphs of "
-          f"{min(nodes)}-{max(nodes)} nodes, builder.py {data['builderSha256'][:12]}")
+          f"{min(nodes)}-{max(nodes)} nodes, wing forms {forms}, builder.py {data['builderSha256'][:12]}")
 
 
 if __name__ == "__main__":

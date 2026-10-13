@@ -117,23 +117,62 @@ def add_limbs(g, idx, p):
                 g.chain(foot, [((fx+0.19, fy+0.17*a, 0.075), top_r*0.30),
                                ((fx+0.34, fy+0.27*a, 0.065), top_r*0.19)])
 
+# ------------------------------------------------------------------ wings
+# The wing FORM is derived from two existing genes, wingFingers and wingShape. It is not a
+# gene of its own (owner decision, 2026-10-13, STATE.md run 24), so the genome layout and
+# every gid are unchanged and breeding inherits the form through those two genes.
+#
+#   wingFingers <= 2           -> "sail":      two fingers stretch one flat panel with a
+#                                              straight trailing edge.
+#   else wingShape <  0.5      -> "spread":    broad, soaring: a bat wing, the membrane
+#                                              fanned between every finger, its trailing
+#                                              edge scalloped between the finger tips.
+#   else (wingShape >= 0.5)    -> "segmented": falcate, sprinting: a solid inner membrane on
+#                                              the arm, then one separate vane along each
+#                                              finger, with open gaps between the vanes.
+#
+# src/assets/dragon/graph.ts `wingForm` mirrors this rule; docs/fixtures/dragon-graphs.json
+# records the form per fixed genome, and tests/dragon-graph.test.ts holds the two equal.
+WING_FORMS=("sail","spread","segmented")
+
+def wing_form(p):
+    if int(p["wingFingers"])<=2: return "sail"
+    return "spread" if p["wingShape"]<0.5 else "segmented"
+
+WING_ROOT_Z=1.22
+
 def wing_nodes(p, s):
-    """Bone positions for one wing. Returns (arm, finger_tips)."""
+    """Bone positions for one wing. Returns (arm, finger_tips).
+
+    Every wing rests SPREAD: out to the side, in one plane that rises lift per unit outward
+    (a V of 8-40 degrees), never upright. wingDroop is the rest height (it sets lift),
+    wingSpan the bone extent, wingShape broad (short reach, deep chord, little sweep) to
+    falcate (long reach, narrow chord, swept-back tip). d is distance out from the midline.
+    No trig and no pow, so the TS port is exact."""
     WS,SH,DR,NF = p["wingSpan"],p["wingShape"],p["wingDroop"],int(p["wingFingers"])
     BL = p["bodyLength"]
-    drop = -0.85*DR
-    span = WS
-    # broad (SH=0) = short + wide ; falcate (SH=1) = long + narrow
-    out  = lerp(1.15, 0.80, SH) * span
-    up   = lerp(0.80, 1.35, SH) * span
-    arm=[((0.92*BL, 0.26*s, 1.22), 0.115*span),
-         ((0.30*BL, 1.00*out*s, 2.00*up+drop), 0.080*span),
-         ((-0.35*BL, 1.62*out*s, 2.58*up+drop), 0.055*span),
-         ((-0.92*BL, 2.10*out*s, 2.88*up+drop), 0.028*span)]
+    span  = WS
+    out   = lerp(1.00, 1.25, SH) * span      # lateral reach
+    chord = lerp(1.20, 0.75, SH) * span      # how far back the hand reaches
+    sweep = lerp(0.15, 0.70, SH)             # leading tip swept back, per unit of reach
+    lift  = lerp(0.84, 0.14, DR)             # rise per unit outward: wingDroop = rest height
+    def at(x, d): return (x, d*s, WING_ROOT_Z + lift*(d-0.26))
+    wd = 0.26+1.65*out                       # the wrist's reach
+    arm=[(at(0.92*BL, 0.26), 0.115*span),
+         (at(0.78*BL, 0.26+0.85*out), 0.080*span),
+         (at(0.62*BL, wd), 0.055*span),
+         (at(0.62*BL-1.30*sweep*out, wd+1.10*out), 0.028*span)]
+    # The fingers fan from the wrist, between the leading tip's direction (f = 0) and one
+    # pointing back past the hip (f = 1). A sail's tips sit on the straight chord between
+    # the two; the other forms bulge them outward so the hand is rounded.
+    lx,ld = -1.30*sweep*out, 1.10*out
+    rx,rd = -(1.25*BL+0.45*chord), -0.55*out
+    bulge = 0.0 if wing_form(p)=="sail" else 0.55
     tips=[]
     for k in range(NF):
         f=(k+1)/(NF+1)
-        tips.append(((-0.70-1.10*f)*BL, (2.05-0.55*f)*out*s, (2.20-0.80*f)*up+drop))
+        g=1.0+bulge*f*(1.0-f)
+        tips.append(at(0.62*BL+lerp(lx,rx,f)*g, wd+lerp(ld,rd,f)*g))
     return arm, tips
 
 def add_wings(g, idx, p):
@@ -146,18 +185,48 @@ def add_wings(g, idx, p):
             mid=((t[0]+w2[0])*0.51, (t[1]+w2[1])*0.5, (t[2]+w2[2])*0.5)
             g.chain(wrist, [(mid,0.042*p["wingSpan"]),(t,0.018*p["wingSpan"])])
 
+def _mix(a, b, t):
+    return (a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t)
+
+SCALLOP=((0.25,0.24),(0.50,0.32),(0.75,0.24))   # (along the edge, pulled toward the wrist)
+VANE=((0.04,0.00),(0.80,0.40),(0.40,0.50))      # (along the bone, across toward the next rib)
+
 def membrane_polys(p, s):
-    """The membrane before its modifiers: corner positions and faces. Pure math."""
+    """The membrane before its modifiers: corner positions and faces. Pure math.
+
+    Corners 0-3 are the arm (root, elbow, wrist, leading tip), then the finger tips, then
+    the two body anchors A1 (by the hip) and A2 (mid-flank); every form adds its own points
+    after those. The inner membrane (arm to flank) is the same in all three forms. Beyond
+    the wrist the hand is cut into "ribs" -- the leading tip, each finger tip, A1 -- and:
+      sail:      one wedge per rib pair, all meeting at the wrist: one straight-edged panel;
+      spread:    the same wedges, each trailing edge pulled in toward the wrist at three
+                 points (SCALLOP), so the edge between two finger tips is a scallop;
+      segmented: no wedges. Each rib but A1 carries its own vane: a quad from 4 % along the
+                 bone to the tip, reaching VANE's fraction of the way toward the next rib.
+                 The vanes share no corner with each other or the inner membrane."""
     arm,tips = wing_nodes(p,s)
     W0,W1,W2,W3 = [a[0] for a in arm]
     BL=p["bodyLength"]
-    A1,A2 = (-0.95*BL,0.40*s,1.05),(-0.20*BL,0.34*s,1.12)
+    A1,A2 = (-0.62*BL,0.20*s,1.04),(-0.15*BL,0.22*s,1.12)
     V=[W0,W1,W2,W3]+list(tips)+[A1,A2]
     nT=len(tips); iT=4; iA1=4+nT; iA2=iA1+1
     F=[(0,1,2,iA2),(iA2,2,iA1)]
-    F.append((2,3,iT))
-    for k in range(nT-1): F.append((2,iT+k,iT+k+1))
-    F.append((2,iT+nT-1,iA1))
+    ribs=[3]+[iT+k for k in range(nT)]+[iA1]
+    form=wing_form(p)
+    for a,b in zip(ribs[:-1],ribs[1:]):
+        if form=="sail":
+            F.append((2,a,b))
+        elif form=="spread":
+            prev=a
+            for t,pull in SCALLOP:
+                V.append(_mix(_mix(V[a],V[b],t),W2,pull))
+                F.append((2,prev,len(V)-1)); prev=len(V)-1
+            F.append((2,prev,b))
+        else:
+            q=[]
+            for u,w in VANE:
+                V.append(_mix(_mix(W2,V[a],u),_mix(W2,V[b],u),w)); q.append(len(V)-1)
+            F.append((q[0],a,q[1],q[2]))
     return V, F
 
 MEMBRANE_THICKNESS=0.034

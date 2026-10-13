@@ -160,7 +160,12 @@ function tessellate(v: Vec3[], faces: number[][], N: number): { pts: Weights[]; 
   return { pts, tris };
 }
 
-/** A wing membrane: Solidify at offset 0 around the polygon fan, tessellated, rim-closed. */
+/**
+ * A wing membrane: Solidify at offset 0 around its polygons, tessellated, rim-closed. The
+ * polygons are whichever the wing form makes (graph.ts `wingForm`): one fan for a sail, a
+ * scalloped fan for a spread wing, or an inner panel plus separate vanes for a segmented
+ * one. Vanes share no corner, so each comes out as its own closed slab.
+ */
 export function membraneMesh(poly: { v: Vec3[]; f: number[][] }, N = 3, thickness = MEMBRANE_THICKNESS): SkinMesh {
   const n = cornerNormals(poly.v, poly.f);
   const top = poly.v.map((p, i) => add(p, mul(n[i]!, thickness / 2)));

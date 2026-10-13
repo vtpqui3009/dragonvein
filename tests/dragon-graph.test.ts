@@ -20,7 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { breed, wild, type Element, type Genome } from '../src/core/genome';
-import { bodyGraph, fullGraph, membranePolys, ornamentParams, spikeParams } from '../src/assets/dragon/graph';
+import { WING_FORMS, bodyGraph, fullGraph, membranePolys, ornamentParams, spikeParams, wingForm } from '../src/assets/dragon/graph';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel: string) => readFileSync(path.join(ROOT, rel));
@@ -51,7 +51,7 @@ const fx = JSON.parse(read('docs/fixtures/dragon-graphs.json').toString('utf8'))
   builderSha256: string;
   genomeSha256: string;
   stages: string[];
-  graphs: { gid: string; body: GraphRec; full: Omit<GraphRec, 'idx' | 'points'>; parts: PartsRec }[];
+  graphs: { gid: string; wingForm: string; body: GraphRec; full: Omit<GraphRec, 'idx' | 'points'>; parts: PartsRec }[];
 };
 interface PartsRec {
   membrane: { side: number; v: number[][]; f: number[][] }[];
@@ -182,5 +182,16 @@ describe('the parts Blender builds from primitives: parameters match the referen
       expect(sameExactly(spikeParams(p), want.parts.spikes, 'spikes')).toBeNull();
       expect(sameExactly(ornamentParams(p), want.parts.ornament, 'ornament')).toBeNull();
     });
+  });
+});
+
+describe('the wing form: graph.ts wingForm agrees with builder.py wing_form (M3e)', () => {
+  const genomes = rebuild();
+  it('on every fixed genome', () => {
+    const got = genomes.map((g) => wingForm(g.phenotype));
+    expect(got).toEqual(fx.graphs.map((g) => g.wingForm));
+  });
+  it('and the fixed genomes exercise all three forms, so the membranes above cover each', () => {
+    expect(new Set(fx.graphs.map((g) => g.wingForm))).toEqual(new Set(WING_FORMS));
   });
 });
