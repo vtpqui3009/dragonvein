@@ -10,15 +10,18 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-13** · at commit `8e5b5ba`, the last commit of run 24 that changed
-code. The close-out commits that wrote this file follow it. Run 24 is **finished**.
+Last updated: **2026-10-13** · at commit `7e1e364`. Run 25 is **in flight** on M3f. Its
+acceptance criteria are on `main` (STATE.md run 25) and the integrator is building. If you
+are reading this after a cut-off, check `git log` for an `feat(dragon)` commit after
+`7e1e364`. If there is none, start M3f from the STATE.md run 25 criteria, in the order
+written there: instrument the sweep first, then strengthen the genes.
 
 ---
 
 ## Current step
 
 **M3f — neck arc, body mass and horn count push the outline until `dragon-greyscale.png`
-reads as eight creatures** · `TODO`
+reads as eight creatures** · `IN_PROGRESS` (run 25)
 
 **M3e closed** in run 24 after one rework cycle, at `8e5b5ba`. Last-pass scores: art **7.9**,
 perf **8.5**, gameplay **9.7**. All six criteria hold:
