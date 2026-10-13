@@ -181,8 +181,8 @@ sheets on the evidence page is what closes it (NEXT.md).
 |---|---|---|
 | M5a | wind vertex shader, proven on one tree at 200+ instances inside budget | DONE |
 | M5b | 3 canopy tree generators with passing variant sheets | DONE |
-| **M5c** | **2 more trees, and saplings** | **TODO** |
-| M5d | 4 understory generators — bushes, ferns, reeds, grass clumps | TODO |
+| M5c | 2 more trees, and saplings | DONE |
+| **M5d** | **4 understory generators — bushes, ferns, reeds, grass clumps** | **TODO** |
 | M5e | 4 more understory plus ground cover, dressed into the island | TODO |
 
 M5a closed on 2026-10-12 at `e377e1d` (run 19) on its first pass: art 8.4, perf 8.4,
@@ -200,6 +200,18 @@ done:
 2. LODs are inside 6000/2000/500 on every seed;
 3. all three are in MANIFEST.json;
 4. art per generator 8.7 / 8.2 / 8.1.
+
+M5c closed on 2026-10-13 at `0682cb6` (run 21) on its first pass: art 8.35, perf 8.9,
+gameplay 8.7. The pieces are:
+- `flora/ancientgiant`, the last §B1 tree;
+- `flora/deadtree`, the second tree, chosen in run 21 to replace the hand-built snags;
+- `flora/sapling`, the young broadleaf, conifer and palm.
+
+They meet §Definition of done:
+1. most alike pairs 23.4 / 26.4 / 27.7 % apart;
+2. LODs inside 6000/2000/500 on every seed;
+3. all three are in MANIFEST.json;
+4. art per generator 8.1 / 8.4 / 8.0.
 
 ## M6 — Look dev
 

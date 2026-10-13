@@ -5,6 +5,63 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M5c — run 21, 2026-10-13 — cycle 1, at `0682cb6`
+
+**Scores: art-critic 8.35 · perf-critic 8.9 · gameplay-critic 8.7.** No blocking or major
+defect. Art per generator: ancientgiant 8.1, deadtree 8.4, sapling 8.0. Every critic and
+every generator is ≥ 8.0, so **M5c ships** on its first pass.
+
+## perf-critic — 8.9 (all six lines)
+
+P1 1.8 · P2 1.8 · P3 1.8 · P4 1.5 · P5 1.2 · P6 0.8.
+
+- [minor] The per-seed LOD claim is not readable from an artefact, because MANIFEST counts
+  seed 1 only. The builder's scratch table puts ancientgiant's LOD0 at 4194–5900 over seeds
+  1–8. Record per-seed triangles in the metrics file.
+- [minor] The flora budget of 6000/2000/500 is not reconciled with PERF_BUDGET's prop row
+  of 4000/1200/300. ancientgiant is over the prop row at every LOD. Record the flora
+  allowance in docs/DECISIONS.md.
+- [minor, forward] Heap `bytesPerFrame 36496` of 40 960, and placement must instance per
+  LOD. The giant at LOD0 must be rare.
+- [minor, carried] There is no verification-grade real-GPU row and no Potato row.
+
+SCORE_MACHINE: 8.9
+
+## art-critic — 8.35 (all nine lines)
+
+A1 1.0 · A2 0.9 · A3 1.1 · A4 1.2 · A5 0.9 · A6 1.0 · A7 1.0 · A8 0.75 · A9 0.5.
+
+- [minor] A4 `variants/sapling.png`: seeds 2, 5 and 7 are one broadleaf
+  "balloon-on-stick" class, 1 and 4 one conifer class, and 3, 6 and 8 one palm class.
+- [minor] A4 `variants/ancientgiant.png`: seeds 1, 6 and 8 are upright domes, and 2 and 5
+  are wide-flat.
+- [minor] A4 `variants/deadtree.png`: seeds 3 and 4 share a Y-fork, and 2, 5 and 7 are short
+  stubs.
+- [minor] A5 deadtree seed 5: a "trousers" base. Seed 6 has a hole at the foot.
+- [minor] A5 sapling seeds 2, 5 and 7: the blobs sit on thin stems, and seed 7's trunk is a
+  hairline.
+- [minor] A1 deadtree seeds 1 and 8: the branch ends are needle-sharp pencil tips.
+- [minor] Identity: the ancient giant reads as a broadleaf variant, with no monumental cue
+  (girth, buttress, scale).
+- [minor] A2/A3: the dead tree is a flat, dim clay-brown, not the pale snag it replaces.
+- [minor] The sheet labels overlap the giant's root flares.
+- [minor, carried] A3: no contact ring. A6: the trees are unplaced. A8: LOD1 and LOD2 are
+  not rendered.
+
+SCORE_MACHINE: 8.35
+
+## gameplay-critic — 8.7 (G2, G4, G5 n/a)
+
+G1, G3 and G6 pass. The playable build is unchanged.
+
+- [minor] The new trees are not smoke-covered (M5e).
+- [minor] The ancient giant does not read as massive.
+- [minor] Deadtree seeds 2, 5 and 7, and sapling seeds 3 and 6, are similar.
+
+SCORE_MACHINE: 8.7
+
+---
+
 # M5b — run 20, 2026-10-13 — cycle 2, at `02a0495`
 
 **Scores: art-critic 8.55 · perf-critic 8.4 · gameplay-critic 8.8** (perf and gameplay carried
@@ -98,76 +155,6 @@ G1, G3 and G6 pass. The playable build is unchanged since M5a.
 - [observation] The trees are not placed, so they are untestable in the game loop.
 
 SCORE_MACHINE: 8.8
-
----
-
-# M5a — run 19, 2026-10-12 — cycle 1, at `e377e1d`
-
-**Scores: art-critic 8.4 · perf-critic 8.4 · gameplay-critic 9.2.** No blocking defect. All
-three are ≥ 8.0, so **M5a ships** on its first pass. Every criterion holds:
-- 220 instances;
-- 9 002 changed pixels between the two wind shots, 86.8 % of them on foliage;
-- draws 28, triangles 174 012;
-- heap within budget;
-- `cpuFrameMs.p95` 1.9.
-
-## perf-critic — 8.4 (all six lines)
-
-P1 1.5 · P2 1.8 · P3 1.8 · P4 1.3 · P5 1.2 · P6 0.8.
-
-- [major] P1: the real-GPU row (`3ab6e84`, 42 268 triangles) says nothing about a scene with
-  174 012 triangles and a vertex-shader patch. It needs a sighting at or after this commit.
-  That is for the owner.
-- [minor] There is no isolated cost for the wind, such as a run with wind off or with no
-  trees. If a real GPU shows pressure:
-  - LOD2 for the far trees;
-  - no wind on LOD2;
-  - no shadows past a radius.
-- [minor] P6: no real-hardware Potato figure. Potato still draws 142 800 triangles, so drop
-  the tree LOD on low tiers before M6.
-- [minor] P4: the margin depends on the idle correction (`uncorrectedBytesPerFrame 47146`).
-  Future props must not add draws.
-
-SCORE_MACHINE: 8.4
-
-## art-critic — 8.4 (all nine lines)
-
-A1 1.0 · A2 0.8 · A3 1.1 · A4 1.4 · A5 0.9 · A6 1.1 · A7 1.0 · A8 0.7 · A9 0.45.
-
-- [major → not this step] A5 `shots/01-wide.png`, x≈485 y≈345–400: "thin pale mauve
-  columns". These are the existing snags, dead trunks that are pale by design
-  (`src/main.ts` §snag). They predate M5a. Whether they read as poles is open for M5e.
-- [major → not this step] A5 `01-wide.png`, companion x≈360–510 y≈625–650 and x 690–790:
-  bushes and rocks hang past the rim. The companion dressing is unchanged by M5a, so this
-  predates it. Open for M5e.
-- [minor] A8/A3 `11-wind-a.png` 6× crop x440–640 y300–430: a thin orange rim-light fringe
-  on the canopy lobe edges.
-- [minor] A2: the generated trunks render near-black in game but brown on the sheet. Check
-  the ambient and normals on the instanced material.
-- [minor] A4: in-game, every tree is one seed and shares one canopy mass.
-- [minor] A6: the left oval companion is half bare deck.
-- [minor] A5: the sway is about 1 px at 720p, so it is restrained to the point of being
-  under-sold. The conifers stay rigid.
-- [minor, carried] AC7 haze: 17.2 % of the sky rows are over ΔE 12.
-- [minor] A9: no dragon in the frame.
-
-SCORE_MACHINE: 8.4
-
-## gameplay-critic — 9.2 (5.2 of 5.2; G2, G4, G5 n/a)
-
-G1 2.2 · G3 1.4 · G6 1.6.
-
-The critic's own probes of loading:
-- Trees that arrive late, during context loss, or not at all (404) all degrade gracefully.
-- Input works before the trees exist.
-
-Defects:
-- [minor] The trees pop in after the boot splash is removed (`src/main.ts:2410`).
-- [minor] A failed tree load shows only in `console.error`.
-- [minor] The frame where the trees arrive costs 4.4 ms of CPU, once, outside the gate
-  window.
-
-SCORE_MACHINE: 9.2
 
 ---
 

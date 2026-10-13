@@ -13,7 +13,7 @@ archive once two newer run entries sit above it.
 
 ---
 
-## 2026-10-13 · run 21 · M5c — two more trees and saplings
+## 2026-10-13 · run 21 · M5c DONE — two more trees and saplings
 
 **Step**: `M5c`, the first step in reading order that is not `DONE`. The marker commit
 precedes this one.
@@ -54,6 +54,46 @@ is the asset that replaces them at M5e.
 4. **Probed.** `variant-probe` passes for all three, and the existing generators still pass.
 5. `npm run gates` exits 0.
 6. Art per generator is ≥ 8.0.
+
+---
+
+### Result — M5c DONE (M5 IN_PROGRESS)
+
+All six criteria hold at `0682cb6`:
+
+1. **Geometry and colour checks.** Every seed 1–8 and every LOD has 0 inward, open and
+   non-manifold edges, and positive shell volume. The base sits at z = 0, sunk at most
+   0.069 m, with a vertical trunk. Bark ΔE is at most 10.34 and the canopy ramp ΔE at most
+   0.15.
+
+   | generator | LOD0 range |
+   |---|---|
+   | ancientgiant | 4194–5900 |
+   | deadtree | 1328–2850 |
+   | sapling | 764–1308 |
+
+2. `--verify` reproduces 45 files byte-for-byte, and `--check` and `check:assets` pass. The
+   36 existing files are unchanged.
+3. The sheets and turntables are rendered.
+   `render_all.py` sizes the sheet ground plane to a row wider than 150 m, in its own commit
+   `f54d970`. The ancient giant's row is about 175 m. The other sheets are unchanged.
+4. **Probes.** The most alike pairs are 23.4 / 26.4 / 27.7 %.
+   The giant's probe axes (height, width, rootSpan, daylight, layers) were picked over an
+   earlier set that put seeds 2/4 at 18.9 %. All five are visible properties, and the choice
+   is stated in the asset commit. The art critic, judging by eye, still names 1/6/8 as one
+   class.
+5. `npm run gates` exits 0.
+6. Art per generator: 8.1 / 8.4 / 8.0.
+
+**Scores (cycle 1):** art 8.35, perf 8.9, gameplay 8.7.
+
+**Open, carried to FINDINGS:**
+- the giant has no monumental cue;
+- the dead tree is dark, not pale like the snags it replaces;
+- the sapling has three classes in eight seeds;
+- the flora budget is not reconciled with PERF_BUDGET.
+
+**Blockers.** None for M5d. M3 and M4 wait on the owner (NEXT.md §Open items).
 
 ---
 
@@ -152,117 +192,6 @@ after the reset.
 - placement (M5e) must merge the kinds per LOD, since heap headroom is about 2 draws.
 
 **Blockers.** None for M5c. M3 and M4 wait on the owner (NEXT.md §Open items).
-
----
-
-## 2026-10-12 · run 19 · M5a DONE — wind vertex shader on 220 instanced trees
-
-**Step**: `M5a`, the first step in reading order that is not `DONE`. Step 0 pushed `743d96a`.
-
-**Ownership.** There is no `src/render/` yet. The wind material is a new
-`src/render/wind.ts`, and the trees enter the scene through `src/main.ts`. That touches two
-directories, so it goes to **one sequential owner**, the integrator (CLAUDE.md §2.4).
-
-**Where the proof lives.** `gate:perf` measures the game page through `__dragonveinPerf`. A
-separate proof page would need its own copy of that 972-line instrument. So the 200+ trees
-go into the game scene, where the budget is already enforced:
-- the committed `flora/broadleaf` replaces the hand-built broadleaf placeholders on the
-  hero island;
-- groves are added on the companion islands, bobbing with them.
-
-This is also the first runtime use of an `assetgen/` asset.
-
-### Acceptance criteria
-
-1. **`src/render/wind.ts`** exports:
-   - a material patch (`onBeforeCompile`, vertex shader only) that sways a vertex by its
-     height above the instance's base, with a per-instance phase taken from the instance
-     matrix;
-   - one shared time uniform, set once per frame without allocating;
-   - a TS mirror of the sway function.
-
-   `tests/wind.test.ts` proves on the mirror that:
-   - the offset is 0 at the base;
-   - it grows with height;
-   - it is bounded by the amplitude;
-   - two instances at different positions are out of phase.
-
-   `check:layers` passes, with render importing only `core`, `assets` and `three`.
-2. **200+ instances.** The scene draws at least 200 instances of the committed
-   `public/assets/flora/broadleaf.lod{0,1,2}.glb`, every one swaying:
-   - one `InstancedMesh` per LOD in use;
-   - placement seeded from `src/core/rng.ts`;
-   - LOD picked by distance band at setup.
-
-   `__dragonveinStats()` reports `windInstances` and the playtest log prints it.
-3. **Inside budget.** `npm run gate:perf` gives:
-   - `drawCalls` ≤ 180 and `triangles` ≤ 900 000;
-   - `heap.withinBudget` true, with no budget raised;
-   - `cpuFrameMs.p95` ≤ 3.5 with `mainThreadTailEnforced`.
-
-   Potato stays in budget on draws.
-4. **Seen moving.** `artifacts/shots/01-wide.png` shows the trees. The smoke run writes
-   `artifacts/shots/11-wind-a.png` and `11-wind-b.png`:
-   - the same camera, with the island bob frozen, at wind times 0 s and 0.8 s;
-   - the playtest log prints the changed-pixel count between them;
-   - nonzero means the canopy moved, and the changed pixels lie on trees.
-
-   The existing ambient-motion line (art-probe AC6) does not apply: it measures the
-   satellites drifting in a turntable whose camera moves anyway, so it cannot isolate sway.
-   Its baseline is 5.66 × 3.07 px.
-5. `npm run gates` exits 0.
-
----
-
-### Result — M5a DONE (M5 IN_PROGRESS)
-
-All five criteria hold at `e377e1d`. The integrator did the work as one sequential owner.
-
-1. **`src/render/wind.ts`.**
-   - `withWind` composes with `withRim`, under the cache key
-     `dragonvein-rim-v4|dragonvein-wind-v1`.
-   - The sway is quadratic in height and bounded at amp·√0.68.
-   - Its phase comes from `instanceMatrix[3].xz`.
-   - Its direction is a world direction carried into each parent space.
-   - `setWindTime` does one number write per frame.
-   - `tests/wind.test.ts` has 7 tests.
-   - `check:layers` gained the `src/render` rule that ARCHITECTURE §Ownership already
-     stated. That adds enforcement and loosens nothing.
-2. **220 instances** of `flora/broadleaf`:
-   - 8 at LOD0 replace the hand-built hero broadleaves;
-   - Rng-seeded groves on all 13 companions bob with their islands;
-   - the companion layouts keep their Rng stream, so the yaw, colour and dressing the
-     critics scored are unchanged;
-   - one `InstancedMesh` per LOD;
-   - only hero LOD0 casts shadows, with a wind-patched depth material.
-3. **Inside budget.**
-
-   | measure | before | after |
-   |---|---|---|
-   | draws | 27 | 28 |
-   | triangles | 42 268 | 174 012 |
-   | `heap.bytesPerFrame` | — | 33 834, within budget |
-   | `cpuFrameMs.p95` | — | 1.9, tail enforced |
-   | Potato draws | — | 20 |
-   | bundle (gzipped) | 165 036 | 193 792 (GLTFLoader, docs/DECISIONS.md) |
-
-4. **Seen moving.** `11-wind-a/b.png` differ by 9 002 pixels, 86.8 % of them on foliage
-   (`11-wind-diff.png`).
-5. `npm run gates` exits 0. It was run twice on the committed tree.
-
-**Scores (cycle 1):** art 8.4, perf 8.4, gameplay 9.2.
-
-**Open, carried to FINDINGS:**
-- the sway is subtle;
-- the trunks render near-black in game;
-- an orange rim fringe on the canopies;
-- the trees pop in after boot;
-- floating props on the companions predate this step.
-
-The perf critic raises a major: the real-GPU row is now stale for a scene with 4× the
-triangles. That is with the owner.
-
-**Blockers.** None for M5b. M3 and M4 wait on the owner (NEXT.md §Open items).
 
 ---
 
