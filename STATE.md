@@ -68,7 +68,7 @@ recurring question for this family.
 - The fern's probe axis `curl` became `droop`. A low score (16.2 %) exposed that the frond
   arch was not reaching the geometry; the generator was fixed first, then the axis changed.
 - Criterion 6, art per generator, waits on the critics.
-- `wip/m5d` is deleted.
+- `wip/m5d` is superseded by `main`, but is **not deleted**: the push that deletes it is refused by the remote ("remote end hung up"). The owner may delete it; nothing reads it.
 
 ---
 
