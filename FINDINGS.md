@@ -3,6 +3,42 @@
 Critic reports, newest at the top. Written by the critics, read by the builders.
 Cleared only when the defect it names is fixed and the fix is committed.
 
+# M5e — run 27, 2026-10-13 — cycle 2, at `ea77a4f`
+
+**Scores: art-critic 8.2 · perf-critic 9.5 · gameplay-critic 8.5** (perf and gameplay carried from
+cycle 1). The rework changed only `flora/{moss,lichen,fallenleaves}` and their `.glb` files,
+none of them placed in the game, and the gates were re-run green. **No blocking or major
+defect on any of the four generators**, so **M5e ships**.
+
+## art-critic — 8.2 (all nine lines)
+
+A1 1.0 · A2 0.85 · A3 0.95 · A4 1.25 · A5 1.0 · A6 1.0 · A7 0.95 · A8 0.75 · A9 0.45.
+
+Fixed since cycle 1:
+- **moss** now has 8 habits: hummock, scatter, clump, drape, mat, arc, ring and chain;
+- **lichen**'s colour-swap pairs are restructured: rosette, scales, crust, double and single
+  ring, cup-stalks, cup bed and thalli;
+- **fallenleaves**' stacking and the seed-8 sprig.
+
+Defects:
+- [minor] A4 moss 4/5 share the same flat-plate footprint class, but differ in height
+  (0.296 against 0.080) and internal structure.
+- [minor] A4 lichen 4/5: the same pale ring, single against double. This is the weakest pair.
+- [minor, tool] `tools/variant-probe.mjs` still credits the colour axes. Add a shape-only
+  distance.
+- [minor] A5 lichen 4/5: thin lens overlaps where the lobes cross.
+- [minor] A3/A9 moss: still a smooth lime "jelly" surface.
+- [minor] A1: moss spore stalks and fallenleaves petioles vanish at 25 %.
+- [minor] A8 lichen: 6–16 mm thick, so check z-fighting at M5f.
+- [minor] flowershrub, carried from cycle 1: seed 5 reads as popcorn and seed 8 sits on
+  sticks; 6/7 are close.
+- [minor, carried] LOD1 and LOD2 are never rendered, nothing is placed (M5f), and moss
+  seeds 3 and 8 are small.
+
+SCORE_MACHINE: 8.2
+
+---
+
 # M5e — run 27, 2026-10-13 — cycle 1, at `4310718`
 
 **Scores: art-critic 8.0 · perf-critic 9.5 · gameplay-critic 8.5.** No blocking defect. **Majors
@@ -130,109 +166,6 @@ and pinch, with 0 errors.
   shows both parents. Re-check across many pairs at M9b.
 
 SCORE_MACHINE: 9.5
-
----
-
-# M3e — run 24, 2026-10-13 — cycle 2, at `8e5b5ba`
-
-**Scores: art-critic 7.9 · perf-critic 8.5 · gameplay-critic 9.7.** Perf and gameplay are carried
-from cycle 1. The rework changed the wing pose in both builders and the viewer fill, and the
-gates were re-run green. Meshgen stays ≤ 38.7 ms. **No blocking or major defect points at the
-wings, and D1 is fixed**, so M3e's criterion 6 holds and **M3e closes** (CLAUDE.md §4: per-step
-acceptance by defects). **M3 the milestone stays `IN_PROGRESS`**: art is 7.9, and the
-remaining major (the shared body plan) is M3f's.
-
-## art-critic — 7.9 (all nine lines)
-
-A1 1.0 · A2 0.7 · A3 0.9 · A4 1.3 · A5 0.95 · A6 1.0 · A7 0.9 · A8 0.7 · A9 0.45.
-
-**Fixed since cycle 1:**
-- D1, the pair reading as one upright wing;
-- spread and sail looking alike;
-- E's tip over A's caption, and D touching the top edge;
-- D's black near-wing slab;
-- the missing spread and segmented turntables.
-
-**Largely fixed:** the near wing over the tail root. **Partly fixed:** the black belly (C and H
-remain).
-
-**Defects:**
-- [major, M3f, not charged to M3e] A4: the eight share one body plan. `dragon-silhouette.json`
-  has mean IoU 0.632 (0.429–0.785, A–G the most alike). Area, height and width spread about
-  20 %.
-- [minor] m1, A1/A9: in the sheet camera the far wing still reads steep on D, E and F, from
-  foreshortening. It is near-horizontal in the turntable back views.
-- [minor] m2, A5: on C, D and H the segmented near-wing rib fans overlap the hind thigh and
-  read as skewers.
-- [minor] m3, A2: the wing hue clashes with the body (A, C, H, G), and F's body is near-black.
-- [minor] m4, A1: the wings have low value contrast against the ground in
-  `dragon-greyscale.png`.
-- [minor] m5, A9: the wings are smaller and flatter than the concept's raised bat wings.
-- [minor] m6, A3: the wing panels are flat-lit and read as cutout planes.
-- [minor, carried] m7, A6: no dragon in any scene shot.
-
-SCORE_MACHINE: 7.9
-
----
-
-# M3e — run 24, 2026-10-13 — cycle 1, at `4581db2`
-
-**Scores: art-critic 7.8 · perf-critic 8.5 · gameplay-critic 9.7.** No blocking defect. **One
-major defect points at the wings (D1)**, so criterion 6 fails (CLAUDE.md §4: acceptance is
-decided by defects). The step goes to rework cycle 2.
-
-## perf-critic — 8.5 (all six lines)
-
-P1 1.8 · P2 1.8 · P3 1.8 · P4 1.3 · P5 1.2 · P6 0.6.
-
-- [minor] No dragon is in the frame-cost scene, so the runtime cost of the wings in the
-  render loop is unmeasured. When dragons are placed, merge each one's meshes into a single
-  draw.
-- [minor] Meshgen `startupMs 107.6` is 89.7 % of 120, including worker boot. The worst
-  per-dragon round trip went from 27.3 to 35.8 ms (+31 %), probably from the wing segments.
-- [minor] P4 heap is 89 % of budget. Dragons in the scene must not add draws.
-- [minor, carried] No real-hardware verification and no Potato row.
-
-SCORE_MACHINE: 8.5
-
-## art-critic — 7.8 (all nine lines)
-
-A1 1.0 · A2 0.7 · A3 0.9 · A4 1.2 · A5 0.9 · A6 1.0 · A7 0.9 · A8 0.7 · A9 0.45.
-
-- **[major] D1, A9 and criterion 2, wings** (`variants/dragon-full.png`, cells A
-  (230–420, 140–330), E (290–420, 350–440), D and H (1440–1580, 95–200)).
-  - In the sheet camera, the far wing reads as one steep, near-vertical sail, 100–130 px
-    above the back.
-  - The near wing foreshortens to a sliver (A), a dark slab (E, D) or bristles (D, H).
-  - So the pair reads as one upright wing, which is the M3 defect.
-  - The geometry is a spread V in the turntable front and back frames. The sheet camera sits
-    where the near wing points at it.
-- [major, carried to M3f, not wing scope] A4: the eight share one body plan. IoU is A–G
-  0.811, C–H 0.772 and C–A 0.725.
-- [minor] A9/A1: spread and sail are hard to tell apart at 25 % (A against G).
-- [minor] A2: the wing hue clashes with the body (A yellow on red; D and H magenta on brown).
-  F's body is near-black.
-- [minor] A5: on F and H (also C and G) the near-wing membrane lies across the tail root.
-- [minor] A3: the belly crushes to black under the near wing on A and E.
-- [minor] A7/A5: E's far-wing tip overprints A's caption, and D's tip touches the top edge.
-- [minor] A8: D's near wing is a black faceted slab at the shoulder.
-- [minor] The turntable shows only slot 6, the sail form. Add spread and segmented
-  turntables.
-- [minor, carried] A6: no dragon in any scene shot.
-
-SCORE_MACHINE: 7.8
-
-## gameplay-critic — 9.7 (6.6 of 6.8; G2 and G4 n/a)
-
-G1 2.2 · G3 1.2 · G5 1.6 · G6 1.6.
-
-- [minor] G3: no input-latency figure is logged.
-- [minor, advisory G2] G = A × B has a sail wing although both parents are spread. The hard
-  `wingForm` threshold (`graph.ts:220`) flips the class on a one-step gene change. Consider a
-  blended form before G2 goes live at M9b.
-- [minor, advisory G2] H reads as C recoloured (IoU 0.772), with no ember hue.
-
-SCORE_MACHINE: 9.7
 
 ---
 

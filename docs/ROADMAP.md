@@ -215,8 +215,8 @@ The sighting is logged in `STATE.md`. Nothing about M4 is outstanding.
 | M5b | 3 canopy tree generators with passing variant sheets | DONE |
 | M5c | 2 more trees, and saplings | DONE |
 | M5d | 4 understory generators — bushes, ferns, reeds, grass clumps | DONE |
-| **M5e** | **4 more generators — flowering shrub, moss, lichen, fallen leaves — each with a passing variant sheet** | **TODO** |
-| M5f | dress the island with the generated flora and rocks, kinds merged per LOD into shared draws, inside budget | TODO |
+| M5e | 4 more generators — flowering shrub, moss, lichen, fallen leaves — each with a passing variant sheet | DONE |
+| **M5f** | **dress the island with the generated flora and rocks, kinds merged per LOD into shared draws, inside budget** | **TODO** |
 
 M5a closed on 2026-10-12 at `e377e1d` (run 19) on its first pass: art 8.4, perf 8.4,
 gameplay 9.2. `src/render/wind.ts` sways 220 instances of the committed `flora/broadleaf` in

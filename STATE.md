@@ -167,7 +167,7 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
-## 2026-10-13 · run 27 · M5e — flowering shrub and ground cover generators
+## 2026-10-13 · run 27 · M5e DONE — flowering shrub and ground cover generators
 
 **Step**: `M5e`, the first step in reading order that is not `DONE`. The marker commit
 precedes this one.
@@ -215,6 +215,49 @@ LOD0 should sit far below the cap.
 5. `npm run gates` exits 0.
 6. No blocking or major art defect against any of the four generators' sheets or turntables
    (§4).
+
+---
+
+### Result — M5e DONE (M5 IN_PROGRESS: M5f remains)
+
+All six criteria hold at `ea77a4f`:
+1. **Four generators** follow the M5d pattern:
+   - every seed and LOD has 0 inward, open and non-manifold edges;
+   - the base sits at z = 0;
+   - LODs strictly decrease within 4000/1200/300;
+   - ground-cover LOD0 is now under 1000 everywhere;
+   - the blossom and lichen colours are bible entries.
+2. `--verify` reproduces 69 files byte-for-byte, and `--check` and `check:assets` pass. The 57
+   existing files are unchanged.
+3. Sheets and turntables are rendered, with a high camera for the ground cover.
+4. The probe passes on all 23 generators.
+   Shape-only pair distances, without the colour axes:
+   - moss ≥ 28.5 % on every pair;
+   - lichen ≥ 35.1 %.
+5. `npm run gates` exits 0. It was run after each cycle.
+6. No blocking or major art defect remains on any of the four (cycle 2).
+
+**Scores.**
+
+| critic | cycle 1 at `4310718` | cycle 2 at `ea77a4f` |
+|---|---|---|
+| art | 8.0 (majors on moss and lichen: habit pairs told apart only by colour) | **8.2** |
+| perf | 9.5 | carried |
+| gameplay | 8.5 | carried |
+
+**Usage limit.** The run hit the limit at about 13:00 UTC with the builder finished but
+ungated. The work was snapshotted to `wip/m5e` and gated after the reset. `wip/m5e` is now
+superseded.
+
+**For M5f, the binding constraint** (perf, major forward): heap headroom is about 3 draws.
+Merge every flora kind per LOD into one batched draw. Ground cover casts no shadow. Never
+raise the budget.
+
+**Open, carried to FINDINGS:**
+- moss 4/5 and lichen 4/5 are the closest pairs;
+- moss reads as "jelly";
+- the probe credits colour axes;
+- lichen may z-fight once placed.
 
 ---
 
@@ -340,117 +383,6 @@ not rewritten (§7). If a range itself is wrong, it is raised here and the owner
 4. `gate:parity` is green with the regenerated fixture, `gate:meshgen` is ≤ 120 ms, and
    `npm run gates` exits 0.
 5. No blocking or major art defect against the dragon sheet or turntables (§4).
-
----
-
-## 2026-10-13 · run 24 · M3e DONE (M3 IN_PROGRESS) — wing forms, and the instruments that measure silhouette
-
-**Step**: `M3e`, the first step in reading order that is not `DONE`. The marker commit
-precedes this one.
-
-**Split first** (CLAUDE.md §4b.4). M3e as written has three parts:
-- a new render tool;
-- a wing-form change in two builders that must stay byte-exact under `gate:parity`;
-- an open-ended push on neck, mass and horns until eight greyscale silhouettes read as
-  eight creatures.
-
-That is more than one run. The seam NEXT.md proposed is the instruments and the wing forms
-first, then the silhouette push measured by them:
-- **M3e (this run):** the greyscale sheet, the outline numbers, and the three wing forms
-  (criteria 1, 4 and 5 of the old M3e, plus the instruments for criteria 2 and 3).
-- **M3f:** neck arc, body mass and horn count pushed until the greyscale sheet reads as
-  eight creatures (old criteria 2, 3 and 6).
-
-**Owner decision, 2026-10-13 (asked this run).** The wing form is **derived from existing
-genes**: `wingFingers` (2–4) and `wingShape` (0–1). It is not a new gene, so
-`docs/GENOME.md` is unchanged. The genome layout, every gid and the Rng and genome parity
-vectors stay valid, and breeding inherits the form through the two genes.
-
-**Ownership**: one sequential owner, the integrator, across `assetgen/dragon/`,
-`src/assets/dragon/` and `tools/` (CLAUDE.md §2.4). Never a fan-out.
-
-### Acceptance criteria
-
-1. **Three wing forms, from the genome.**
-   - **sail**: the current single panel.
-   - **spread membrane**: a bat wing, spread out from the body, with a scalloped trailing
-     edge between the fingers.
-   - **segmented**: separate feather-like or finned vanes on the finger chains.
-
-   The form is a pure function of `wingFingers` and `wingShape`. It is written once in
-   `assetgen/dragon/builder.py` and mirrored in `src/assets/dragon/graph.ts`, and its rule
-   is stated in a comment in both. The 8-seed sheet `artifacts/variants/dragon-full.png`
-   (A–H) shows all three forms, and its `.json` lists each dragon's form.
-2. **Spread wings.** Every form rests spread outward from the body, not upright, and the far
-   wing does not cross the tail or belly in the sheet camera. This is the M3 art defect.
-3. **Greyscale sheet.** A tool writes `artifacts/variants/dragon-greyscale.png`: the same
-   eight, same cameras, all colour removed (flat albedo, lit), from the built game page. It
-   runs inside the existing dragon-sheet tool or alongside it.
-4. **Outline numbers.** The same tool writes `artifacts/variants/dragon-silhouette.json`.
-   For each of the eight it records the silhouette area, width, height and the IoU against
-   every other dragon, measured from a flat-colour mask render. It also records which genes
-   differ between each pair. This is the instrument M3f is judged by.
-5. **Parity.** `npm run gate:parity` stays green: the skin graphs are exact and the limb
-   anchors and box are within tolerance. `gate:meshgen` stays under 120 ms. `npm run gates`
-   exits 0.
-6. No `blocking` or `major` art defect against the dragon sheet or turntable that points at
-   the wings.
-
----
-
-### Result — M3e DONE; M3 IN_PROGRESS (M3f remains, art 7.9)
-
-All six criteria hold at `8e5b5ba`.
-
-1. **Three wing forms, derived from `wingFingers` and `wingShape`** (owner decision; no new
-   gene). The rule is `wing_form` in `builder.py`, mirrored by `wingForm` in `graph.ts`:
-   - `wingFingers ≤ 2` gives sail;
-   - otherwise `wingShape < 0.5` gives spread;
-   - otherwise segmented.
-
-   On the sheet: sail G, spread A/B/E/F, segmented C/D/H. Across the fixed set: 9 sail,
-   6 spread, 17 segmented.
-2. **A gull-winged rest pose.**
-   - The arm rises 8–22° and the hand tips down to −10°.
-   - The membrane cambers, and the anchors sit off the tail.
-   - Tests check that the far wing is off the tail and belly and that the near wing is off
-     the tail in the sheet camera.
-3. **`artifacts/variants/dragon-greyscale.png`**, through `?grey=1` in `src/dragon-view.ts`.
-4. **`artifacts/variants/dragon-silhouette.json`**, written by `tools/silhouette.mjs` through
-   `?mask=1`: area, width, height, IoU over 28 pairs, and the genes that differ.
-
-   | | mean IoU | range |
-   |---|---|---|
-   | baseline | 0.605 | — |
-   | cycle 1 | 0.602 | — |
-   | cycle 2 | 0.632 | 0.429–0.785 |
-
-5. **Gates.**
-   - Parity exact with the regenerated fixture; worst box gap 2.04 % of 3 %.
-   - meshgen worker max 34.7 ms, round trip 38.7 ms.
-   - `npm run gates` exits 0, with 1052 tests.
-6. **No blocking or major defect points at the wings** (art cycle 2).
-
-**Scores.**
-
-| critic | cycle 1 at `4581db2` | cycle 2 at `8e5b5ba` |
-|---|---|---|
-| art | 7.8 (major D1: the pair read as one upright wing in the sheet camera) | **7.9** (D1 fixed) |
-| perf | 8.5 | carried |
-| gameplay | 9.7 | carried |
-
-**Why M3 does not close.** Art is below 8.0. The remaining major is the shared body plan:
-area, height and width spread about 20 %, and the torso, tail and head outlines are
-interchangeable in greyscale. That is M3f.
-
-**Open, carried to FINDINGS:**
-- wing hue clashes with the body, and F's body is near-black;
-- the segmented rib fans read as skewers;
-- the wings are small and flat-lit;
-- the hard `wingShape` threshold (G2 advisory for M9b).
-
-**Blockers.** None for M3f. The owner's open item is the real-GPU verification row
-(NEXT.md).
 
 ---
 
