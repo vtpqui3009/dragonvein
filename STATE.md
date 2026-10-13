@@ -13,6 +13,45 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-13 · run 22 · M5d — four understory generators
+
+**Step**: `M5d`, the first step in reading order that is not `DONE`. The marker commit
+precedes this one.
+
+**Ownership**: `assetgen/flora/` (asset-builder), sequential.
+
+**Size.** Four generators is more than any step has landed in one run. But understory meshes
+are far simpler than trees. Reeds and grass clumps in particular are a handful of blades.
+So the step is taken whole, built **one generator at a time, each pushed when it is
+green**. If the run cannot finish all four, the remainder is split off and recorded here.
+
+**Budget.** Understory is a prop and sits under the PERF_BUDGET §Other budgets prop row,
+4 000 / 1 200 / 300. That row is the documented one, and it settles the perf critic's
+recurring question for this family.
+
+### Acceptance criteria
+
+1. **`flora/bush`, `flora/fern`, `flora/reeds` and `flora/grassclump`** each follow the
+   M5b and M5c pattern:
+   - `plan(seed)`, with the main silhouette axis stratified on the seed and further axes on
+     different irrationals;
+   - the declarations;
+   - LOD0/1/2 strictly decreasing **on every seed 1–8**, within 4 000 / 1 200 / 300;
+   - 0 inward, open and non-manifold edges at every LOD on every seed;
+   - the base at z = 0, so `withWind` can sway it by height;
+   - colours on the foliage ramp, and on bark or the stem surface where present (ΔE ≤ 12 and
+     ≤ 3).
+2. **Pipeline.** All four are registered.
+   - `--verify` is byte-identical.
+   - `--check` and `check:assets` are OK.
+   - The existing 45 files are unchanged.
+3. **Seen.** `artifacts/variants/{bush,fern,reeds,grassclump}.png` and a turntable each.
+4. **Probed.** `variant-probe` passes for all four, and the existing generators still pass.
+5. `npm run gates` exits 0.
+6. Art per generator is ≥ 8.0.
+
+---
+
 ## 2026-10-13 · run 21 · M5c DONE — two more trees and saplings
 
 **Step**: `M5c`, the first step in reading order that is not `DONE`. The marker commit
@@ -484,4 +523,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-13T01:51Z
