@@ -10,15 +10,9 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-13** · at commit `5e76db6`. **Run 27 is in flight on M5e** in the
-owner's main session. Run 27 split the old M5e:
-- **M5e** is four generators: flowershrub, moss, lichen and fallenleaves;
-- **M5f** is dressing the island with merged draws.
-
-The criteria are in STATE.md run 27. An asset-builder is building in `assetgen/flora/`, and
-nothing lands until the gates are green. **Do not start M5e from a second session while this
-line stands.** If there is no `asset(flora)` commit after `5e76db6` hours later, run 27 died.
-Take M5e from the STATE.md run 27 criteria.
+Last updated: **2026-10-13** · at commit `ea77a4f`, the last commit of run 27 that changed
+code. The close-out commits that wrote this file follow it. Run 27 is **finished**, and
+nothing is in flight.
 
 ---
 
@@ -39,49 +33,49 @@ question into this file and waits for the owner to play it.
 
 ## Current step
 
-**M5e — 4 more understory plus ground cover, dressed into the island** · `TODO`. It is the
-first step in reading order that is not `DONE`. M5 comes next, then M7, M8, M9, and then
-the playable checkpoint.
+**M5f — dress the island with the generated flora and rocks, kinds merged per LOD into
+shared draws, inside budget** · `TODO`. It is the first step in reading order that is not
+`DONE`. After M5f, M5 is complete, then comes M7.
 
-**M3 the milestone is `DONE`** (run 26, at `61a228b`). M3f closed on its first pass: art
-**8.2**, perf **9.5**, gameplay **9.5**, with no blocking or major defect. M3 meets all three
-closing conditions: every step is `DONE`, the last pass is ≥ 8.0 everywhere, and the owner's
-dragon sighting is logged (§7).
-
-What M3f delivered:
-- the body genes drive the outline. In `dragon-sweep.json`, every swept gene's low-vs-high
-  IoU is ≤ 0.79;
-- the sheet's mean pairwise IoU went from 0.632 to 0.523, and the most-alike pair from 0.785
-  to 0.677;
-- the height spread is 1.42×;
-- the greyscale sheet reads as eight individuals.
+**M5e closed** in run 27 after one rework cycle, at `ea77a4f`: art **8.2**, perf **9.5**,
+gameplay **8.5**. It added `flora/flowershrub`, `flora/moss`, `flora/lichen` and
+`flora/fallenleaves`. The cycle-1 majors on moss and lichen (same shape per habit pair,
+told apart only by colour) were fixed in the generators: each habit's two seeds now differ
+in structure.
 
 ## The single next action
 
-**Take M5e** in `assetgen/flora/` and the island scene. This is **the first step that places
-generated assets into the game at scale**, so it crosses two directories. Use one sequential
-owner (the integrator), or an asset-builder first and then the integrator, never in parallel.
-- **What to place.** The four further understory generators from `docs/ASSET_PLAN.md`
-  §B2/§B3: flowering shrubs, ground cover, moss and fallen leaves, or the subset that fits.
-  Then dress the island with the existing flora and rocks.
-- **Check the size first.** Four generators plus dressing is two things. If it does not fit
-  in one run, split it: the generators first, then the dressing. Record the split in
-  STATE.md.
-- **The perf constraint that binds** (perf critic, M5b to M5d): heap headroom is about 2–4
-  draws, at `heap.bytesPerFrame` ~31–38 kB of 40 960. **Merge the plant kinds per LOD into a
-  shared instanced or batched draw.** Do not add one `InstancedMesh` per kind per LOD, and
-  never raise the budget. All the flora shares one vertex-colour material.
-- **Carry along:**
-  - the generated dead tree replaces the hand-built pale snags;
-  - the trunks render near-black in game, so check the ambient and normals on the instanced
-    material;
-  - the conifers stay rigid next to the swaying broadleaves.
-- **Dragon minors carried from M3f**, not blocking, for a later dragon step:
-  - wing hue clashes with the body (A, G, C, H), and F's body is near-black;
-  - the segmented ribs read as skewers over the hind leg;
-  - a black belly wedge under the near wing (C, H);
-  - the dragons are slimmer and longer-tailed than the bible's "chunky, front-heavy";
-  - G2 advisory: G shows little of parent B.
+**Take M5f.** It is the first time generated assets dress the game at scale. It crosses
+`src/main.ts`, `src/render/` and possibly `tools/`, so use **one sequential owner (the
+integrator)**.
+
+**The constraint that binds** (perf critic, M5e cycle 1, major forward-looking):
+- Heap-churn headroom is **5 728 B**, about **3 draws** (`heap.bytesPerFrame 35232` of
+  40 960, ~1.8 kB per draw).
+- Four kinds × 3 LODs placed separately would come to about 57 kB per frame and fail
+  `gate:perf`. P2's limit of 180 draws will not catch it; the heap gate will.
+- **Merge every flora kind into one batched or merged draw per LOD**, for example
+  `BatchedMesh`, or one `InstancedMesh` over a merged variant atlas. That covers the trees,
+  understory and ground cover, which all share the vertex-colour material.
+- Ground cover casts **no shadow** and sits mostly at LOD1/2, with a tight LOD0 radius.
+- Wind stays in the vertex shader (`src/render/wind.ts`). There are no per-frame matrix
+  rewrites.
+- **Never raise a budget.**
+
+**What to place:**
+- the generated `flora/deadtree` replaces the hand-built pale snags;
+- trees, understory, flowershrub, moss, lichen and fallen leaves on the hero island;
+- rocks from the M4 generators.
+
+Keep the frame readable, not a green wall.
+
+**Checks the critics asked for:**
+- a smoke check that the placed instances are present, by count per kind;
+- lichen z-fighting against ground and rock;
+- the trunks rendered near-black in game (check ambient and normals);
+- moss seeds 3 and 8, which may read as debris.
+
+**Re-measure `gate:perf` before and after.**
 
 ## Open items that need the owner, not a run
 
