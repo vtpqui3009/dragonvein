@@ -91,6 +91,61 @@
         }
       }
     },
+    "flora/bush": {
+      "script": "assetgen/flora/bush.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "bark": "#4a3b2f",
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a",
+        "bloomWarm": "#ff9044",
+        "bloomLight": "#ffd479"
+      },
+      "paletteRoles": {
+        "surfaces": [
+          "bark"
+        ],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ],
+          [
+            "bloomWarm",
+            "bloomLight",
+            "bloomLight"
+          ]
+        ],
+        "optional": [
+          "bloomWarm\u2192bloomLight\u2192bloomLight"
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/bush.lod0.glb",
+          "tris": 1244,
+          "sha256": "6f0f3e66bd581e72e4d56250069245386cc01305a3a9f69acec2af72daa93628"
+        },
+        "lod1": {
+          "file": "flora/bush.lod1.glb",
+          "tris": 624,
+          "sha256": "1cdd495006eb476d81ec74ea673573e96ef08a3f94c1ccc78bb0f18592224732"
+        },
+        "lod2": {
+          "file": "flora/bush.lod2.glb",
+          "tris": 216,
+          "sha256": "29e9436aeb2d335f0eeee1e62719d179886a5adbe42fdc8a8ca70bd763e6352b"
+        }
+      }
+    },
     "flora/conifer": {
       "script": "assetgen/flora/conifer.py",
       "family": "flora",
@@ -214,6 +269,138 @@
           "file": "flora/fanpalm.lod2.glb",
           "tris": 306,
           "sha256": "51bea56462f9dd7e5409267b829ca4e1c64779e9c15863025434ceacf3de05af"
+        }
+      }
+    },
+    "flora/fern": {
+      "script": "assetgen/flora/fern.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "bark": "#4a3b2f",
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a"
+      },
+      "paletteRoles": {
+        "surfaces": [
+          "bark"
+        ],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/fern.lod0.glb",
+          "tris": 1212,
+          "sha256": "94152743fc1e701f95b0a8e9ce01f6397953622916fb297b96267ae18ccee650"
+        },
+        "lod1": {
+          "file": "flora/fern.lod1.glb",
+          "tris": 456,
+          "sha256": "6b84c402ba69a2bedeb2cdd571c8241a0cda0406956372479962c6dbe7f41b65"
+        },
+        "lod2": {
+          "file": "flora/fern.lod2.glb",
+          "tris": 156,
+          "sha256": "136816ee940974ac24aad4058f421217a5d7600fd34a8b1cf36a0f51bab17e98"
+        }
+      }
+    },
+    "flora/grassclump": {
+      "script": "assetgen/flora/grassclump.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/grassclump.lod0.glb",
+          "tris": 1564,
+          "sha256": "991bb64bc323a565ec29e40380d782b6122e3ee54c8d08ba0f5a00fee38d3e53"
+        },
+        "lod1": {
+          "file": "flora/grassclump.lod1.glb",
+          "tris": 836,
+          "sha256": "ad3164d39ace08b59841e5666b16a345559092129a4569727b2ae2a3dc1c945e"
+        },
+        "lod2": {
+          "file": "flora/grassclump.lod2.glb",
+          "tris": 162,
+          "sha256": "6ca4ead625ff0cd4cfd6d43c2fb0212291c7afdb594498149fc14442c75ae2a4"
+        }
+      }
+    },
+    "flora/reeds": {
+      "script": "assetgen/flora/reeds.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "bark": "#4a3b2f",
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a"
+      },
+      "paletteRoles": {
+        "surfaces": [
+          "bark"
+        ],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ]
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/reeds.lod0.glb",
+          "tris": 984,
+          "sha256": "0fe48d027ef932503c8f8a6146556781979e2d55ae79e6e26da63f88de8203c8"
+        },
+        "lod1": {
+          "file": "flora/reeds.lod1.glb",
+          "tris": 424,
+          "sha256": "70eb5e7cbd0c5fa93295dd86a1ddc0da5d6cdf6c3ab717bf0db49eb9473f188f"
+        },
+        "lod2": {
+          "file": "flora/reeds.lod2.glb",
+          "tris": 152,
+          "sha256": "1b20e7e865447e65ca175391255b154e419e9b3b573e35bf1caa73b74bf25e5a"
         }
       }
     },

@@ -230,7 +230,9 @@ def variant_sheet(mod, out_path, quick=False):
     widths = [p[sheet["widthKey"]] for p in plans]
     tallest = max(p[sheet["topKey"]] for p in plans)
     lowest = min(p[sheet["bottomKey"]] for p in plans) if sheet["bottomKey"] else 0.0
-    pitch = max(widths) * 0.86 + 1.1
+    # `gap`, `band` and `drop` are the tree defaults (metres); a small plant's SHEET scales
+    # them down so a 0.5 m fern is not a speck in a row spaced for 10 m trees.
+    pitch = max(widths) * 0.86 + sheet.get("gap", 1.1)
     span = pitch * (len(VARIANT_SEEDS) - 1)
     if sheet["ground"]:
         # 150 m unless the row is wider than the plane can hold (ancientgiant's is ~175 m):
@@ -255,10 +257,10 @@ def variant_sheet(mod, out_path, quick=False):
     width = 1200 if quick else 2880
     tilt = math.radians(rx_deg)
     body = (tallest - lowest) * math.sin(tilt) + max(widths) * math.cos(tilt)
-    vert = body + 2.9                         # 1.9 under the row for labels, 1.0 over
+    vert = body + sheet.get("band", 2.9)      # 1.9 under the row for labels, 1.0 over
     height = int(round(width * vert / scale / 2.0)) * 2
     vert = scale * height / width
-    centre_z = (tallest + lowest) * 0.5 - 0.5
+    centre_z = (tallest + lowest) * 0.5 - sheet.get("drop", 0.5)
     cam, (rx, rz) = _aim_ortho((0.0, 0.0, centre_z), rx_deg, rz_deg, 180.0, scale)
 
     half_w = scale * 0.5
