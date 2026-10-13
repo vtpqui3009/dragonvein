@@ -517,3 +517,54 @@ def merge_clouds(lobes, target):
                     "lumps": main["lumps"], "bumps": main["bumps"],
                     "tone": main.get("tone", 1.0)})
     return out
+
+
+# ---------------------------------------------------------------- M5e additions
+# Additive only: nothing above this line changed, so earlier generators' bytes do not move.
+
+def ramp3(a, b, c, t):
+    """Quadratic Bezier through three linear-light stops: the probe's ramp curve for any
+    three palette entries (`foliage` is this with the canopy stops)."""
+    s = clamp01(t)
+    u = 1.0 - s
+    return tuple(a[k] * u * u + b[k] * 2.0 * s * u + c[k] * s * s for k in range(3))
+
+
+def lobed_patch(mesh, centre, sides, rings, radius_fn, top_fn, bottom_z, bottom_col):
+    """A closed, flat-bottomed thin solid over a star-shaped footprint: ground cover that
+    is never a zero-thickness plane.
+
+    `radius_fn(theta)` is the footprint's edge distance from `centre` (x, y) at angle theta;
+    `top_fn(f, theta)` returns (z, colour) for the top surface at fraction f (0 centre ..
+    1 edge) of that distance. The top is a pole plus `rings` rings, the edge is a short
+    wall down to `bottom_z`, and the bottom is one flat fan in `bottom_col(theta)`.
+    Outward-wound: the top faces up, the wall out, the bottom down."""
+    cx, cy = centre
+    z0, c0 = top_fn(0.0, 0.0)
+    pole = mesh.vert((cx, cy, z0), c0)
+    loops = []
+    for i in range(1, rings + 1):
+        f = i / rings
+        ring = []
+        for s in range(sides):
+            th = 2.0 * math.pi * s / sides
+            r = radius_fn(th) * f
+            z, col = top_fn(f, th)
+            ring.append(mesh.vert((cx + r * math.cos(th), cy + r * math.sin(th), z), col))
+        loops.append(ring)
+    base = []
+    for s in range(sides):
+        th = 2.0 * math.pi * s / sides
+        r = radius_fn(th)
+        base.append(mesh.vert((cx + r * math.cos(th), cy + r * math.sin(th), bottom_z),
+                              bottom_col(th)))
+    bpole = mesh.vert((cx, cy, bottom_z), bottom_col(0.0))
+    for s in range(sides):
+        t = (s + 1) % sides
+        mesh.face((pole, loops[0][s], loops[0][t]))
+        for j in range(rings - 1):
+            a, b = loops[j], loops[j + 1]
+            mesh.face((a[s], b[s], b[t], a[t]))
+        top = loops[-1]
+        mesh.face((top[s], base[s], base[t], top[t]))
+        mesh.face((bpole, base[t], base[s]))

@@ -227,6 +227,68 @@
         }
       }
     },
+    "flora/fallenleaves": {
+      "script": "assetgen/flora/fallenleaves.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a",
+        "leafDry": "#844e32",
+        "leafOrange": "#ff9044",
+        "leafGold": "#ffd479",
+        "bark": "#4a3b2f",
+        "twigGrey": "#5a4a40"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "leafDry",
+            "leafOrange",
+            "leafGold"
+          ],
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ],
+          [
+            "bark",
+            "twigGrey",
+            "twigGrey"
+          ]
+        ],
+        "optional": [
+          "leafDry\u2192leafOrange\u2192leafGold",
+          "canopyDark\u2192canopyMid\u2192canopyLight",
+          "bark\u2192twigGrey\u2192twigGrey"
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/fallenleaves.lod0.glb",
+          "tris": 836,
+          "sha256": "3a5685af0192a1f761249cc6cc3f2e289fabd6fc3b8b5dac8bb93ff7aba62b31"
+        },
+        "lod1": {
+          "file": "flora/fallenleaves.lod1.glb",
+          "tris": 532,
+          "sha256": "f8241834b5e8e18b0d3578413c0b7a16c1807ab8688c4b134c7fa5c4ab054448"
+        },
+        "lod2": {
+          "file": "flora/fallenleaves.lod2.glb",
+          "tris": 200,
+          "sha256": "835bf11b1b9c2e2b33363a3abb419050e3603b0ab0a6f98daec3201e10e3ab70"
+        }
+      }
+    },
     "flora/fanpalm": {
       "script": "assetgen/flora/fanpalm.py",
       "family": "flora",
@@ -317,6 +379,69 @@
         }
       }
     },
+    "flora/flowershrub": {
+      "script": "assetgen/flora/flowershrub.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "bark": "#4a3b2f",
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a",
+        "bloomWarm": "#ff9044",
+        "bloomLight": "#ffd479",
+        "bloomDeep": "#0a1c4f",
+        "bloomBlue": "#2d92ba"
+      },
+      "paletteRoles": {
+        "surfaces": [
+          "bark"
+        ],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ],
+          [
+            "bloomWarm",
+            "bloomLight",
+            "bloomLight"
+          ],
+          [
+            "bloomDeep",
+            "bloomBlue",
+            "bloomBlue"
+          ]
+        ],
+        "optional": [
+          "bloomWarm\u2192bloomLight\u2192bloomLight",
+          "bloomDeep\u2192bloomBlue\u2192bloomBlue"
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/flowershrub.lod0.glb",
+          "tris": 2312,
+          "sha256": "66bcc3ece45f7c7dd1277f97960d3a8640e99a586fc9d8e031f71db6b3bf310f"
+        },
+        "lod1": {
+          "file": "flora/flowershrub.lod1.glb",
+          "tris": 732,
+          "sha256": "d97bf3397ef24d1b942b7f1e5aec60f4cb1369cc1912c74f61b4c18b05358cb4"
+        },
+        "lod2": {
+          "file": "flora/flowershrub.lod2.glb",
+          "tris": 204,
+          "sha256": "c224ead841cdd74eed639b2623bf6b8561a12a349540dbbcf38353d23cda5e4e"
+        }
+      }
+    },
     "flora/grassclump": {
       "script": "assetgen/flora/grassclump.py",
       "family": "flora",
@@ -356,6 +481,111 @@
           "file": "flora/grassclump.lod2.glb",
           "tris": 162,
           "sha256": "6ca4ead625ff0cd4cfd6d43c2fb0212291c7afdb594498149fc14442c75ae2a4"
+        }
+      }
+    },
+    "flora/lichen": {
+      "script": "assetgen/flora/lichen.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "lichenBase": "#5a4a40",
+        "lichenGreen": "#8fd24a",
+        "lichenPale": "#ffd479",
+        "lichenRust": "#844e32",
+        "lichenOrange": "#ff9044"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "lichenBase",
+            "lichenGreen",
+            "lichenPale"
+          ],
+          [
+            "lichenRust",
+            "lichenOrange",
+            "lichenPale"
+          ]
+        ],
+        "optional": [
+          "lichenBase\u2192lichenGreen\u2192lichenPale",
+          "lichenRust\u2192lichenOrange\u2192lichenPale"
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/lichen.lod0.glb",
+          "tris": 768,
+          "sha256": "341c5c0795adb8a4e24d5f1553c3c4e51211998b73db0c22d9a4fef29a23738a"
+        },
+        "lod1": {
+          "file": "flora/lichen.lod1.glb",
+          "tris": 444,
+          "sha256": "833e8a86e79d459a9ccc1acfa9c0aa7e1a17f6aba800b01f72ea8f6b22704cc7"
+        },
+        "lod2": {
+          "file": "flora/lichen.lod2.glb",
+          "tris": 176,
+          "sha256": "344fcfc322cf48ea18104d5463ce0f1e138cdaa205a807a4052ea48d8cb18872"
+        }
+      }
+    },
+    "flora/moss": {
+      "script": "assetgen/flora/moss.py",
+      "family": "flora",
+      "seedForCommitted": 1,
+      "triBudget": {
+        "lod0": 4000,
+        "lod1": 1200,
+        "lod2": 300
+      },
+      "palette": {
+        "canopyDark": "#1e4a21",
+        "canopyMid": "#3f8a33",
+        "canopyLight": "#8fd24a",
+        "sporeStalk": "#844e32",
+        "sporeCapsule": "#ff9044"
+      },
+      "paletteRoles": {
+        "surfaces": [],
+        "ramps": [
+          [
+            "canopyDark",
+            "canopyMid",
+            "canopyLight"
+          ],
+          [
+            "sporeStalk",
+            "sporeCapsule",
+            "sporeCapsule"
+          ]
+        ],
+        "optional": [
+          "sporeStalk\u2192sporeCapsule\u2192sporeCapsule"
+        ]
+      },
+      "lods": {
+        "lod0": {
+          "file": "flora/moss.lod0.glb",
+          "tris": 720,
+          "sha256": "d8a8364137b2d1a08c9b624cc5d30e13696d1671922007a08a6edcb661808970"
+        },
+        "lod1": {
+          "file": "flora/moss.lod1.glb",
+          "tris": 480,
+          "sha256": "871d1a327f92e7f1b7596ec22a2d5031c617b366d814ab1bb4f82c7774c54272"
+        },
+        "lod2": {
+          "file": "flora/moss.lod2.glb",
+          "tris": 192,
+          "sha256": "6a6008e5263ff67551536084245857e134cc1d8b31b04718361b158eee4f4a13"
         }
       }
     },
