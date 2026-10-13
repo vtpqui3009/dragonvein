@@ -13,6 +13,49 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-13 · run 23 · M5d — the critic round
+
+**Step**: `M5d`, still the first step in reading order that is not `DONE`. Run 22 landed the
+four generators and criteria 1–5; **criterion 6, art ≥ 8.0 per generator, is all that is
+left**, so this run is the critic round and the close-out, not a build.
+
+**Ownership**: no builder unless a rework cycle needs one. Then `assetgen/flora/`
+(asset-builder), sequential.
+
+**Hand-off hazard, recorded because it cost this run time.** Run 22 was on the owner's
+second Pro account, so its session is invisible to this one's `list_sessions`. It pushed
+`1cd78f5`, `3bf104e`, `60d1796` and `1a617ef` between 03:01:31 and 03:02:07 UTC — after the
+dispatcher had checked the remote at 03:01 and after the `NEXT.md` this run was handed. The
+stamp in that `NEXT.md` (`3bf104e`, "run 22 is in flight") was therefore already stale on
+arrival. Its own §Current step and `STATE.md` both say the generators are on `main` and the
+critics are next, so that is what this run took.
+
+**Git, Step 0.** Local `main` was an unrelated root again (4 commits, root `00927cd`, against
+`origin/main`'s `cff41b6`) exactly as §Standing hazards predicts. `merge --ff-only` refused
+unrelated histories, and `checkout -B` and `checkout -b` were both refused by the permission
+layer. `git checkout origin/main` (detached) worked, as the hazard note says. **New detail
+worth the next run's time: `git checkout main` onto that stale root had already swapped the
+whole working tree to the pre-M1 project, so `NEXT.md`, `ops/` and `public/` simply vanished
+from disk.** Check `git log -1` before trusting any file. The Step 0 push succeeded
+(`1a617ef..3812835`) on the second attempt; the first was rejected non-fast-forward because
+run 22 pushed `1a617ef` in between, which is a race, not a credential fault.
+
+### Acceptance criteria
+
+1. **Artefacts at the scored commit.** `artifacts/` is git-ignored and arrives empty, so the
+   round cannot read run 22's renders. Regenerate at this run's HEAD:
+   - `artifacts/variants/{bush,fern,reeds,grassclump}.png` and a turntable each;
+   - `artifacts/perf.json`, `artifacts/playtest.log`, `artifacts/shots/` from `npm run gates`.
+2. **`npm run gates` exits 0** at the commit the critics score, with HEAD not moving after.
+3. **The round is recorded** in `FINDINGS.md` in the `critic-round` format, with a
+   `SCORE_MACHINE` line for each of the three critics and an art estimate **per generator**.
+4. **Decision.** All three critics ≥ 8.0, every generator ≥ 8.0, gates green and no blocking
+   defect → M5d `DONE`. Otherwise the deduction is traced to this step's code, fixed,
+   re-gated and re-scored, up to 3 cycles; if it still fails, commit what is green, leave
+   M5d `IN_PROGRESS` and record the blocker. No score is stretched to close it.
+5. **Closed out** per the `run-closeout` skill: `NEXT.md` rewritten first, this entry given
+   its result, the archive rotated, the evidence page republished to the same URL, pushed.
+
 ## 2026-10-13 · run 22 · M5d — four understory generators
 
 **Step**: `M5d`, the first step in reading order that is not `DONE`. The marker commit
@@ -543,4 +586,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-13T03:03:24Z
