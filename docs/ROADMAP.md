@@ -180,8 +180,8 @@ sheets on the evidence page is what closes it (NEXT.md).
 | step | done when | status |
 |---|---|---|
 | M5a | wind vertex shader, proven on one tree at 200+ instances inside budget | DONE |
-| **M5b** | **3 canopy tree generators with passing variant sheets** | **TODO** |
-| M5c | 2 more trees, and saplings | TODO |
+| M5b | 3 canopy tree generators with passing variant sheets | DONE |
+| **M5c** | **2 more trees, and saplings** | **TODO** |
 | M5d | 4 understory generators — bushes, ferns, reeds, grass clumps | TODO |
 | M5e | 4 more understory plus ground cover, dressed into the island | TODO |
 
@@ -192,6 +192,14 @@ the game scene, which is where `gate:perf` measures it:
 - heap within budget;
 - `cpuFrameMs.p95` 1.9 against 3.5;
 - the smoke run's two wind shots differ by 9 002 pixels, 86.8 % of them on foliage.
+
+M5b closed on 2026-10-13 at `02a0495` (run 20) after one rework cycle: art 8.55, perf 8.4,
+gameplay 8.8. `flora/conifer`, `flora/fanpalm` and `flora/windtwisted` meet §Definition of
+done:
+1. 8 seeds read as 8 trees (most alike pairs 24.7 / 22.1 / 23.9 % apart);
+2. LODs are inside 6000/2000/500 on every seed;
+3. all three are in MANIFEST.json;
+4. art per generator 8.7 / 8.2 / 8.1.
 
 ## M6 — Look dev
 

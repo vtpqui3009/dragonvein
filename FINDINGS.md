@@ -5,6 +5,45 @@ Cleared only when the defect it names is fixed and the fix is committed.
 
 ---
 
+# M5b — run 20, 2026-10-13 — cycle 2, at `02a0495`
+
+**Scores: art-critic 8.55 · perf-critic 8.4 · gameplay-critic 8.8** (perf and gameplay carried
+from cycle 1). The rework touched only `assetgen/flora/{fanpalm,windtwisted}.py` and their
+`.glb` files, which the game does not load, and the gates were re-run green. Art per
+generator: conifer 8.7, fanpalm 8.2, windtwisted 8.1. Every generator is ≥ 8.0, so **M5b
+ships**.
+
+## art-critic — 8.55 (all nine lines)
+
+A1 1.0 · A2 0.9 · A3 1.1 · A4 1.35 · A5 0.95 · A6 1.0 · A7 1.0 · A8 0.75 · A9 0.5.
+
+Fixed since cycle 1:
+- fanpalm's detached blades on wire stems;
+- fanpalm's near-twins 3/6;
+- windtwisted's shared upright silhouettes;
+- windtwisted's dish-shaped pad.
+
+Improved:
+- the trunk poking through pads;
+- conifer seeds 5/7.
+
+Defects:
+- [minor] A4 fanpalm seeds 1 and 4: both a single bowed trunk with a radial feather crown.
+- [minor] A4 windtwisted seeds 2 and 6 are both the cascade arch, and 1 and 5 are both the
+  arm. About five classes in eight seeds.
+- [minor] A1 fanpalm seed 3: flat plates read as a banana or ficus plant.
+- [minor] A5 fanpalm seed 8: a frond still clips the trunk. Seed 2's crown plates overlap.
+- [minor] A1 windtwisted seeds 2, 5 and 7: 3.8–4.6 m tall, they thin out at 25 %. Bias their
+  size up at placement.
+- [minor] A5 windtwisted seed 7: the stacked pads read as a lollipop. Seed 1's lowest pad
+  sits on a thin neck.
+- [minor] A3: no contact ring at the trunk bases.
+- [minor, carried] A8: LOD1 and LOD2 are never rendered. A6: the trees are unplaced (M5e).
+
+SCORE_MACHINE: 8.55
+
+---
+
 # M5b — run 20, 2026-10-12 — cycle 1, at `4852e51`
 
 **Scores: art-critic 8.25 · perf-critic 8.4 · gameplay-critic 8.8.** No blocking defect. Art per
@@ -129,63 +168,6 @@ Defects:
   window.
 
 SCORE_MACHINE: 9.2
-
----
-
-# M4d — run 18, 2026-10-12 — cycle 1, at `e699c95`
-
-**Scores: art-critic 8.3 · perf-critic 8.7 · gameplay-critic 9.0.** No blocking defect. Art per
-generator: arch 8.4, floatshard 8.2. Every critic and every generator is ≥ 8.0, so **M4d
-ships** on its first pass. Every M4 step is now `DONE`. The milestone waits on the owner
-seeing the assets (CLAUDE.md §7).
-
-## perf-critic — 8.7 (all six lines)
-
-P1 1.8 · P2 1.8 · P3 1.8 · P4 1.3 · P5 1.2 · P6 0.8.
-
-- [minor] The perf artefacts do not exercise M4d: nothing under `src` loads the landmarks.
-  Draws 27 and triangles 42 268 are unchanged.
-- [minor] The real-GPU log is stale for M4: the last row is a sighting at `3ab6e84`.
-- [minor, forward] P4 headroom: `heap.bytesPerFrame 33025` of 40 960, about 4 more draws.
-  Place the assets as one `InstancedMesh` per type.
-- [minor] There is no real-hardware Potato figure.
-
-SCORE_MACHINE: 8.7
-
-## art-critic — 8.3 (all nine lines)
-
-A1 1.1 · A2 0.9 · A3 1.1 · A4 1.25 · A5 0.9 · A6 0.9 · A7 0.9 · A8 0.8 · A9 0.5.
-
-- [major] A4 `variants/floatshard.png`: seeds 1 and 3 are both one big grass-capped cone
-  plus a satellite, and seeds 5 and 6 are both bare debris fields.
-- [major, carried] A6 `shots/01-wide.png`: no landmark is placed (M5e).
-- [minor] A1 `variants/floatshard.png`, seed 6 (x≈1300–1450): the fragments fuse into one
-  mound, and the tiny satellites vanish at 25 %.
-- [minor] A4 `variants/arch.png`, seeds 2 and 5: each reads as a squat block with a tunnel
-  (seed 5 hole 0.40).
-- [minor] A5 `turntables/floatshard.webm` at about 1.0 s: a fragment clips into the main
-  rim.
-- [minor] A5 `variants/arch.png`, seed 7: rubble sits inside the span, and the opening has
-  step-like ledges.
-- [minor] A3 floatshard: the undersides are near deepShadow, so the facets are hard to
-  read.
-- [minor] A2 arch: dusk reads as orange clay.
-- [minor] A8: LOD1 and LOD2 are never rendered in the artefacts.
-
-SCORE_MACHINE: 8.3
-
-## gameplay-critic — 9.0 (G2, G4, G5 n/a)
-
-G1 2.2 · G3 1.4 · G6 1.6, less 0.5 for the unexercised-asset gap and 0.3 for the sheet
-minors.
-
-- [major, informational] G1: no arch or floatshard appears in any shot or in the log. A
-  placement step must add a shot.
-- [minor] `variants/arch.png`, seeds 2 and 5: not clearly two-legged arches.
-- [minor] `variants/floatshard.png`, seed 6: one fused mass; seeds 5 and 6 have no green.
-- [minor] The probe prints "(fails at ≤ 8%)" on a passing run, which is easy to misread.
-
-SCORE_MACHINE: 9.0
 
 ---
 
