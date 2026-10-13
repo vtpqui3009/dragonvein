@@ -98,8 +98,8 @@ at `3ab6e84`; M2's code is not yet imported by the game, so nothing visible chan
 | M3b | wings, crown, membrane and tail ornament; the creature reads as the Python one | DONE |
 | M3c | built in a worker inside 120 ms on Medium; `gate:meshgen` green | DONE |
 | M3d | `gate:parity` green between the two builders on the fixed genome set | DONE |
-| **M3e** | **wing form from the genome (sail, spread membrane, segmented), spread at rest; the greyscale sheet and outline numbers that measure silhouette** | **TODO** |
-| M3f | neck arc, body mass and horn count push the outline until `dragon-greyscale.png` reads as eight creatures; no blocking or major defect on the dragon's sheet or turntable | TODO |
+| M3e | wing form from the genome (sail, spread membrane, segmented), spread at rest; the greyscale sheet and outline numbers that measure silhouette | DONE |
+| **M3f** | **neck arc, body mass and horn count push the outline until `dragon-greyscale.png` reads as eight creatures; no blocking or major defect on the dragon's sheet or turntable** | **TODO** |
 
 M3a closed on 2026-10-12 at `e015a48` (run 11), on its STATE.md criteria with gates green. The
 graph is identical to the reference on 32 genomes, and the skin is closed and outward-wound.
@@ -156,7 +156,7 @@ Acceptance, all checkable:
 **Unblocked on 2026-10-13 by run 23, which closed M5d** (art 8.5, perf 8.3, gameplay 9.7
 at `3364460`, gates green, all four generators passing under the amended §4). This row was
 `BLOCKED — M5d closes first` so that no run was pulled off fern mid-rework; that is done, and
-**M3e is now the first step in reading order that is not `DONE`.** M5e waits behind it, by the
+**M3e closed in run 24** at `8e5b5ba` after one rework cycle (last pass: art 7.9, perf 8.5, gameplay 9.7; no blocking or major wing defect). **M3f is now the first step in reading order that is not `DONE`.** M5e waits behind it, by the
 owner's choice: M3's art score is 7.4 because of the silhouette, and no amount of flora moves it.
 
 ## M4 — Terrain assets

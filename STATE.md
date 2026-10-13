@@ -127,7 +127,7 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
-## 2026-10-13 · run 24 · M3e — wing forms, and the instruments that measure silhouette
+## 2026-10-13 · run 24 · M3e DONE (M3 IN_PROGRESS) — wing forms, and the instruments that measure silhouette
 
 **Step**: `M3e`, the first step in reading order that is not `DONE`. The marker commit
 precedes this one.
@@ -179,6 +179,62 @@ vectors stay valid, and breeding inherits the form through the two genes.
    exits 0.
 6. No `blocking` or `major` art defect against the dragon sheet or turntable that points at
    the wings.
+
+---
+
+### Result — M3e DONE; M3 IN_PROGRESS (M3f remains, art 7.9)
+
+All six criteria hold at `8e5b5ba`.
+
+1. **Three wing forms, derived from `wingFingers` and `wingShape`** (owner decision; no new
+   gene). The rule is `wing_form` in `builder.py`, mirrored by `wingForm` in `graph.ts`:
+   - `wingFingers ≤ 2` gives sail;
+   - otherwise `wingShape < 0.5` gives spread;
+   - otherwise segmented.
+
+   On the sheet: sail G, spread A/B/E/F, segmented C/D/H. Across the fixed set: 9 sail,
+   6 spread, 17 segmented.
+2. **A gull-winged rest pose.**
+   - The arm rises 8–22° and the hand tips down to −10°.
+   - The membrane cambers, and the anchors sit off the tail.
+   - Tests check that the far wing is off the tail and belly and that the near wing is off
+     the tail in the sheet camera.
+3. **`artifacts/variants/dragon-greyscale.png`**, through `?grey=1` in `src/dragon-view.ts`.
+4. **`artifacts/variants/dragon-silhouette.json`**, written by `tools/silhouette.mjs` through
+   `?mask=1`: area, width, height, IoU over 28 pairs, and the genes that differ.
+
+   | | mean IoU | range |
+   |---|---|---|
+   | baseline | 0.605 | — |
+   | cycle 1 | 0.602 | — |
+   | cycle 2 | 0.632 | 0.429–0.785 |
+
+5. **Gates.**
+   - Parity exact with the regenerated fixture; worst box gap 2.04 % of 3 %.
+   - meshgen worker max 34.7 ms, round trip 38.7 ms.
+   - `npm run gates` exits 0, with 1052 tests.
+6. **No blocking or major defect points at the wings** (art cycle 2).
+
+**Scores.**
+
+| critic | cycle 1 at `4581db2` | cycle 2 at `8e5b5ba` |
+|---|---|---|
+| art | 7.8 (major D1: the pair read as one upright wing in the sheet camera) | **7.9** (D1 fixed) |
+| perf | 8.5 | carried |
+| gameplay | 9.7 | carried |
+
+**Why M3 does not close.** Art is below 8.0. The remaining major is the shared body plan:
+area, height and width spread about 20 %, and the torso, tail and head outlines are
+interchangeable in greyscale. That is M3f.
+
+**Open, carried to FINDINGS:**
+- wing hue clashes with the body, and F's body is near-black;
+- the segmented rib fans read as skewers;
+- the wings are small and flat-lit;
+- the hard `wingShape` threshold (G2 advisory for M9b).
+
+**Blockers.** None for M3f. The owner's open item is the real-GPU verification row
+(NEXT.md).
 
 ---
 
@@ -378,65 +434,6 @@ to `TODO`, which `docs/ROADMAP.md` names as the closing run's job. M3e is the ge
 silhouette rather than hue; its load-bearing criterion is the greyscale test, whose renderer
 **does not exist yet and is part of the step**, and §1.5 makes it one sequential owner across
 `assetgen/dragon/` and `src/assets/dragon/`, never a fan-out.
-
-## 2026-10-13 · run 22 · M5d — four understory generators
-
-**Step**: `M5d`, the first step in reading order that is not `DONE`. The marker commit
-precedes this one.
-
-**Ownership**: `assetgen/flora/` (asset-builder), sequential.
-
-**Size.** Four generators is more than any step has landed in one run. But understory meshes
-are far simpler than trees. Reeds and grass clumps in particular are a handful of blades.
-So the step is taken whole, built **one generator at a time, each pushed when it is
-green**. If the run cannot finish all four, the remainder is split off and recorded here.
-
-**Budget.** Understory is a prop and sits under the PERF_BUDGET §Other budgets prop row,
-4 000 / 1 200 / 300. That row is the documented one, and it settles the perf critic's
-recurring question for this family.
-
-### Acceptance criteria
-
-1. **`flora/bush`, `flora/fern`, `flora/reeds` and `flora/grassclump`** each follow the
-   M5b and M5c pattern:
-   - `plan(seed)`, with the main silhouette axis stratified on the seed and further axes on
-     different irrationals;
-   - the declarations;
-   - LOD0/1/2 strictly decreasing **on every seed 1–8**, within 4 000 / 1 200 / 300;
-   - 0 inward, open and non-manifold edges at every LOD on every seed;
-   - the base at z = 0, so `withWind` can sway it by height;
-   - colours on the foliage ramp, and on bark or the stem surface where present (ΔE ≤ 12 and
-     ≤ 3).
-2. **Pipeline.** All four are registered.
-   - `--verify` is byte-identical.
-   - `--check` and `check:assets` are OK.
-   - The existing 45 files are unchanged.
-3. **Seen.** `artifacts/variants/{bush,fern,reeds,grassclump}.png` and a turntable each.
-4. **Probed.** `variant-probe` passes for all four, and the existing generators still pass.
-5. `npm run gates` exits 0.
-6. Art per generator is ≥ 8.0.
-
----
-
-### Status — generators on `main`, critics pending
-
-- The asset-builder finished all four. Its unverified snapshot went to branch `wip/m5d`
-  meanwhile, as the owner asked, before the usage limit.
-- `npm run gates` exits 0.
-- `1cd78f5` adds per-sheet spacing to `render_all.py`. Its defaults are the old constants,
-  so the existing sheets are unchanged.
-- `3bf104e` adds the four generators.
-- Criteria 1–5 hold:
-  - LOD0 852–1752, within 4000/1200/300;
-  - 0 inward, open and non-manifold edges on every seed and LOD;
-  - `--verify` reproduces 57 files byte-for-byte;
-  - the probes pass (bush 27.0 %, fern 22.8 %, reeds 27.7 %, grassclump 30.4 %).
-- The fern's probe axis `curl` became `droop`. A low score (16.2 %) exposed that the frond
-  arch was not reaching the geometry; the generator was fixed first, then the axis changed.
-- Criterion 6, art per generator, waits on the critics.
-- `wip/m5d` is superseded by `main`, but is **not deleted**: the push that deletes it is refused by the remote ("remote end hung up"). The owner may delete it; nothing reads it.
-
----
 
 ## 2026-10-12 · decision · CLAUDE.md §1.5: parity compares the graph, not vertex counts
 

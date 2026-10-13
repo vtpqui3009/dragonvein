@@ -3,6 +3,48 @@
 Critic reports, newest at the top. Written by the critics, read by the builders.
 Cleared only when the defect it names is fixed and the fix is committed.
 
+# M3e — run 24, 2026-10-13 — cycle 2, at `8e5b5ba`
+
+**Scores: art-critic 7.9 · perf-critic 8.5 · gameplay-critic 9.7.** Perf and gameplay are carried
+from cycle 1. The rework changed the wing pose in both builders and the viewer fill, and the
+gates were re-run green. Meshgen stays ≤ 38.7 ms. **No blocking or major defect points at the
+wings, and D1 is fixed**, so M3e's criterion 6 holds and **M3e closes** (CLAUDE.md §4: per-step
+acceptance by defects). **M3 the milestone stays `IN_PROGRESS`**: art is 7.9, and the
+remaining major (the shared body plan) is M3f's.
+
+## art-critic — 7.9 (all nine lines)
+
+A1 1.0 · A2 0.7 · A3 0.9 · A4 1.3 · A5 0.95 · A6 1.0 · A7 0.9 · A8 0.7 · A9 0.45.
+
+**Fixed since cycle 1:**
+- D1, the pair reading as one upright wing;
+- spread and sail looking alike;
+- E's tip over A's caption, and D touching the top edge;
+- D's black near-wing slab;
+- the missing spread and segmented turntables.
+
+**Largely fixed:** the near wing over the tail root. **Partly fixed:** the black belly (C and H
+remain).
+
+**Defects:**
+- [major, M3f, not charged to M3e] A4: the eight share one body plan. `dragon-silhouette.json`
+  has mean IoU 0.632 (0.429–0.785, A–G the most alike). Area, height and width spread about
+  20 %.
+- [minor] m1, A1/A9: in the sheet camera the far wing still reads steep on D, E and F, from
+  foreshortening. It is near-horizontal in the turntable back views.
+- [minor] m2, A5: on C, D and H the segmented near-wing rib fans overlap the hind thigh and
+  read as skewers.
+- [minor] m3, A2: the wing hue clashes with the body (A, C, H, G), and F's body is near-black.
+- [minor] m4, A1: the wings have low value contrast against the ground in
+  `dragon-greyscale.png`.
+- [minor] m5, A9: the wings are smaller and flatter than the concept's raised bat wings.
+- [minor] m6, A3: the wing panels are flat-lit and read as cutout planes.
+- [minor, carried] m7, A6: no dragon in any scene shot.
+
+SCORE_MACHINE: 7.9
+
+---
+
 # M3e — run 24, 2026-10-13 — cycle 1, at `4581db2`
 
 **Scores: art-critic 7.8 · perf-critic 8.5 · gameplay-critic 9.7.** No blocking defect. **One
