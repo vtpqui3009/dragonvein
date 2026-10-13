@@ -14,6 +14,12 @@
  *                                labels; `__dragonView.showOnly(k)` leaves one dragon in view,
  *                                so tools/dragon-sheet.mjs can measure each outline at the
  *                                sheet camera
+ *   dragon.html?sweep=1          one dragon at a time as a flat white mask, built from any
+ *                                phenotype a driver hands `__dragonView.sweepShow(p, crop)`:
+ *                                the whole dragon at the sheet's direction and scale, or a
+ *                                head crop centred on the skull. tools/dragon-sheet.mjs
+ *                                drives it for the one-gene sweep (M3f criterion 1);
+ *                                `&mask=0` draws the same views lit, for a person to look at
  *
  * Every mode exposes `__dragonView.sheet`: each cell's label, gid, phenotype and wing form,
  * which is what the silhouette numbers are compared against.
@@ -26,9 +32,11 @@
  * the neutral studio grey the variant sheets use.
  */
 import * as THREE from 'three';
-import { GENES, breed, wild, type Element, type Genome, type Phenotype } from './core/genome';
+import { GENES, GENE_NAMES, Genome, breed, wild, type Element, type Phenotype } from './core/genome';
 import { DragonMesher } from './assets/dragon/mesher';
-import { wingForm, type WingForm } from './assets/dragon/graph';
+import { addWings, bodyGraph, skeleton, wingForm, type WingForm } from './assets/dragon/graph';
+import { paths } from './assets/dragon/skin';
+import type { DragonBody } from './assets/dragon/builder';
 
 /**
  * The sheet: six wild dragons, one per element, on seeds 1-6 taken in order (not picked),
@@ -56,6 +64,16 @@ const SHEET_YAW = -0.55;
 const SHEET_ELEVATION_DEG = 32;
 const SHEET_ORTHO_WIDTH = 44;
 const SHEET_TARGET: [number, number, number] = [0, 1.2, 0];
+/**
+ * The sweep's scales. The whole-dragon sweep draws at the sheet's own scale: 1800 px across
+ * SHEET_ORTHO_WIDTH (40.9 px per unit), so its areas compare with dragon-silhouette.json.
+ * The head crop draws closer, centred SWEEP_HEAD_LIFT above the skull's middle node, and cut
+ * off SWEEP_HEAD_BACK behind the skull's back node.
+ */
+const SWEEP_PX_PER_UNIT = 1800 / SHEET_ORTHO_WIDTH;
+const SWEEP_HEAD_PX_PER_UNIT = 100;
+const SWEEP_HEAD_LIFT = 0.8;
+const SWEEP_HEAD_BACK = 1.4;
 
 const genomes: Genome[] = [];
 for (const r of SHEET) genomes.push(r.op === 'wild' ? wild(r.seed, r.element) : breed(genomes[r.a]!, genomes[r.b]!, r.seed));
@@ -64,8 +82,10 @@ const params = new URLSearchParams(location.search);
 const turn = params.get('view') === 'turn';
 /** All colour removed: the greyscale sheet. */
 const grey = params.get('grey') === '1';
-/** Flat silhouettes for the outline numbers. Always the sheet camera. */
-const mask = !turn && params.get('mask') === '1';
+/** One dragon at a time from a driver's phenotype, as a mask: the one-gene sweep. */
+const sweep = !turn && params.get('sweep') === '1';
+/** Flat silhouettes for the outline numbers. Always the sheet camera's direction. */
+const mask = !turn && (sweep ? params.get('mask') !== '0' : params.get('mask') === '1');
 const pick = Math.min(Math.max(Number(params.get('i') ?? 0) | 0, 0), SHEET.length - 1);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -162,7 +182,7 @@ try {
   document.getElementById('note')!.textContent = `the dragon worker failed: ${String((err as Error).message)}`;
 }
 const t0 = performance.now();
-const shown = turn ? [pick] : SHEET.map((_, i) => i);
+const shown = turn ? [pick] : sweep ? [] : SHEET.map((_, i) => i);
 for (const [k, gi] of shown.entries()) {
   const gm = genomes[gi]!;
   const built = await mesher.build(gm);
@@ -195,7 +215,7 @@ for (const [k, gi] of shown.entries()) {
   placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 3.4)), cell: gi });
 }
 const buildMs = performance.now() - t0;
-mesher.dispose();
+if (!sweep) mesher.dispose();
 
 // The sheet is orthographic, so every cell is drawn at one scale: in perspective the near
 // row looked about 30 % bigger, and children looked larger than their parents (critic,
@@ -221,6 +241,38 @@ if (cam.length === 6 && cam.every(Number.isFinite)) {
 camera.lookAt(target);
 sun.target.position.copy(target);
 const ext = turn ? 7 : 22;
+/**
+ * The head crop's geometry: the spine tube, the eyes and the crown, nothing else. In the
+ * sheet's direction the far wing sits right behind the skull, so with the wings drawn a horn
+ * or crest is lost against the membrane and the crop would measure the wing. Graph nodes come
+ * in build order (skeleton, limbs, wings, crown), so a tube is the head's when its first node
+ * is a skeleton node (the spine, split where a crown chain ties with the snout) or a crown node.
+ */
+function headOnly(body: DragonBody, p: Phenotype): THREE.BufferGeometry {
+  const nSkeleton = skeleton(p).g.v.length;
+  const withWings = bodyGraph(p);
+  addWings(withWings.g, withWings.idx, p);
+  const crownFrom = withWings.g.v.length;
+  const tubes = paths(body.graph, body.idx.tailTip);
+  if (body.kinds.filter((k) => k === 'spine' || k === 'limb').length !== tubes.length) throw new Error('headOnly: tubes and parts disagree');
+  const src = body.geometry.getIndex()!.array;
+  const keep: number[] = [];
+  body.parts.forEach((part, i) => {
+    const kind = body.kinds[i];
+    const first = i < tubes.length ? tubes[i]!.nodes[0]! : -1;
+    const mine = kind === 'eye' || kind === 'glint' || (i < tubes.length && (first < nSkeleton || first >= crownFrom));
+    if (mine) for (let t = part.start; t < part.start + part.count; t++) keep.push(src[t]!);
+  });
+  const g = new THREE.BufferGeometry();
+  for (const name of ['position', 'normal']) g.setAttribute(name, body.geometry.getAttribute(name));
+  g.setIndex(keep);
+  g.addGroup(0, keep.length, 0);
+  return g;
+}
+
+/** The sweep's dragon, alone at the origin. */
+const sweepHolder = new THREE.Group();
+if (sweep) scene.add(sweepHolder);
 Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext, near: 1, far: 80 });
 sun.shadow.camera.updateProjectionMatrix();
 
@@ -248,6 +300,12 @@ declare global {
       genes: typeof GENES;
       /** Leave only sheet cell k visible (all of them for null), and redraw. */
       showOnly(k: number | null): void;
+      /**
+       * `?sweep=1` only: build the dragon this phenotype describes, show it alone as a mask
+       * at the sheet's yaw and elevation, and redraw. 'body' frames the whole dragon at the
+       * sheet's scale (SWEEP_PX_PER_UNIT); 'head' centres a closer camera on the skull.
+       */
+      sweepShow(p: Phenotype, crop: 'body' | 'head'): Promise<{ gid: string; tris: number; roundTripMs: number }>;
     };
   }
 }
@@ -266,6 +324,47 @@ window.__dragonView = {
   showOnly(k: number | null) {
     for (const p of placed) p.mesh.visible = k === null || p.cell === k;
     frame();
+  },
+  async sweepShow(p: Phenotype, crop: 'body' | 'head') {
+    if (!sweep) throw new Error('sweepShow needs dragon.html?sweep=1');
+    // A genome that expresses exactly `p`: both alleles dominant and equal, so each gene's
+    // expressed value is (v + v) / 2 = v (docs/GENOME.md §Diploid).
+    const gm = new Genome();
+    for (const k of GENE_NAMES) gm.g[k] = [{ value: p[k], dominant: true }, { value: p[k], dominant: true }];
+    gm.element = ['ember', 'ember'];
+    gm.lineage = 'sweep';
+    const built = await mesher.build(gm);
+    sweepHolder.clear();
+    const mesh = new THREE.Mesh(crop === 'head' ? headOnly(built.body, gm.phenotype) : built.body.geometry, materials);
+    const xs = built.body.graph.v.map((v) => v[0]);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    mesh.position.set(-cx, 0, 0);
+    sweepHolder.add(mesh);
+    sweepHolder.rotation.y = SHEET_YAW;
+    const ortho = camera as THREE.OrthographicCamera;
+    const ppu = crop === 'head' ? SWEEP_HEAD_PX_PER_UNIT : SWEEP_PX_PER_UNIT;
+    const hw = innerWidth / (2 * ppu), hh = innerHeight / (2 * ppu);
+    Object.assign(ortho, { left: -hw, right: hw, top: hh, bottom: -hh, zoom: 1 });
+    ortho.updateProjectionMatrix();
+    // The head crop looks at the skull's middle node, lifted to take in horns and crest.
+    // Graph coordinates are z-up (x, y, z); the scene's are y-up (x, z, -y).
+    // Behind the skull the crop is cut by a plane across the body, SWEEP_HEAD_BACK behind
+    // the skull's back node, so the torso does not fill the frame: the crop is the head and
+    // the front of the neck, with whatever grows from the head.
+    const look = new THREE.Vector3(...SHEET_TARGET);
+    renderer.clippingPlanes = [];
+    if (crop === 'head') {
+      const [hx, hy, hz] = built.body.idx.headMidPos;
+      sweepHolder.updateMatrixWorld(true);
+      look.set(hx - cx, hz + SWEEP_HEAD_LIFT, -hy).applyMatrix4(sweepHolder.matrixWorld);
+      const fwd = new THREE.Vector3(1, 0, 0).transformDirection(sweepHolder.matrixWorld);
+      const cut = new THREE.Vector3(built.body.idx.headBackPos[0] - cx - SWEEP_HEAD_BACK, 0, 0).applyMatrix4(sweepHolder.matrixWorld);
+      renderer.clippingPlanes = [new THREE.Plane().setFromNormalAndCoplanarPoint(fwd, cut)];
+    }
+    camera.position.copy(look).add(new THREE.Vector3(0, Math.sin(el), Math.cos(el)).multiplyScalar(60));
+    camera.lookAt(look);
+    frame();
+    return { gid: gm.gid(), tris: built.body.geometry.getIndex()!.count / 3, roundTripMs: built.roundTripMs };
   },
 };
 // Drag to turn the dragons (mouse or touch), so a person can inspect them by hand.

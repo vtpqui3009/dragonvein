@@ -18,7 +18,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { breed, wild, type Element, type Genome, type Phenotype } from '../src/core/genome';
-import { MEMBRANE_THICKNESS, WING_FORMS, WING_ROOT_Z, fullGraph, membranePolys, wingForm, wingNodes, type Vec3 } from '../src/assets/dragon/graph';
+import { MEMBRANE_THICKNESS, WING_FORMS, fullGraph, membranePolys, torsoNodes, wingForm, wingNodes, wingRootZ, type Vec3 } from '../src/assets/dragon/graph';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 type Recipe =
@@ -128,6 +128,10 @@ describe('every wing rests spread: out to the side, not upright', () => {
   all.forEach((gm, i) => {
     const p = gm.phenotype;
     it(`#${i}`, () => {
+      // Since M3f the root rides on the shoulder (graph.ts wingRootZ), 1.22 at the middle of
+      // the body genes; the torso's midline is the chest node's centre, 1.0 there.
+      const WING_ROOT_Z = wingRootZ(p);
+      const midline = torsoNodes(p)[2]![1];
       for (const s of [1, -1]) {
         const { arm, tips } = wingNodes(p, s);
         const pts = [...arm.map((a) => a[0]), ...tips];
@@ -143,9 +147,9 @@ describe('every wing rests spread: out to the side, not upright', () => {
         }
         expect(reach, 'the wing reaches well past the body').toBeGreaterThan(1.6);
         expect(reach).toBeGreaterThan(1.15 * rise);
-        // The membrane stays above the torso's midline (z ≈ 1.0) and off the tail's line (y = 0).
+        // The membrane stays above the torso's midline and off the tail's line (y = 0).
         for (const [, y, z] of membranePolys(p, s).v) {
-          expect(z).toBeGreaterThanOrEqual(1.0);
+          expect(z).toBeGreaterThanOrEqual(midline);
           expect(y * s).toBeGreaterThanOrEqual(0.18);
         }
       }

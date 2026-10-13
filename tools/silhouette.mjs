@@ -142,3 +142,88 @@ export function silhouetteReport(masks, sheet, genes, pxPerUnit) {
     dragons, pairs,
   };
 }
+
+/**
+ * Intersection over union of two masks drawn by one camera, in place: no alignment. The
+ * head-crop sweep uses it, because its camera is centred on the skull node, so the head is
+ * already in the same place in both and only what grows from it (horns, crest) differs.
+ * Aligning on the box would let a horn that widens the box slide two identical skulls apart.
+ */
+export function frameIoU(a, b) {
+  let inter = 0, union = 0;
+  const n = Math.min(a.on.length, b.on.length);
+  for (let i = 0; i < n; i++) {
+    const x = a.on[i], y = b.on[i];
+    if (x && y) inter++;
+    if (x || y) union++;
+  }
+  return union ? inter / union : 0;
+}
+
+/**
+ * The one-gene sweep (M3f criterion 1): genes whose documented range must reach the outline.
+ * hornCount and crestType change only the head, so they are judged on a head crop.
+ */
+export const SWEEP_GENES = [
+  ['bodyMass', 'body'], ['neckLength', 'body'], ['neckArc', 'body'], ['legLength', 'body'],
+  ['tailLength', 'body'], ['headSize', 'body'], ['hornCount', 'head'], ['crestType', 'head'],
+];
+/** A gene's low and high ends must be at most this alike (M3f criterion 1). */
+export const SWEEP_MAX_IOU = 0.85;
+
+/** The middle of a gene's range, as the genome would express it (ints and enums rounded). */
+function mid(lo, hi, kind) {
+  const m = (lo + hi) / 2;
+  return kind === 'i' || kind === 'e' ? Math.round(m) : m;
+}
+
+/**
+ * The sweep's fixed base genome: every gene at the middle of its range, except the enums,
+ * which sit at their first value (no tail ornament, no crest, plain), so the base is the
+ * plainest dragon and a crest or ornament in a sweep is the swept gene's own doing.
+ * @param {Record<string, readonly [number, number, string]>} genes
+ */
+export function sweepBase(genes) {
+  const p = {};
+  for (const [name, [lo, hi, kind]] of Object.entries(genes)) p[name] = kind === 'e' ? lo : mid(lo, hi, kind);
+  return p;
+}
+
+/** Low, middle and high of one gene: its range's ends and middle. */
+export function sweepValues(genes, name) {
+  const [lo, hi, kind] = genes[name];
+  return [lo, mid(lo, hi, kind), hi];
+}
+
+/**
+ * The sweep report.
+ * @param {{gene:string, crop:'body'|'head', base:{w:number,h:number,on:Uint8Array},
+ *          samples:{value:number, mask:{w:number,h:number,on:Uint8Array}}[]}[]} runs
+ *   per gene: the base's mask at the gene's crop, then the low, middle and high masks
+ * @param {{body:number, head:number}} pxPerUnit pixels per world unit for each crop
+ */
+export function sweepReport(runs, pxPerUnit) {
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  const genes = runs.map(({ gene, crop, base, samples }) => {
+    const ppu = pxPerUnit[crop];
+    const iou = (a, b) => (crop === 'head' ? frameIoU(a, b) : alignedIoU(a, maskStats(a), b, maskStats(b)));
+    const at = samples.map(({ value, mask }) => {
+      const s = maskStats(mask);
+      return {
+        value: r3(value), area: r2(s.area / ppu ** 2), width: r2(s.width / ppu), height: r2(s.height / ppu),
+        iouVsBase: r3(iou(base, mask)),
+      };
+    });
+    const lowVsHigh = r3(iou(samples[0].mask, samples[samples.length - 1].mask));
+    return { gene, crop, low: at[0], mid: at[1], high: at[at.length - 1], lowVsHighIoU: lowVsHigh, pass: lowVsHigh <= SWEEP_MAX_IOU };
+  });
+  return {
+    summary: {
+      maxIoU: SWEEP_MAX_IOU, passing: genes.filter((g) => g.pass).length, of: genes.length,
+      failing: genes.filter((g) => !g.pass).map((g) => g.gene),
+      lowVsHigh: Object.fromEntries(genes.map((g) => [g.gene, g.lowVsHighIoU])),
+    },
+    genes,
+  };
+}

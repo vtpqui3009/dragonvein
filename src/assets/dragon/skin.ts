@@ -38,6 +38,11 @@ export interface SkinOptions {
   capRingsThin: number;
   /** Thin tubes (toes) space their rings this many times wider. */
   thinStepScale: number;
+  /**
+   * Every other branch (legs, wing bones, horns, crest) spaces its rings this many times
+   * wider than the spine: short, smooth curves that need fewer rings than the long body.
+   */
+  branchStepScale: number;
   /** A branch starts at this fraction of its parent node's radius... */
   branchRoot: number;
   /** ...but at most this multiple of its own first node's radius. */
@@ -50,7 +55,7 @@ export interface SkinOptions {
 
 export const SKIN_LOD0: SkinOptions = {
   ringStep: 0.12, segMain: 16, segLimb: 10, segThin: 6, thinRadius: 0.14,
-  capRings: 3, capRingsThin: 1, thinStepScale: 2, branchRoot: 0.8, branchCap: 1.25, tangentWindow: 1.5, pinchFill: 0.92,
+  capRings: 3, capRingsThin: 1, thinStepScale: 2, branchStepScale: 1.5, branchRoot: 0.8, branchCap: 1.25, tangentWindow: 1.5, pinchFill: 0.92,
 };
 
 export interface SkinMesh {
@@ -204,8 +209,12 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
     const ownR = Math.max(...path.nodes.map((id) => g.r[id]!));
     const thin = pi !== 0 && ownR <= o.thinRadius;
     const seg = pi === 0 ? o.segMain : thin ? o.segThin : o.segLimb;
+    // A branch's start cap sits at its parent node's centre, inside the parent's own tube,
+    // where nobody sees it; a tapered tube ends thin. Each of those ends takes the thin cap,
+    // which keeps the crown and toes inside the triangle cap (M3f).
     const capRings = thin ? o.capRingsThin : o.capRings;
-    const st = sampleCurve(pts, rad, thin ? o.ringStep * o.thinStepScale : o.ringStep);
+    const capRingsStart = path.from !== null ? o.capRingsThin : capRings;
+    const st = sampleCurve(pts, rad, o.ringStep * (thin ? o.thinStepScale : pi === 0 ? 1 : o.branchStepScale));
 
     // Tangents over a window as wide as the tube is thick, then parallel-transported frames.
     // A plain central difference turned each ring as fast as the curve turned, so where a
@@ -243,12 +252,13 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
     const rings: Ring[] = st.map((s, i) => ({ c: s.c, r: s.r, t: T[i]!, n: N[i]! }));
     const first = rings[0]!, last = rings[rings.length - 1]!;
     const capStart: Ring[] = [], capEnd: Ring[] = [];
-    for (let k = capRings; k >= 1; k--) {
-      const a = (k / (capRings + 1)) * (Math.PI / 2);
+    for (let k = capRingsStart; k >= 1; k--) {
+      const a = (k / (capRingsStart + 1)) * (Math.PI / 2);
       capStart.push({ c: add(first.c, scale(first.t, -first.r * Math.sin(a))), r: first.r * Math.cos(a), t: first.t, n: first.n });
     }
-    for (let k = 1; k <= capRings; k++) {
-      const a = (k / (capRings + 1)) * (Math.PI / 2);
+    const capRingsEnd = last.r <= o.thinRadius ? o.capRingsThin : capRings;
+    for (let k = 1; k <= capRingsEnd; k++) {
+      const a = (k / (capRingsEnd + 1)) * (Math.PI / 2);
       capEnd.push({ c: add(last.c, scale(last.t, last.r * Math.sin(a))), r: last.r * Math.cos(a), t: last.t, n: last.n });
     }
     const seq = [...capStart, ...rings, ...capEnd];

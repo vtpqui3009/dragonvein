@@ -14,7 +14,7 @@
  * faces +x and stands on y = 0.
  */
 import type { Genome, Phenotype } from '../../core/genome';
-import { bodyGraph, fullGraph, membranePolys, ornamentParams, spikeParams, type Anchors, type Graph } from './graph';
+import { bodyGraph, fullGraph, headScale, membranePolys, ornamentParams, spikeParams, type Anchors, type Graph } from './graph';
 import { membraneMesh, primitiveMesh } from './parts';
 import { SKIN_LOD0, skinGraph, sphere, type SkinMesh, type SkinOptions } from './skin';
 
@@ -74,11 +74,16 @@ export function bodyColours(p: Phenotype): { scale: [number, number, number]; be
   return { scale: toLinear(hsv(H, S, V)), belly: toLinear(hsv(H + HSh, S * 0.60, Math.min(0.95, V + 0.34))) };
 }
 
-/** The reference's membrane and horn colours (`mats`), decoded from sRGB like the body's. */
+/**
+ * The reference's membrane and horn colours (`mats`), decoded from sRGB like the body's.
+ * The membrane's hue sits half the belly's shift from the body's: an analogous neighbour on
+ * the wheel (at most 0.11 away). At 1.6 times the shift it reached 0.35 away, and red bodies
+ * wore yellow or lime wings and brown ones pink (M3e cycle 2, art m3).
+ */
 export function partColours(p: Phenotype): { memb: [number, number, number]; horn: [number, number, number] } {
   const { hue: H, hueShift: HSh, saturation: S, value: V } = p;
   return {
-    memb: toLinear(hsv(H + HSh * 1.6, S * 0.85, Math.min(0.92, V + 0.22))),
+    memb: toLinear(hsv(H + HSh * 0.5, S * 0.85, Math.min(0.92, V + 0.22))),
     horn: toLinear(hsv(H + 0.5 * HSh, S * 0.30, Math.min(0.96, V + 0.46))),
   };
 }
@@ -120,7 +125,7 @@ function build(genome: Genome, full: boolean, opts: SkinOptions): DragonArrays {
 
   // Eyes sit on the skull node, exactly where builder.py's `place` puts them.
   const [ex, , ez] = idx.headMidPos;
-  const HS = p.headSize;
+  const HS = headScale(p.headSize); // the skull's own scale (graph.ts headScale)
   const extras: { mesh: SkinMesh; kind: PartKind }[] = [];
   for (const s of [1, -1]) {
     extras.push({ mesh: sphere([ex + 0.10 * HS, 0.215 * HS * s, ez + 0.13 * HS], 0.112 * HS, 12, 6), kind: 'eye' });
