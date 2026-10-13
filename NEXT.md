@@ -10,9 +10,15 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-13** · at commit `61a228b`, the last commit of run 26 that changed
-code. The close-out commits that wrote this file follow it. Run 26 is **finished**, and
-nothing is in flight.
+Last updated: **2026-10-13** · at commit `5e76db6`. **Run 27 is in flight on M5e** in the
+owner's main session. Run 27 split the old M5e:
+- **M5e** is four generators: flowershrub, moss, lichen and fallenleaves;
+- **M5f** is dressing the island with merged draws.
+
+The criteria are in STATE.md run 27. An asset-builder is building in `assetgen/flora/`, and
+nothing lands until the gates are green. **Do not start M5e from a second session while this
+line stands.** If there is no `asset(flora)` commit after `5e76db6` hours later, run 27 died.
+Take M5e from the STATE.md run 27 criteria.
 
 ---
 
