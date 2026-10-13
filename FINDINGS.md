@@ -74,6 +74,13 @@ Flora against the prop row 4000/1200/300 — all inside budget. Fern's rebuild r
   worse for the owner: `3ab6e84` does not resolve in this repo — `git log -1 3ab6e84` returns
   "unknown revision" — so the newest real-GPU row cites a commit that does not exist. Both
   cycles' critics are right that there is no usable current row.*
+  **— Correction, entered after this round: that last sentence was wrong, and the error was
+  the builder's, not the critics'. This container's clone is shallow (`clone_depth` 50; 60
+  commits of 211), which is why the hash did not resolve. After `git fetch --unshallow`,
+  `3ab6e84` is `docs(next): the owner's real-GPU command, now that it can pass`, 2026-10-12,
+  on main's history. The row is sound. Both perf rounds deducted P1 over a defect that did
+  not exist; check `git rev-parse --is-shallow-repository` before reading a missing hash as a
+  missing commit.**
 - [major, forward — M5e] ~4 355 B of heap headroom at 36 605 of 40 960, about **2 draws** at
   PERF_BUDGET's ~1.8 kB per draw, with the scene already at 28 draws. Placement must use one
   `InstancedMesh` per plant type with LOD inside the instance, and merge existing draws.
@@ -167,7 +174,8 @@ New generators against the PERF_BUDGET prop row 4000/1200/300 — all 12 LODs in
 | grassclump | 1564 | 836 | 162 |
 
 - [major, standing] The real-hardware half of P1 is stale and unverifiable. The newest
-  §Real-GPU verification log row cites `3ab6e84`, which does not resolve in this repo, and it
+  §Real-GPU verification log row cites `3ab6e84`, which did not resolve in this repo **because
+  the clone is shallow — see the correction in the cycle 2 round above; the row is sound**, and it
   predates M5a's 220 wind instances. *Builder note: confirmed — `git log -1 3ab6e84` returns
   "unknown revision".* This step cannot move it; it is an owner item.
 - [major, standing] P6 has no wall-clock evidence: `potato.frameCostMs.p95` 448.973 ms vs

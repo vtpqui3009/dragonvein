@@ -183,10 +183,20 @@ perf-critic scored P1's real-hardware half 0, reading the §Real-GPU verificatio
 "one row only" (2026-10-10, `c429d4a`). The log has **two** rows — line 459 adds a 2026-10-12
 `3ab6e84` sighting it did not see — and cycle 1's perf-critic read that newer row and scored
 the same half 0.5. That single misread is the entire 0.5 between 8.65 and 8.15. Per
-`critic-round` §3 the score stands as given and a builder note was added instead. Separately
-and more usefully: **`3ab6e84` does not resolve in this repo** (`git log -1 3ab6e84` →
-"unknown revision"), so the project's newest real-GPU record points at a commit that does not
-exist. That is now an owner item.
+`critic-round` §3 the score stands as given and a builder note was added instead.
+
+**Correction, entered after the fact: the second half of that note was wrong, and the error
+was this run's.** Run 23 reported that `3ab6e84` "does not resolve in this repo" and raised it
+as an owner blocker. `git log -1 3ab6e84` did return "unknown revision" here, so the
+observation was accurate — but the inference was not. **This container's clone is shallow**:
+`create_session` defaults `clone_depth` to 50, `git rev-parse --is-shallow-repository`
+returned `true`, and `git rev-list --count HEAD` was 60 against the repository's 211. After
+`git fetch --unshallow`, `3ab6e84` resolves as `docs(next): the owner's real-GPU command, now
+that it can pass`, 2026-10-12 08:13, and `git merge-base --is-ancestor 3ab6e84 origin/main`
+confirms it is on main's history. **The row is sound and the owner need do nothing.** Both
+perf rounds spent P1 deductions on a defect that did not exist, and this run escalated it
+instead of checking the clone. The check is `git rev-parse --is-shallow-repository`, now a
+standing hazard in `NEXT.md`. Do not deduct P1 for that row again.
 
 **Forward risk for M5e, now agreed by three independent perf rounds** (run 22's, and this
 run's two): heap headroom is about 4 355 B of 40 960 at 28 draws — roughly **two draws** at
@@ -195,9 +205,13 @@ only via the idle-baseline subtraction. Placing the four understory types as sep
 or one draw per LOD, will trip the heap gate. Placement must use one `InstancedMesh` per plant
 type with LOD inside the instance.
 
-**Open blockers.** (1) How criterion 6 is measured — owner. (2) The `3ab6e84` real-GPU row —
-owner. (3) No verification-grade real-GPU or Potato row — owner, M16. (4) fern seeds 1/8 and
-3/5 near-pairs — the next run's only actionable M5d art defect. (5) The evidence page's old
+**Open blockers,** as they stood when this entry was first written. (1) and (2) have since
+been settled — see the two sub-entries above this one: criterion 6 is now ruled in
+`CLAUDE.md` §4 as defects-not-sub-scores, and the `3ab6e84` blocker was this run's own error.
+(1) How criterion 6 is measured — **ruled**. (2) The `3ab6e84` real-GPU row — **withdrawn,
+not a defect**. (3) No verification-grade real-GPU or Potato row — owner, M16. (4) fern seeds
+1/8 and 3/5 near-pairs — **the live one**, and under the new §4 the only thing keeping M5d
+open. (5) The evidence page's old
 URL (`Pgkt22EifnK5hUzmXqssoj`) is not reachable from this account — `artifact not found` —
 so run 23 published to https://claude.ai/artifact/HXPyJnjvcwr5tayAwbpD9a instead. The owner
 chooses which link stands; a third must not be created.
