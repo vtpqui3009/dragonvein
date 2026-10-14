@@ -24,6 +24,14 @@
  * Every mode exposes `__dragonView.sheet`: each cell's label, gid, phenotype and wing form,
  * which is what the silhouette numbers are compared against.
  *
+ * The sheet and turntable views idle (M7a): each dragon breathes, blinks and shifts its
+ * weight with its own genome's rhythm (src/assets/dragon/idle.ts `idleParams`), through a
+ * vertex-only patch on its own material clones (src/render/idle.ts `withIdle`), so no draw
+ * is added. `__dragonView.idleAt(t)` pins every dragon at idle time `t` seconds and stops
+ * the clock, `idleAt(null)` holds the rest pose (the mesh as built: what every older sheet
+ * and turntable shows), and `idlePlay()` lets it run again. The masks and the sweep never
+ * idle: their outlines are measurements.
+ *
  * The genome code is the one tests/genome.test.ts proves equal to assetgen/genome.py, and
  * the graph the one tests/dragon-graph.test.ts proves equal to the reference's.
  *
@@ -37,6 +45,8 @@ import { DragonMesher } from './assets/dragon/mesher';
 import { addWings, bodyGraph, skeleton, wingForm, type WingForm } from './assets/dragon/graph';
 import { paths } from './assets/dragon/skin';
 import type { DragonBody } from './assets/dragon/builder';
+import { idleParams, type IdleParams } from './assets/dragon/idle';
+import { blinkMidTime, idleWaves, setIdleMix, setIdleTime, withIdle, type IdleWaves } from './render/idle';
 
 /**
  * The sheet: six wild dragons, one per element, on seeds 1-6 taken in order (not picked),
@@ -86,6 +96,8 @@ const grey = params.get('grey') === '1';
 const sweep = !turn && params.get('sweep') === '1';
 /** Flat silhouettes for the outline numbers. Always the sheet camera's direction. */
 const mask = !turn && (sweep ? params.get('mask') !== '0' : params.get('mask') === '1');
+/** The sheet and turntable idle; the masks and the sweep hold still. */
+const animate = !mask && !sweep;
 const pick = Math.min(Math.max(Number(params.get('i') ?? 0) | 0, 0), SHEET.length - 1);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -168,6 +180,8 @@ interface Placed { mesh: THREE.Mesh; label: HTMLDivElement; anchor: THREE.Vector
 const placed: Placed[] = [];
 const labels = document.getElementById('labels')!;
 let tris = 0;
+/** Each shown dragon's idle, in build order. */
+const idle: IdleParams[] = [];
 /** Each dragon's round trip through the mesh worker, in ms, in build order. */
 const buildTimes: number[] = [];
 // The dragons are built off the main thread, as the game builds them (M3c). The worker is
@@ -189,7 +203,12 @@ for (const [k, gi] of shown.entries()) {
   const body = built.body;
   buildTimes.push(built.roundTripMs);
   tris += body.geometry.getIndex()!.count / 3;
-  const mesh = new THREE.Mesh(body.geometry, materials);
+  // Each dragon idles with its own genome's rhythm, so it gets its own material clones
+  // (one program between them all) and a depth material that moves its shadow with it.
+  const ip = idleParams(gm);
+  idle.push(ip);
+  const mesh = new THREE.Mesh(body.geometry, animate ? materials.map((m) => withIdle(m.clone(), ip)) : materials);
+  if (animate) mesh.customDepthMaterial = withIdle(new THREE.MeshDepthMaterial(), ip);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   // Centre each dragon on its graph's x extent (Blender x is three.js x), the same rule
@@ -279,11 +298,13 @@ sun.shadow.camera.updateProjectionMatrix();
 document.getElementById('note')!.textContent = mask ? '' :
   `runtime dragons, built in a worker · ${shown.length} in ${buildMs.toFixed(0)} ms after a ${startupMs.toFixed(0)} ms warm-up · ${tris} tris`;
 
+const labelAt = new THREE.Vector3();
 function frame(): void {
   renderer.render(scene, camera);
-  const v = new THREE.Vector3();
+  const v = labelAt;
   for (const p of placed) {
-    v.copy(turn ? new THREE.Vector3(0, 0, 0) : p.anchor).project(camera);
+    if (turn) v.set(0, 0, 0); else v.copy(p.anchor);
+    v.project(camera);
     p.label.style.left = `${((v.x + 1) / 2) * innerWidth}px`;
     p.label.style.top = `${((1 - v.y) / 2) * innerHeight + (turn ? 150 : 0)}px`;
     p.label.style.display = turn || mask ? 'none' : '';
@@ -306,6 +327,16 @@ declare global {
        * sheet's scale (SWEEP_PX_PER_UNIT); 'head' centres a closer camera on the skull.
        */
       sweepShow(p: Phenotype, crop: 'body' | 'head'): Promise<{ gid: string; tris: number; roundTripMs: number }>;
+      /** Each shown dragon's idle params, in the order shown (sheet order, or the one turntable dragon). */
+      idle: IdleParams[];
+      /** Pin every dragon at idle time `t` seconds and stop the clock; null holds the rest pose. Redraws. */
+      idleAt(t: number | null): void;
+      /** Let the idle clock run again (the page's default). */
+      idlePlay(): void;
+      /** The middle of shown dragon k's first blink at or after `from` seconds of idle time. */
+      blinkMid(k: number, from?: number): number;
+      /** Shown dragon k's idle waves at time t (the shader's mirror): breath, shut, shift. */
+      idleWaves(k: number, t: number): IdleWaves;
     };
   }
 }
@@ -366,7 +397,36 @@ window.__dragonView = {
     frame();
     return { gid: gm.gid(), tris: built.body.geometry.getIndex()!.count / 3, roundTripMs: built.roundTripMs };
   },
+  idle,
+  idleAt(t: number | null) {
+    playing = false;
+    cancelAnimationFrame(rafId);
+    setIdleMix(t === null ? 0 : 1);
+    setIdleTime(t ?? 0);
+    frame();
+  },
+  idlePlay() {
+    setIdleMix(1);
+    if (!playing && animate) { playing = true; rafId = requestAnimationFrame(tick); }
+  },
+  blinkMid(k: number, from = 0) {
+    return blinkMidTime(idle[k]!, from);
+  },
+  idleWaves(k: number, t: number) {
+    return idleWaves(idle[k]!, t);
+  },
 };
+// The idle clock: the page's own time, one uniform write and one render per frame. Pinned
+// by idleAt, so a driver's shots are reproducible.
+let playing = false;
+let rafId = 0;
+function tick(now: number): void {
+  if (!playing) return;
+  setIdleTime(now / 1000);
+  frame();
+  rafId = requestAnimationFrame(tick);
+}
+window.__dragonView.idlePlay();
 // Drag to turn the dragons (mouse or touch), so a person can inspect them by hand.
 let yaw = turn ? 0 : -0.55;
 let dragX: number | null = null;

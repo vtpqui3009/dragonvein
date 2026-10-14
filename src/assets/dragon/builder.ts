@@ -13,7 +13,7 @@ import { SKIN_LOD0, type SkinOptions } from './skin';
 
 export * from './arrays';
 
-export interface DragonBody extends Omit<DragonArrays, 'position' | 'normal' | 'color' | 'index' | 'groups'> {
+export interface DragonBody extends Omit<DragonArrays, 'position' | 'normal' | 'color' | 'index' | 'groups' | 'idleBreathSway' | 'idleBlink'> {
   geometry: BufferGeometry;
 }
 
@@ -23,6 +23,9 @@ export function toGeometry(a: DragonArrays): DragonBody {
   geometry.setAttribute('position', new BufferAttribute(a.position, 3));
   geometry.setAttribute('normal', new BufferAttribute(a.normal, 3));
   geometry.setAttribute('color', new BufferAttribute(a.color, 3));
+  // The idle's baked weights (./idle.ts), read by src/render/idle.ts `withIdle`.
+  geometry.setAttribute('idleBreathSway', new BufferAttribute(a.idleBreathSway, 4));
+  geometry.setAttribute('idleBlink', new BufferAttribute(a.idleBlink, 3));
   geometry.setIndex(new BufferAttribute(a.index, 1));
   for (const g of a.groups) geometry.addGroup(g.start, g.count, g.mat);
   geometry.computeBoundingBox();

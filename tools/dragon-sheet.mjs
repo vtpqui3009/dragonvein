@@ -14,8 +14,20 @@
  *   artifacts/variants/dragon-sweep.json         the one-gene sweep (M3f criterion 1): a fixed
  *                                                base genome with one gene at a time set to
  *                                                its low, middle and high value (?sweep=1)
+ *   artifacts/variants/dragon-idle-a.png         the idle (M7a): the sheet at two fixed idle
+ *   artifacts/variants/dragon-idle-b.png         times, the same camera; b is the middle of
+ *                                                sheet dragon A's blink
+ *   artifacts/variants/dragon-idle-diff.png      the pixels that changed between them, white
+ *                                                over the dimmed a; the run fails if none did
+ *   artifacts/variants/dragon-idle.json          the times, the changed-pixel count and how
+ *                                                many of them lie on the dragons
+ *   artifacts/turntables/dragon-idle.webm        one dragon idling, close up, a few seconds of
+ *                                                idle time with a blink in them (and .frame00.png)
  *
- * `--only=sheet,grey,silhouette,sweep,turntables` runs a subset, for iterating on one
+ * Every other render is taken at the idle's rest pose (`__dragonView.idleAt(null)`), the
+ * mesh as built, so it is comparable with every render before M7a and reproducible.
+ *
+ * `--only=sheet,grey,silhouette,sweep,turntables,idle` runs a subset, for iterating on one
  * number; dragon-full.json is written only by a full run.
  *
  * Headless Chromium on SwiftShader, as every gate here runs. CLAUDE.md §1.4: an asset
@@ -26,7 +38,7 @@ import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import pw from 'playwright';
-import { decodePng } from './png.mjs';
+import { decodePng, encodePng } from './png.mjs';
 import { startPreview } from './preview-server.mjs';
 import { SWEEP_GENES, maskFromRgb, silhouetteReport, sweepBase, sweepReport, sweepValues } from './silhouette.mjs';
 
@@ -41,6 +53,22 @@ const SHEET_ORTHO_WIDTH = 44;
 const SWEEP_BODY_VIEW = { width: 900, height: 560 };
 const SWEEP_HEAD_VIEW = { width: 600, height: 600 };
 const SWEEP_PPU = { body: SHEET_VIEW.width / SHEET_ORTHO_WIDTH, head: 100 };
+/**
+ * The idle (M7a). The two sheet shots: b at the middle of sheet dragon IDLE_BLINK_CELL's
+ * first blink after 1 s of idle time, a IDLE_A_BEFORE seconds earlier. The clip: sheet slot
+ * IDLE_CLIP_SLOT through a close camera (`?cam=`, on its chest, neck and head), IDLE_CLIP_S
+ * seconds of idle time from IDLE_CLIP_LEAD before its first blink, at TURN_FPS.
+ */
+const IDLE_BLINK_CELL = 0;
+const IDLE_A_BEFORE = 1.3;
+const IDLE_CLIP_SLOT = 0;
+const IDLE_CLIP_CAM = '4.6,2.5,6.4,1.25,1.35,0';
+const IDLE_CLIP_S = 6;
+const IDLE_CLIP_LEAD = 1.0;
+/** A pixel changed when any channel moved by more than this (out of 255). */
+const IDLE_DIFF_THRESHOLD = 8;
+/** "On a dragon": inside the rest-pose mask grown by this many pixels (the sway is ~2 px here). */
+const IDLE_MASK_GROW = 4;
 
 const onlyArg = process.argv.find((a) => a.startsWith('--only='));
 const only = onlyArg ? new Set(onlyArg.slice('--only='.length).split(',')) : null;
@@ -69,6 +97,8 @@ try {
     page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
     await page.goto(`${preview.url}dragon.html${query}`, { waitUntil: 'load', timeout: 30_000 });
     await page.waitForFunction(() => window.__dragonView?.ready === true, null, { timeout: 30_000 });
+    // Every render here is pinned: the rest pose, unless a stage asks for an idle time.
+    await page.evaluate(() => window.__dragonView.idleAt(null));
     await page.waitForTimeout(300);
     return page;
   };
@@ -193,6 +223,94 @@ try {
     console.log(`turntable: artifacts/turntables/${t.name}.webm — sheet slot ${t.slot} (${t.label}, ${t.wingForm} wings), ${TURN_FRAMES} frames at ${TURN_FPS} fps`);
   }
 
+  // The idle (M7a): two fixed idle times at the sheet camera, their difference, and a clip.
+  if (want('idle')) {
+    const idlePage = await open('', SHEET_VIEW);
+    const tB = await idlePage.evaluate(([k]) => window.__dragonView.blinkMid(k, 1), [IDLE_BLINK_CELL]);
+    const tA = tB - IDLE_A_BEFORE;
+    const waves = await idlePage.evaluate(([a, b]) => window.__dragonView.idle.map((_, k) => ({
+      a: window.__dragonView.idleWaves(k, a), b: window.__dragonView.idleWaves(k, b),
+    })), [tA, tB]);
+    const sheetIdle = await idlePage.evaluate(() => window.__dragonView.idle);
+    const shots = {};
+    for (const [name, t] of [['a', tA], ['b', tB]]) {
+      await idlePage.evaluate((x) => window.__dragonView.idleAt(x), t);
+      const file = `artifacts/variants/dragon-idle-${name}.png`;
+      await idlePage.screenshot({ path: file });
+      shots[name] = decodePng(file);
+    }
+    await idlePage.close();
+    // Where the dragons are: the rest-pose masks, all eight, at the same camera.
+    const maskPage = await open('?mask=1', SHEET_VIEW);
+    const tmpI = mkdtempSync(path.join(os.tmpdir(), 'dragon-idle-'));
+    await maskPage.screenshot({ path: path.join(tmpI, 'all.png') });
+    const rest = maskFromRgb(decodePng(path.join(tmpI, 'all.png')));
+    rmSync(tmpI, { recursive: true, force: true });
+    await maskPage.close();
+    const { w, h } = shots.a;
+    const near = grow(rest, IDLE_MASK_GROW);
+    const diff = new Uint8Array(w * h * 3);
+    let changed = 0, onDragon = 0;
+    for (let i = 0; i < w * h; i++) {
+      let d = 0;
+      for (let c = 0; c < 3; c++) d = Math.max(d, Math.abs(shots.a.px[3 * i + c] - shots.b.px[3 * i + c]));
+      if (d > IDLE_DIFF_THRESHOLD) {
+        changed++;
+        if (near[i]) onDragon++;
+        diff[3 * i] = diff[3 * i + 1] = diff[3 * i + 2] = 255;
+      } else {
+        for (let c = 0; c < 3; c++) diff[3 * i + c] = shots.a.px[3 * i + c] >> 2;
+      }
+    }
+    writeFileSync('artifacts/variants/dragon-idle-diff.png', encodePng(w, h, diff));
+    const share = changed ? onDragon / changed : 0;
+    const blinking = (when) => waves.map((x, k) => ({ k, shut: x[when].shut })).filter((x) => x.shut > 0.05);
+    console.log(`idle: artifacts/variants/dragon-idle-a.png (t ${tA.toFixed(3)} s) and -b.png (t ${tB.toFixed(3)} s, ` +
+      `mid-blink of cell ${stats.sheet[IDLE_BLINK_CELL].label}): ${changed} pixels changed, ` +
+      `${onDragon} (${(100 * share).toFixed(1)} %) on a dragon (rest mask ±${IDLE_MASK_GROW} px), the rest their moving shadows; ` +
+      `diff in artifacts/variants/dragon-idle-diff.png`);
+    if (changed === 0) errors.push('idle: dragon-idle-a.png and dragon-idle-b.png are identical — the dragons do not move');
+    if (waves[IDLE_BLINK_CELL].b.shut < 0.99) errors.push(`idle: cell ${IDLE_BLINK_CELL} is not mid-blink in shot b (shut ${waves[IDLE_BLINK_CELL].b.shut})`);
+
+    // The clip: one dragon, close, a few seconds of idle time with a blink in it.
+    const clip = await open(`?view=turn&i=${IDLE_CLIP_SLOT}&cam=${IDLE_CLIP_CAM}`, { width: 960, height: 720 });
+    const firstBlink = await clip.evaluate(() => window.__dragonView.blinkMid(0, 1));
+    const t0 = Math.max(0, firstBlink - IDLE_CLIP_LEAD);
+    const frames = Math.round(IDLE_CLIP_S * TURN_FPS);
+    const dir = path.join('artifacts', 'turntables', 'dragon-idle.frames');
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    for (let f = 0; f < frames; f++) {
+      await clip.evaluate((t) => window.__dragonView.idleAt(t), t0 + f / TURN_FPS);
+      await clip.screenshot({ path: path.join(dir, `f${String(f).padStart(3, '0')}.png`) });
+    }
+    await clip.close();
+    const ff = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-framerate', String(TURN_FPS),
+      '-i', path.join(dir, 'f%03d.png'), '-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '30', '-pix_fmt', 'yuv420p',
+      'artifacts/turntables/dragon-idle.webm'], { encoding: 'utf8' });
+    if (ff.status !== 0) errors.push(`ffmpeg: ${ff.stderr}`);
+    spawnSync('cp', [path.join(dir, 'f000.png'), 'artifacts/turntables/dragon-idle.frame00.png']);
+    rmSync(dir, { recursive: true, force: true });
+    console.log(`idle clip: artifacts/turntables/dragon-idle.webm — sheet slot ${IDLE_CLIP_SLOT} ` +
+      `(${stats.sheet[IDLE_CLIP_SLOT].label}), ${frames} frames at ${TURN_FPS} fps, idle time ${t0.toFixed(2)}–${(t0 + IDLE_CLIP_S).toFixed(2)} s, ` +
+      `blinks at ${firstBlink.toFixed(2)} s`);
+    const r3 = (x) => Math.round(x * 1000) / 1000;
+    writeFileSync('artifacts/variants/dragon-idle.json', `${JSON.stringify({
+      what: 'M7a idle: the sheet at two fixed idle times (dragon.html, __dragonView.idleAt), the same camera; ' +
+        'a pixel changed when any channel moved by more than the threshold; "on a dragon" means inside the ' +
+        'rest-pose silhouette masks (?mask=1) grown by maskGrowPx',
+      a: { file: 'artifacts/variants/dragon-idle-a.png', t: r3(tA), blinking: blinking('a') },
+      b: { file: 'artifacts/variants/dragon-idle-b.png', t: r3(tB), midBlinkOf: stats.sheet[IDLE_BLINK_CELL].label, blinking: blinking('b') },
+      diff: 'artifacts/variants/dragon-idle-diff.png', threshold: IDLE_DIFF_THRESHOLD, maskGrowPx: IDLE_MASK_GROW,
+      changedPixels: changed, onDragonPixels: onDragon, onDragonShare: r3(share),
+      clip: { file: 'artifacts/turntables/dragon-idle.webm', slot: IDLE_CLIP_SLOT, label: stats.sheet[IDLE_CLIP_SLOT].label,
+        cam: IDLE_CLIP_CAM, fps: TURN_FPS, frames, t0: r3(t0), blinkAt: r3(firstBlink) },
+      // Each sheet dragon's idleParams (src/assets/dragon/idle.ts): seconds and world units.
+      idle: Object.fromEntries(stats.sheet.map((d, k) => [d.label,
+        Object.fromEntries(Object.entries(sheetIdle[k]).map(([x, v]) => [x, r3(v)]))])),
+    }, null, 2)}\n`);
+  }
+
   if (!only) writeFileSync('artifacts/variants/dragon-full.json', `${JSON.stringify({
     sheetGenomes: 8, sheetTris: stats.tris, sheetBuildMs: Math.round(stats.buildMs * 10) / 10,
     // Per dragon: the round trip through the mesh worker (post genome -> geometry ready), on
@@ -217,6 +335,20 @@ try {
   await browser?.close();
   server?.kill();
 }
+/** A mask grown by `r` pixels (a square neighbourhood), as one byte per pixel. */
+function grow(m, r) {
+  const out = new Uint8Array(m.w * m.h);
+  for (let y = 0; y < m.h; y++) {
+    for (let x = 0; x < m.w; x++) {
+      if (!m.on[y * m.w + x]) continue;
+      for (let yy = Math.max(0, y - r); yy <= Math.min(m.h - 1, y + r); yy++) {
+        out.fill(1, yy * m.w + Math.max(0, x - r), yy * m.w + Math.min(m.w - 1, x + r) + 1);
+      }
+    }
+  }
+  return out;
+}
+
 if (errors.length) {
   console.error(`dragon-sheet FAIL:\n${errors.join('\n')}`);
   process.exit(1);

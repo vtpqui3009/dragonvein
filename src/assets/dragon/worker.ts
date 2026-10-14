@@ -2,8 +2,8 @@
  * The dragon mesher's worker: genome in, mesh arrays out, off the main thread (M3c,
  * CLAUDE.md §2.3). ./mesher.ts is its client.
  *
- * The request carries the genome as JSON (`Genome.toJSON`). The reply carries the four
- * typed arrays as transferables, so they move to the main thread without a copy, plus the
+ * The request carries the genome as JSON (`Genome.toJSON`). The reply carries the six
+ * typed arrays (position, normal, colour, index and the idle's two weights) as transferables, so they move to the main thread without a copy, plus the
  * small plain data (groups, parts, kinds, graph) and the build time measured here.
  */
 import { Genome, wild, type GenomeJson } from '../../core/genome';
@@ -28,7 +28,10 @@ export function handle(req: MeshRequest): { reply: MeshReply; transfer: ArrayBuf
   const t0 = performance.now();
   const arrays = buildDragonArrays(Genome.fromJSON(req.genome));
   const workerMs = performance.now() - t0;
-  const transfer = [arrays.position.buffer, arrays.normal.buffer, arrays.color.buffer, arrays.index.buffer] as ArrayBuffer[];
+  const transfer = [
+    arrays.position.buffer, arrays.normal.buffer, arrays.color.buffer, arrays.index.buffer,
+    arrays.idleBreathSway.buffer, arrays.idleBlink.buffer,
+  ] as ArrayBuffer[];
   return { reply: { id: req.id, arrays, workerMs }, transfer };
 }
 

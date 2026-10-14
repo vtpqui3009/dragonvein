@@ -4,7 +4,7 @@
  * measures it there. Here, `handle()` is called directly, so the protocol is checked in Node:
  * - the three-free arrays equal what `buildDragon` puts in its geometry, byte for byte;
  * - a genome survives `toJSON` → `fromJSON` unchanged;
- * - the worker's reply equals the direct build and transfers four distinct buffers.
+ * - the worker's reply equals the direct build and transfers six distinct buffers (M7a added the idle's two weights).
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -46,17 +46,18 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (_i, gm) => 
     for (const k of GENE_NAMES) expect(Object.is(back.phenotype[k], gm.phenotype[k]), k).toBe(true);
   });
 
-  it('the worker reply equals the direct build and transfers its four buffers', () => {
+  it('the worker reply equals the direct build and transfers its six buffers', () => {
     const { reply, transfer } = handle({ id: 7, genome: JSON.parse(JSON.stringify(gm.toJSON())) });
     const direct = buildDragonArrays(gm);
     expect(reply.id).toBe(7);
     expect(reply.workerMs).toBeGreaterThanOrEqual(0);
-    for (const k of ['position', 'normal', 'color', 'index'] as const) {
+    for (const k of ['position', 'normal', 'color', 'index', 'idleBreathSway', 'idleBlink'] as const) {
       expect(bytes(reply.arrays[k]).equals(bytes(direct[k])), k).toBe(true);
     }
-    expect(new Set(transfer).size).toBe(4);
-    expect(transfer).toContain(reply.arrays.position.buffer);
-    expect(transfer).toContain(reply.arrays.index.buffer);
+    expect(new Set(transfer).size).toBe(6);
+    for (const k of ['position', 'normal', 'color', 'index', 'idleBreathSway', 'idleBlink'] as const) {
+      expect(transfer, k).toContain(reply.arrays[k].buffer);
+    }
   });
 });
 
