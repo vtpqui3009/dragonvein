@@ -10,9 +10,12 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-14** · at commit `1bb31e8`, the last commit of run 28 that changed
-code. The close-out commits that wrote this file follow it. Run 28 is **finished**, and
-nothing is in flight.
+Last updated: **2026-10-14** · at commit `e53fb3b`. **Run 29 is in flight on M7a** in the
+owner's main session. The criteria and the decided approach (a vertex-shader idle from
+attributes the mesher bakes, not skinning) are in STATE.md run 29. The integrator is
+building, and nothing lands until the gates are green. **Do not start M7a from a second
+session while this line stands.** If there is no `feat(dragon)` commit after `e53fb3b`
+hours later, run 29 died: take M7a from the STATE.md run 29 criteria.
 
 ---
 
