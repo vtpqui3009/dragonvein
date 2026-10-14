@@ -167,7 +167,7 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
-## 2026-10-14 · run 29 · M7a — procedural idle driven by the genome
+## 2026-10-14 · run 29 · M7a DONE — procedural idle driven by the genome
 
 **Step**: `M7a`, the first step in reading order that is not `DONE`. M5 waits only on the
 owner's look. The marker commit precedes this one.
@@ -216,6 +216,58 @@ attributes), `src/render/` (the idle patch), `src/dragon-view.ts`, `tools/` and 
    - `npm run gates` exits 0.
 5. **No blocking or major art defect** on the idle frames or turntable: no tearing, no
    eyelid through the skull, no wing or body interpenetration from the sway (§4).
+
+---
+
+### Result — M7a DONE (M7 IN_PROGRESS)
+
+All five criteria hold at `6cbc451`.
+
+1. **`idleParams(genome)`** (`src/assets/dragon/idle.ts`) is pure and deterministic. With the
+   body genes normalised as m (bodyMass), c (chestDepth), l (legLength) and h (headSize):
+
+   | parameter | formula | range |
+   |---|---|---|
+   | breathPeriod | 2.6 + 2.4m | 2.6–5.0 s |
+   | breathDepth | (0.014 + 0.014m)(1 + 0.8c) | — |
+   | blinkInterval | 3.5 + 2.5m | 3.5–6.0 s |
+   | blinkDuration | 0.16 + 0.10h | — |
+   | swayAmp | (0.025 + 0.025l)(1.2 − 0.4m) | — |
+   | swayPeriod | (5 + 2.5m)·√legLength | — |
+
+   The phases come from `Rng(gid)`. There are 17 tests, covering monotonicity, bounds,
+   determinism, still feet, and mix 0 equalling the built mesh.
+2. **Baked attributes**, with the worker transferring 6 buffers:
+   - `idleBreathSway` (vec4): the breath field about the torso line, plus a sway weight that
+     is 0 at the feet;
+   - `idleBlink`: the eye squashes to a slit about its centre.
+
+   The vertex-only `withIdle` patch (`src/render/idle.ts`) composes with `withRim`. It uses a
+   shared time uniform, and a per-dragon material clone that matches the depth material.
+3. **Seen moving.**
+   - `dragon-idle-a/b` (b at mid-blink) differ by 49 592 px, 83 % of them on the dragons.
+   - `dragon-idle.webm`.
+   - `__dragonView.idleAt` and `idlePlay`.
+4. **Budgets.**
+   - No new draw on `dragon.html`: 50 per frame before and after, measured by the builder and
+     by the perf critic.
+   - meshgen round-trip max 36.5–43.8 ms, within noise of the base.
+   - Parity is exact, and the rest pose is unchanged.
+   - `npm run gates` exits 0.
+5. No blocking or major art defect. The feet are template-matched at (0,0), and the blink is
+   clean.
+
+**Scores (cycle 1):** art 9.1, perf 9.5, gameplay 8.4.
+
+**Hazard.** `gate:meshgen` flaked once on unmodified HEAD, at 243.8 ms. It passed on rerun at
+25.4 ms. The cause is not found yet.
+
+**Open, carried to FINDINGS:**
+- the idle is subtle at sheet scale;
+- the blink is a squint and there is no lid;
+- the clip covers one dragon;
+- there is no `dragon.html` smoke coverage;
+- the meshgen flake.
 
 ---
 
@@ -342,100 +394,6 @@ snapshotted to `wip/m5f`, and the integrator resumed. `wip/m5f` is now supersede
 - the moss is scaled too big;
 - the rock faces are near-black;
 - `loadFlora` is all-or-nothing.
-
----
-
-## 2026-10-13 · run 27 · M5e DONE — flowering shrub and ground cover generators
-
-**Step**: `M5e`, the first step in reading order that is not `DONE`. The marker commit
-precedes this one.
-
-**Split first** (CLAUDE.md §4b.4). M5e as written is two different jobs:
-- four more generators, in `assetgen/` (asset-builder);
-- dressing the island, the first placement of generated flora at scale in `src/main.ts`
-  (integrator), under a binding heap constraint of about 2–4 draws of headroom.
-
-Different owners and a different risk. So:
-- **M5e (this run):** the four generators.
-- **M5f:** dress the island with the generated flora and rocks, merging the kinds per LOD
-  into shared draws. The generated dead tree replaces the hand-built snags.
-
-**The four**, from `docs/ASSET_PLAN.md`: the last §B2 understory kind and three §B3 ground
-covers.
-- `flora/flowershrub`: a flowering shrub. Its blossoms are on bible palette entries,
-  declared as a role.
-- `flora/moss`: a low mound or carpet patch.
-- `flora/lichen`: a crusty, rosette-shaped flat patch, meant for rocks and bark.
-- `flora/fallenleaves`: a scatter of leaves and twigs on the ground.
-
-§B3's "grass cards" is left out, because `flora/grassclump` already covers grass.
-
-**Budget**: the prop row, 4 000 / 1 200 / 300. Ground cover is placed by the hundreds, so its
-LOD0 should sit far below the cap.
-
-### Acceptance criteria
-
-1. Each of the four follows the M5d pattern:
-   - `plan(seed)`, with stratified axes on different irrationals;
-   - the declarations;
-   - LOD0/1/2 strictly decreasing **on every seed 1–8**, within the prop budget;
-   - 0 inward, open and non-manifold edges at every LOD on every seed;
-   - the base at z = 0, nothing below −0.1 m;
-   - colours on the bible ramps, with optional roles declared;
-   - flat ground cover still renders as closed thin solids, not planes.
-2. **Pipeline.** All four are registered.
-   - `--verify` is byte-identical.
-   - `--check` and `check:assets` pass.
-   - The existing 57 files are unchanged.
-3. **Seen.** `artifacts/variants/{flowershrub,moss,lichen,fallenleaves}.png` and a turntable
-   each. Ground cover is framed so that it reads, with a high sheet camera.
-4. **Probed.** `variant-probe` passes for all four, and every existing generator still passes.
-5. `npm run gates` exits 0.
-6. No blocking or major art defect against any of the four generators' sheets or turntables
-   (§4).
-
----
-
-### Result — M5e DONE (M5 IN_PROGRESS: M5f remains)
-
-All six criteria hold at `ea77a4f`:
-1. **Four generators** follow the M5d pattern:
-   - every seed and LOD has 0 inward, open and non-manifold edges;
-   - the base sits at z = 0;
-   - LODs strictly decrease within 4000/1200/300;
-   - ground-cover LOD0 is now under 1000 everywhere;
-   - the blossom and lichen colours are bible entries.
-2. `--verify` reproduces 69 files byte-for-byte, and `--check` and `check:assets` pass. The 57
-   existing files are unchanged.
-3. Sheets and turntables are rendered, with a high camera for the ground cover.
-4. The probe passes on all 23 generators.
-   Shape-only pair distances, without the colour axes:
-   - moss ≥ 28.5 % on every pair;
-   - lichen ≥ 35.1 %.
-5. `npm run gates` exits 0. It was run after each cycle.
-6. No blocking or major art defect remains on any of the four (cycle 2).
-
-**Scores.**
-
-| critic | cycle 1 at `4310718` | cycle 2 at `ea77a4f` |
-|---|---|---|
-| art | 8.0 (majors on moss and lichen: habit pairs told apart only by colour) | **8.2** |
-| perf | 9.5 | carried |
-| gameplay | 8.5 | carried |
-
-**Usage limit.** The run hit the limit at about 13:00 UTC with the builder finished but
-ungated. The work was snapshotted to `wip/m5e` and gated after the reset. `wip/m5e` is now
-superseded.
-
-**For M5f, the binding constraint** (perf, major forward): heap headroom is about 3 draws.
-Merge every flora kind per LOD into one batched draw. Ground cover casts no shadow. Never
-raise the budget.
-
-**Open, carried to FINDINGS:**
-- moss 4/5 and lichen 4/5 are the closest pairs;
-- moss reads as "jelly";
-- the probe credits colour axes;
-- lichen may z-fight once placed.
 
 ---
 
