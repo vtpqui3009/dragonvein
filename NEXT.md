@@ -10,9 +10,13 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-14** · at commit `6cbc451`, the last commit of run 29 that changed
-code. The close-out commits that wrote this file follow it. Run 29 is **finished**, and
-nothing is in flight.
+Last updated: **2026-10-14** · at commit `84ebacb`. **Run 30 is in flight on M7b** in the
+owner's main session. The criteria and the decided path (SkinnedMesh with bones from the
+graph, weights baked in the worker, two-bone IK) are in STATE.md run 30. The integrator is
+building, and nothing lands until the gates are green. **Do not start M7b from a second
+session while this line stands.** If there is no `feat(dragon)` commit after `84ebacb` hours
+later, run 30 died: take M7b from the STATE.md run 30 criteria. The daily routine is disabled
+(`3724d5e`), so runs start by hand.
 
 ---
 
