@@ -25,8 +25,9 @@ repository and ends by writing back to it.
 
 | | |
 |---|---|
-| Routine name | `DRAGONVEIN — build run (daily)` |
+| Routine name | `DRAGONVEIN — build run (daily)` (`trig_01PAKbMpsfTMuZRj2eECRQxZ`) |
 | Schedule | `CRON_TZ=Asia/Ho_Chi_Minh 7 9 * * *` — 09:07 Vietnam time, once daily |
+| **Status** | **DISABLED since 2026-10-14, by the owner.** The routine still exists with its schedule and prompt intact; it simply does not fire. Re-enable with `update_trigger(trigger_id, enabled=true)` — nothing else needs recreating. |
 | Mode | fires into a persistent session (`persist_session: true`) |
 | Dispatcher prompt | `ops/dispatcher-prompt.md` |
 | Build prompt | `ops/build-prompt.md` |
@@ -36,6 +37,20 @@ repository and ends by writing back to it.
 The schedule was twice daily until 2026-10-10. Two runs shared one five-hour usage window,
 so both died partway and neither closed a milestone. One run with the whole window is
 strictly better than two halves. See `docs/DECISIONS.md`.
+
+**Why it is disabled (2026-10-14).** The owner now drives builds from their second Pro
+account, by hand. The routine fires into this account's dispatcher session, which cannot see
+the other account's sessions at all — so its §Step 1 "check nothing is already running" check
+is blind to the very thing most likely to be running, and it can only guess from how recently
+`main` moved. On 2026-10-13 that guess was wrong in the other direction: both accounts worked
+the repo within the same hour and the owner had to stand one session down. A routine whose
+safety check cannot see the hazard is worse than no routine. Builds now start when the owner
+starts them.
+
+**This changes nothing about how a run works.** `ops/build-prompt.md` is still the contract,
+`NEXT.md` is still the handoff, and any session on any account can pick the project up by
+reading them — which is what §Picking the project up by hand below is for. Only the *starting*
+is manual now.
 
 ## Recreating the automation from zero
 
