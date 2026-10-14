@@ -6,6 +6,70 @@ docs/archive/FINDINGS-*.md` still gives the full score history.
 
 ---
 
+# M3f — run 26, 2026-10-13 — cycle 1, at `61a228b`
+
+**Scores: art-critic 8.2 · perf-critic 9.5 · gameplay-critic 9.5.** No blocking or major defect.
+The "shared body plan" major from M3e is **downgraded to a minor**: the greyscale sheet
+reads as eight individuals. **M3f ships** on its first pass, and **M3 the milestone closes**:
+every step is `DONE`, the last pass is ≥ 8.0 everywhere, and the owner's sighting is logged.
+
+## perf-critic — 9.5 (all six lines)
+
+P1 2.2 · P2 1.8 · P3 1.8 · P4 1.4 · P5 1.2 · P6 1.1. The real-hardware half now rests on the
+owner's 2026-10-13 sightings at `6b06392`, Medium and Potato.
+
+- [minor] D1: no artefact measures the frame cost of a scene with dragons in it. Add a
+  dragon-on-screen pass to `gate:perf` when the dragons are placed, and merge each dragon's
+  parts into one geometry.
+- [minor] D2: the meshgen trend is upward. The round-trip max went 38.7 → 43.3 ms, about
+  +10 % per body step. Hold it by cheapening `skin.ts`; never loosen `TRI_BUDGET`.
+- [minor] D3: `cpuFrameMs.max 14.5` ms, a single outlier frame.
+- [minor] D4: the real-hardware evidence is sightings only, with no percentile.
+
+SCORE_MACHINE: 9.5
+
+## art-critic — 8.2 (all nine lines)
+
+A1 1.0 · A2 0.7 · A3 1.0 · A4 1.45 · A5 0.9 · A6 1.0 · A7 0.9 · A8 0.8 · A9 0.45.
+
+Recomputed from the files:
+- **Sheet silhouettes:** mean IoU 0.523 (0.292–0.677), height spread 1.42×.
+- **Gene sweep:** every gene's low-vs-high IoU is ≤ 0.79, so 8/8 pass.
+- **Reference sheet:** matches.
+- **Wings (M3e):** not regressed.
+
+- [minor, was major] A4 `dragon-greyscale.png` A/B/C/H/F: one stance and one thin cone
+  tail. Pairs sit at IoU 0.62–0.68, and variation is in proportion rather than structure.
+  That is acceptable "one species, many individuals" variation.
+- [minor] A9: slimmer and longer-tailed than the bible's "chunky, front-heavy, wings
+  generous". This matters more now that the genes sweep further.
+- [minor] A2 F: near-black body, carried. A/G/C/H: the wing hue clashes with the body,
+  carried and not fixed.
+- [minor] A5 C/H/D: the segmented rib fan crosses the hind thigh, carried.
+- [minor] A3/A5 C/H: a black belly wedge under the near wing, carried.
+- [minor] A1: low value contrast on the wing panels in greyscale, carried. The far wing still
+  reads steep on D/E/F from foreshortening.
+- [minor, carried] A6: no dragon in any scene shot.
+
+SCORE_MACHINE: 8.2
+
+## gameplay-critic — 9.5 (G2, G4 and G5 n/a)
+
+G1 2.2 · G3 1.4 · G6 1.5. The critic drove `dragon.html` itself: mouse, wheel, touch drag
+and pinch, with 0 errors.
+
+- [minor] D1: `gate:smoke` does not cover `dragon.html` input. Add a drill.
+- [minor] D2: at 900×560 the sheet labels overlap, and `?view=turn` has an empty band at the
+  top. This is the dev viewer.
+- [minor, G2 advisory] G (A×B) shows little of B: no teal, and B–G IoU is below the mean. H
+  shows both parents. Re-check across many pairs at M9b.
+
+SCORE_MACHINE: 9.5
+
+---
+
+---
+
 # M3e — run 24, 2026-10-13 — cycle 2, at `8e5b5ba`
 
 **Scores: art-critic 7.9 · perf-critic 8.5 · gameplay-critic 9.7.** Perf and gameplay are carried

@@ -3,6 +3,86 @@
 Critic reports, newest at the top. Written by the critics, read by the builders.
 Cleared only when the defect it names is fixed and the fix is committed.
 
+# M5f — run 28, 2026-10-14 — cycle 1, at `1bb31e8`
+
+**Scores: art-critic 8.6 · perf-critic 9.2 · gameplay-critic 9.3.** No blocking or major defect.
+**M5f ships** on its first pass. Every M5 step is now `DONE`, but **M5 the milestone waits on
+the owner seeing the dressed island** (CLAUDE.md §7).
+
+## perf-critic — 9.2 (all six lines)
+
+P1 2.2 · P2 1.8 · P3 1.8 · P4 1.2 · P5 1.2 · P6 1.0.
+
+From `perf.json`:
+- drawCalls 17 (≤ 31);
+- heap 37 594 of 40 960, within budget;
+- cpu p95 1.5, tail enforced;
+- triangles 216 714;
+- Potato 14 draws;
+- no budget raised.
+
+Defects:
+- [minor] D1: before and after are not recorded in STATE.md from one source. The baseline
+  (35 232 / 2.3) disagrees with the commit message (36 128 / 1.4).
+- [minor] D2: P4 headroom is now 3 366 B (8.2 %). `bytesPerFrame` rose 6.7 % even though
+  draws fell, and `uncorrectedBytesPerFrame` is 43 161. Find the per-frame allocation that
+  grew (`FloraBatch` or the shadow-prefix path). Never raise the budget.
+- [minor] D3: no real-hardware reading covers this scene (triangles +24 %, Potato +36 %).
+  Ask the owner for a sighting at M5f or later.
+
+SCORE_MACHINE: 9.2
+
+## art-critic — 8.6 (all nine lines)
+
+A1 1.0 · A2 0.9 · A3 1.0 · A4 1.4 · A5 1.1 · A6 1.0 · A7 0.9 · A8 0.8 · A9 0.5.
+
+What the critic confirmed:
+- every kind is nonzero, and the dead tree reads as a tree, not a pole;
+- the lichen does not z-fight (12-island-close, about x1100–1250 y340–370);
+- the wind diff shows sway on the hero and companion flora;
+- nothing floats.
+
+Defects:
+- [minor] A6 01-wide (x420–680, y440–500): the front third of the deck is bare. The forest
+  sits in the back half, like a "clump on a green plate".
+- [minor] A6/A2 12-island-close: the ground is one flat, uniform green with no tonal
+  variation or dirt, so the ground cover sits on it as objects.
+- [minor] A6 12-island-close (x150–350): grass and fern blades render as 1–2 px wires with a
+  bright rim.
+- [minor] A4/A6: moss is scaled as big as the bushes and reads as green boulders.
+- [minor] A2: the shadowed faces on the columnar stacks and boulders go to near-black
+  (#05050c).
+- [minor] A3: near-camera foliage blows out to cream under the warm key.
+- [minor, pre-existing] A9/A1: the ice crystals are as tall as the conifers and pull the
+  eye.
+- [minor, pre-existing] A5: black unlit debris slivers in the sky.
+- [minor] A7: the HUD panel lightens over the bright sky (09-orbit-mouse).
+
+SCORE_MACHINE: 8.6
+
+## gameplay-critic — 9.3 (G2, G4 and G5 n/a)
+
+G1 2.2 · G3 1.4 · G6 1.6. The critic drove these scenarios itself:
+- boot;
+- a 404 on all the flora;
+- a 10 s late load;
+- a 404 on the conifers only;
+- context loss;
+- touch;
+- `__dragonveinShot` pose and release.
+
+All of them stayed playable.
+
+- [minor] `loadFlora` is all-or-nothing: `Promise.all` means one missing GLB removes every
+  plant and rock, and the companion groves too (`src/main.ts` ~1790–1870). Load per kind and
+  skip the failures.
+- [minor] There is no player-visible signal for a late or failed load, and the whole
+  dressing pops in on a single frame.
+
+SCORE_MACHINE: 9.3
+
+---
+
 # M5e — run 27, 2026-10-13 — cycle 2, at `ea77a4f`
 
 **Scores: art-critic 8.2 · perf-critic 9.5 · gameplay-critic 8.5** (perf and gameplay carried from
@@ -104,68 +184,6 @@ G1 8.6 · G3 8.2 · G6 8.6. The playable scene is unchanged.
 - [minor] Flowershrub 6/7 and fallenleaves 5/6 may collapse together at game distance.
 
 SCORE_MACHINE: 8.5
-
----
-
-# M3f — run 26, 2026-10-13 — cycle 1, at `61a228b`
-
-**Scores: art-critic 8.2 · perf-critic 9.5 · gameplay-critic 9.5.** No blocking or major defect.
-The "shared body plan" major from M3e is **downgraded to a minor**: the greyscale sheet
-reads as eight individuals. **M3f ships** on its first pass, and **M3 the milestone closes**:
-every step is `DONE`, the last pass is ≥ 8.0 everywhere, and the owner's sighting is logged.
-
-## perf-critic — 9.5 (all six lines)
-
-P1 2.2 · P2 1.8 · P3 1.8 · P4 1.4 · P5 1.2 · P6 1.1. The real-hardware half now rests on the
-owner's 2026-10-13 sightings at `6b06392`, Medium and Potato.
-
-- [minor] D1: no artefact measures the frame cost of a scene with dragons in it. Add a
-  dragon-on-screen pass to `gate:perf` when the dragons are placed, and merge each dragon's
-  parts into one geometry.
-- [minor] D2: the meshgen trend is upward. The round-trip max went 38.7 → 43.3 ms, about
-  +10 % per body step. Hold it by cheapening `skin.ts`; never loosen `TRI_BUDGET`.
-- [minor] D3: `cpuFrameMs.max 14.5` ms, a single outlier frame.
-- [minor] D4: the real-hardware evidence is sightings only, with no percentile.
-
-SCORE_MACHINE: 9.5
-
-## art-critic — 8.2 (all nine lines)
-
-A1 1.0 · A2 0.7 · A3 1.0 · A4 1.45 · A5 0.9 · A6 1.0 · A7 0.9 · A8 0.8 · A9 0.45.
-
-Recomputed from the files:
-- **Sheet silhouettes:** mean IoU 0.523 (0.292–0.677), height spread 1.42×.
-- **Gene sweep:** every gene's low-vs-high IoU is ≤ 0.79, so 8/8 pass.
-- **Reference sheet:** matches.
-- **Wings (M3e):** not regressed.
-
-- [minor, was major] A4 `dragon-greyscale.png` A/B/C/H/F: one stance and one thin cone
-  tail. Pairs sit at IoU 0.62–0.68, and variation is in proportion rather than structure.
-  That is acceptable "one species, many individuals" variation.
-- [minor] A9: slimmer and longer-tailed than the bible's "chunky, front-heavy, wings
-  generous". This matters more now that the genes sweep further.
-- [minor] A2 F: near-black body, carried. A/G/C/H: the wing hue clashes with the body,
-  carried and not fixed.
-- [minor] A5 C/H/D: the segmented rib fan crosses the hind thigh, carried.
-- [minor] A3/A5 C/H: a black belly wedge under the near wing, carried.
-- [minor] A1: low value contrast on the wing panels in greyscale, carried. The far wing still
-  reads steep on D/E/F from foreshortening.
-- [minor, carried] A6: no dragon in any scene shot.
-
-SCORE_MACHINE: 8.2
-
-## gameplay-critic — 9.5 (G2, G4 and G5 n/a)
-
-G1 2.2 · G3 1.4 · G6 1.5. The critic drove `dragon.html` itself: mouse, wheel, touch drag
-and pinch, with 0 errors.
-
-- [minor] D1: `gate:smoke` does not cover `dragon.html` input. Add a drill.
-- [minor] D2: at 900×560 the sheet labels overlap, and `?view=turn` has an empty band at the
-  top. This is the dev viewer.
-- [minor, G2 advisory] G (A×B) shows little of B: no teal, and B–G IoU is below the mean. H
-  shows both parents. Re-check across many pairs at M9b.
-
-SCORE_MACHINE: 9.5
 
 ---
 

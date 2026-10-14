@@ -216,7 +216,9 @@ The sighting is logged in `STATE.md`. Nothing about M4 is outstanding.
 | M5c | 2 more trees, and saplings | DONE |
 | M5d | 4 understory generators — bushes, ferns, reeds, grass clumps | DONE |
 | M5e | 4 more generators — flowering shrub, moss, lichen, fallen leaves — each with a passing variant sheet | DONE |
-| **M5f** | **dress the island with the generated flora and rocks, kinds merged per LOD into shared draws, inside budget** | **TODO** |
+| M5f | dress the island with the generated flora and rocks, kinds merged per LOD into shared draws, inside budget | DONE |
+
+**M5 the milestone is `IN_PROGRESS`, awaiting the owner's look.** M5f closed in run 28 at `1bb31e8` (art 8.6, perf 9.2, gameplay 9.3): every step is `DONE` and the last pass is ≥ 8.0, but no human has seen the dressed island running yet (CLAUDE.md §7). The owner's look at the deployed build closes it; NEXT.md asks.
 
 M5a closed on 2026-10-12 at `e377e1d` (run 19) on its first pass: art 8.4, perf 8.4,
 gameplay 9.2. `src/render/wind.ts` sways 220 instances of the committed `flora/broadleaf` in
@@ -268,7 +270,7 @@ They meet §Definition of done:
 
 | step | done when | status |
 |---|---|---|
-| M7a | procedural idle — breathing, blink, weight shift — driven by genome proportions | TODO |
+| **M7a** | **procedural idle — breathing, blink, weight shift — driven by genome proportions** | **TODO** |
 | M7b | walk cycle, feet planted, no sliding | TODO |
 | M7c | wing flap and glide, no interpenetration at any wing span | TODO |
 

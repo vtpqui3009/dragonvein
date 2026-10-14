@@ -167,7 +167,7 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
-## 2026-10-14 · run 28 · M5f — dress the island with the generated flora and rocks
+## 2026-10-14 · run 28 · M5f DONE (M5 awaits the owner) — dress the island with the generated flora and rocks
 
 **Step**: `M5f`, the first step in reading order that is not `DONE`. The marker commit
 precedes this one.
@@ -228,6 +228,68 @@ wind patch (`src/render/wind.ts`) now reads a baked per-vertex `windBend` attrib
 (`bakeWindBend`) instead of a height uniform, and it handles `batchingMatrix` as well as
 `instanceMatrix`. Any new wind-patched mesh must bake the attribute; a mesh without it
 stands still.
+
+---
+
+### Result — M5f DONE; M5 IN_PROGRESS until the owner sees it
+
+Criteria 1–6 hold at `1bb31e8`.
+
+1. **Kinds placed.** All 15 kinds are on the hero island:
+
+   | kind | count | kind | count |
+   |---|---|---|---|
+   | conifer | 9 | flowershrub | 10 |
+   | broadleaf | 6 | fern | 22 |
+   | sapling | 4 | grassclump | 47 |
+   | windtwisted | 2 | moss | 22 |
+   | deadtree | 3 (replacing the snags) | fallenleaves | 20 |
+   | boulders | 12 | lichen | 17 |
+   | columnar | 2 | pathstone | 22 |
+   | bush | 17 | | |
+
+   The smoke fails if any of 13 required kinds is 0.
+2. **One `BatchedMesh` for the island.** `FloraBatch` in `src/render/flora.ts` draws the whole
+   island in 1 colour draw and 1 shadow draw. The shadow casters sit in a prefix, so the
+   ground cover casts no shadow. Culling and sorting are off. The placeholders are removed.
+   Wind is a baked per-vertex `windBend`, and the patch handles `batchingMatrix`.
+   ARCHITECTURE §Render contract now allows a `BatchedMesh` where kinds share one material.
+3. **Perf.** One source, `gate:perf` runs on `2c25da2` and `1bb31e8`:
+
+   | | before | after | limit |
+   |---|---|---|---|
+   | draws | 28 | 17 | ≤ 31 |
+   | triangles | 174 012 | 216 714 | ≤ 900 000 |
+   | heap | 36 128 | 37 594 | ≤ 40 960 |
+   | cpu p95 | 1.4 | 1.5 | ≤ 3.5 |
+   | Potato draws | 20 | 14 | ≤ 23 |
+
+   The run-28 baseline row above (35 232 / 2.3) came from M5e's run at `4310718`, which is
+   noise between runs. No budget was raised.
+
+   The first pass put every tree at LOD0: 343k triangles and a heap of 41 156, which failed.
+   The fix made the frame cheaper rather than touching the gate: trees at LOD1, grass and
+   fern at LOD2.
+4. **Shots.**
+   - `01-wide` shows the dressed island.
+   - `12-island-close` is new.
+   - The wind diff is 17 095 px, 76 % of it foliage.
+   - The lichen is clean, with no z-fighting.
+5. `npm run gates` exits 0.
+6. No blocking or major defect.
+
+**Scores (cycle 1):** art 8.6, perf 9.2, gameplay 9.3.
+
+**Container restart.** The container restarted mid-run. The tree survived and was
+snapshotted to `wip/m5f`, and the integrator resumed. `wip/m5f` is now superseded.
+
+**Open, carried to FINDINGS:**
+- P4 headroom is 3.4 kB;
+- the front of the deck is sparse and the ground green is flat;
+- the grass blades are wire-thin;
+- the moss is scaled too big;
+- the rock faces are near-black;
+- `loadFlora` is all-or-nothing.
 
 ---
 
@@ -322,131 +384,6 @@ raise the budget.
 - moss reads as "jelly";
 - the probe credits colour axes;
 - lichen may z-fight once placed.
-
----
-
-## 2026-10-13 · run 26 · M3f DONE, M3 DONE — taken over from stopped run 25
-
-**Step**: `M3f`, still the first step in reading order that is not `DONE` under the new order
-(M3 → M5 → M7 → M8 → M9 → ▲ playable checkpoint → M6 …, owner decision `67941df`).
-
-**Criteria**: **run 25's five criteria, reused unchanged**, as NEXT.md asks.
-
-**Run 26 picks up run 25's builder.** It started building in this session before run 25 was
-stood down: the sweep instrument in `tools/silhouette.mjs` and `dragon-view.ts`, and
-`graph.ts`. That work was uncommitted, so it was not on `main` when `6dd4794` described run
-25 as having shipped nothing. Run 26 continues it here, in the order written: the sweep
-first, then the genes. Nothing lands on `main` until `npm run gates` is green.
-
----
-
-### Result — M3f DONE; **M3 DONE**
-
-All five run 25 criteria hold at `61a228b`:
-
-1. **Sweep** (`dragon-sweep.json`). Low-vs-high IoU for each gene:
-
-   | gene | before | after |
-   |---|---|---|
-   | bodyMass | 0.845 | 0.678 |
-   | neckLength | 0.620 | 0.577 |
-   | neckArc | 0.840 | 0.511 |
-   | legLength | **0.967** | 0.416 |
-   | tailLength | 0.230 | 0.235 |
-   | headSize | 0.689 | 0.584 |
-   | hornCount | 0.824 | 0.790 |
-   | crestType | **0.932** | 0.768 |
-
-   All eight are ≤ 0.85.
-2. **Sheet.**
-
-   | | before | after |
-   |---|---|---|
-   | mean pairwise IoU | 0.632 | **0.523** |
-   | most-alike pair | 0.785 | **0.677** |
-   | height spread | 1.22× | **1.42×** |
-
-3. **Greyscale.** It reads as eight individuals. The art critic downgraded the
-   shared-body-plan major to a minor.
-4. **Gates.**
-   - Parity exact; worst box gap 2.37 % of 3 %.
-   - meshgen round-trip max 43.3 ms.
-   - `npm run gates` exits 0, with 1055 tests.
-5. No blocking or major art defect.
-
-**What changed**, identically in `builder.py` and `graph.ts`, using only `+ - * /`, `abs` and
-`max`:
-- **Body mass** drives torso girth on a saturating curve, chest-heavy, with belly sag.
-- **Leg length** sets the ride height, and the legs are rebuilt to reach the ground.
-- **The neck** is a 4-node cubic, from straight to a swan S.
-- **Head size** scales the skull, crown and eyes ×0.78–1.77.
-- **Horns and crests** are larger.
-- **Wing hue** sits near the body hue.
-- **Skinning in `skin.ts`** is cheaper on branches.
-
-No GENOME range changed. The wing tests read the root and midline from the body instead of
-fixed constants, with the same values at mid-body.
-
-**Scores (cycle 1):** art 8.2, perf 9.5, gameplay 9.5.
-
-**M3 closes.** Every step is `DONE`, the last pass is ≥ 8.0 in all three, and §7 holds
-through the owner's sighting (run 23). The M3f geometry is new since that sighting, so a
-fresh look at `dragon.html` is invited in NEXT.md.
-
-**Usage limit.** The run hit the limit at about 10:00 UTC, while the integrator waited on
-gates. Its work was snapshotted to `wip/m3f` and resumed after the reset. `wip/m3f` is now
-superseded.
-
-**Open, carried to FINDINGS:**
-- wing hue clashes with the body, and F is near-black;
-- the rib skewers;
-- the belly wedge;
-- the bible's "chunky" proportions;
-- `dragon.html` input is not smoke-covered;
-- a dragon-on-screen perf pass for when dragons are placed.
-
----
-
-## 2026-10-13 · run 25 · M3f — the genome drives the body outline
-
-**Step**: `M3f`, the first step in reading order that is not `DONE`. The marker commit
-precedes this one.
-
-**The defect.** Art cycle 2 of M3e left one major: the eight share one body plan. The
-numbers in `dragon-silhouette.json` at `8e5b5ba`:
-- mean pairwise IoU 0.632, range 0.429–0.785, with A–G the most alike;
-- area 6.50–7.77, height 3.42–4.18, width 5.21–6.51.
-
-That is about a 20 % spread. `docs/GENOME.md` gives the body genes wide ranges, for example:
-- bodyMass 0.70–1.45;
-- neckLength 0.60–1.70, with neckArc 0–1;
-- legLength 0.70–1.40;
-- tailLength 0.60–1.80.
-
-So the question is how weakly `builder.py` turns those genes into outline. GENOME.md is
-not rewritten (§7). If a range itself is wrong, it is raised here and the owner is asked.
-
-**Ownership**: one sequential owner, the integrator, across `assetgen/dragon/`,
-`src/assets/dragon/` and `tools/`. Never a fan-out.
-
-### Acceptance criteria
-
-1. **Each body gene measurably moves the outline.** `tools/silhouette.mjs` gains a
-   one-gene sweep. For each of bodyMass, neckLength, neckArc, legLength, tailLength,
-   headSize, hornCount and crestType, it builds a fixed base genome at the gene's low,
-   middle and high values and records the mask area, width, height and the IoU against the
-   base, in `artifacts/variants/dragon-sweep.json`. Every gene listed must reach
-   **IoU ≤ 0.85** between its low and high ends. hornCount and crestType are judged on head
-   outline, so they may be measured on a head crop.
-2. **The eight separate.** In `dragon-silhouette.json` for the fixed sheet A–H:
-   - **mean pairwise IoU ≤ 0.55**, down from 0.632;
-   - **the most-alike pair ≤ 0.72**, down from 0.785;
-   - **area or height spread (max/min) ≥ 1.35**, up from about 1.20.
-3. **The greyscale test.** `dragon-greyscale.png` reads as eight different creatures. It is
-   judged by the art critic, with no major or blocking defect on the shared body plan.
-4. `gate:parity` is green with the regenerated fixture, `gate:meshgen` is ≤ 120 ms, and
-   `npm run gates` exits 0.
-5. No blocking or major art defect against the dragon sheet or turntables (§4).
 
 ---
 
