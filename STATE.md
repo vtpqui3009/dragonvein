@@ -167,6 +167,71 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-14 · run 30 · M7b — walk cycle, feet planted, no sliding
+
+**Step**: `M7b`, the first step in reading order that is not `DONE`. The marker commit
+precedes this one.
+
+**The animation path, decided before code: skinning.** M7a's vertex-shader idle could shear
+a leg but not bend a knee; both critics said the legs "shear rather than bend". A walk needs
+limbs that rotate about joints, and feet that stay still on the ground while the body moves
+over them. So the dragon becomes a three.js `SkinnedMesh`:
+- **Bones** come from the skin graph's own nodes. `graph.ts` already has the hip, shoulder
+  and the per-leg node chain down to the toes. The torso, neck and tail nodes become a spine
+  chain, and the wings ride their roots. No new bone layout is invented.
+- **Skin weights** are baked in the worker by the tube sweep. Every ring knows its path
+  segment, so it is weighted to that segment's two nodes, with up to 4 influences per vertex.
+- **Parity** is untouched. It compares skin graphs and limb anchors, not weights, and the
+  graph does not change.
+- **Two-bone analytic IK** places each foot: hip or shoulder → knee → foot. A planted foot's
+  target is fixed in world space for its whole stance phase.
+- **M7a's idle stays as it is.** It composes with skinning: breath and blink on the bind pose,
+  sway as root motion.
+
+The risk is CPU: bone updates every frame. It is measured in criterion 4.
+
+**Ownership**: one sequential owner, the integrator, across `src/assets/dragon/` (weights,
+bone table), `src/render/`, `src/dragon-view.ts`, `tools/` and `tests/`.
+
+### Acceptance criteria
+
+1. **The genome drives the gait.** `walkParams(genome)` gives:
+   - a stride length that grows with legLength;
+   - a cadence that slows with bodyMass;
+   - the duty factor, the share of each cycle a foot is down;
+   - a quadruped gait order, the lateral sequence: left hind, left fore, right hind, right
+     fore.
+
+   The body travels at stride ÷ cycle period. `tests/dragon-walk.test.ts` proves it monotone,
+   bounded and deterministic.
+2. **Skinning.** The mesher emits `skinIndex` and `skinWeight` (≤ 4 influences, weights sum to
+   1, tested) and a bone table derived from the graph. `dragon.html` renders a `SkinnedMesh`
+   that is pixel-identical at rest to the static mesh. Measure it: the rest-pose diff is ≤ a
+   few pixels on edges only.
+3. **No sliding, as a number.** A tool walks each sheet dragon for 2 cycles and records each
+   foot's world position across its stance phase. The **stance drift is ≤ 1 % of the stride**
+   for every foot of every dragon. It is written to `artifacts/variants/dragon-walk.json`, and
+   the tool fails above that. Knees visibly bend: the knee angle range over a cycle is reported
+   and is > 15°.
+4. **Budgets.**
+   - meshgen ≤ 120 ms, with no regression past noise (~44 ms max now);
+   - `gate:parity` green;
+   - no new draw on `dragon.html`;
+   - `cpuFrameMs` on `dragon.html` with 8 dragons walking is measured and reported. It must
+     stay under the 3.5 ms main-thread budget;
+   - no per-frame allocation in the walk or IK path;
+   - `npm run gates` exits 0.
+5. **Seen.** `artifacts/turntables/dragon-walk.webm` is a tracking side view of one dragon
+   walking across 2+ cycles, framed whole. `dragon-walk-a.png` and `dragon-walk-b.png` show
+   two phases.
+6. **No blocking or major art defect**:
+   - no foot sliding;
+   - no tearing or candy-wrapper collapse at the knees or shoulders;
+   - wings and tail ride the body;
+   - the idle still works at rest.
+
+---
+
 ## 2026-10-14 · run 29 · M7a DONE — procedural idle driven by the genome
 
 **Step**: `M7a`, the first step in reading order that is not `DONE`. M5 waits only on the
@@ -717,4 +782,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-14T09:31Z
