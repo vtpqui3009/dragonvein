@@ -3,6 +3,81 @@
 Critic reports, newest at the top. Written by the critics, read by the builders.
 Cleared only when the defect it names is fixed and the fix is committed.
 
+# M7b — run 30, 2026-10-14 — cycle 1, at `a68c77f`
+
+**Scores: art-critic 8.7 · perf-critic 9.0 · gameplay-critic 7.5.** No blocking defect. Two
+**gameplay majors** in the new `?view=walk`, and one **perf major** on the `gate:meshgen` tool,
+so the step goes to rework cycle 2.
+
+## perf-critic — 9.0 (all six lines)
+
+P1 2.0 · P2 1.8 · P3 1.6 · P4 1.2 · P5 1.2 · P6 1.2.
+
+Re-measured on a scratch copy:
+- draws 50 in every mode;
+- cpuFrameMs with 8 walking: p95 1.9–2.1;
+- meshgen max 25–54 ms over 6 runs;
+- parity green;
+- no per-frame allocation, by code read and a Node probe (~0.5 kB per frame of boxed
+  doubles once warm).
+
+Defects:
+- **[major] The recurring `gate:meshgen` main-thread stall is still unfixed.** It hit two
+  consecutive steps: 243.8 ms at M7a and 178.8 ms at M7b, both with a fast worker (37.2 ms).
+  `tools/gate-meshgen.mjs` has no rasteriser-cap partition. Run the page under
+  `tools/rasteriser-cap.mjs` as `gate:perf` and `dragon-walk.mjs` do. Never loosen 120 ms.
+- [minor] There is no real-GPU row since `6b06392`, which predates M7. Ask the owner for a
+  sighting of `dragon.html?walk=1` before M7 closes.
+- [minor] `dragon.html` heap churn is in no artefact. The raw walk figure was 47–51 kB per
+  frame, unsubtracted. Record it in `dragon-walk.json` with the idle-floor subtraction.
+- [minor] A cold-JIT allocation burst on walk start (boxed doubles). Optional: use
+  `Float64Array` scratch, or warm it up.
+- [minor] `dragon-full.json` is stale (04:13). Regenerate it.
+
+SCORE_MACHINE: 9.0
+
+## art-critic — 8.7 (all nine lines)
+
+A1 1.1 · A2 0.9 · A3 1.1 · A4 1.4 · A5 1.1 · A6 1.0 · A7 0.9 · A8 0.7 · A9 0.5.
+
+Feet planted: the toe holds within ±2 px through each stance (camera scroll subtracted). The
+knees bend 37–49° on all 8 bodies with no tearing or collapse. Wings and tail ride the body,
+the rest pose is 0 px from static, and the idle is intact.
+
+Defects:
+- [minor] The switch from rest to walk is a hard snap (`walkAt(null)` → `walkAt(0)`): the
+  body drops about 10 px in one frame. It becomes a major pop once gameplay triggers it.
+  Add a walk-weight ramp.
+- [minor] On `?walk=1` the sheet teleports back every 3 cycles.
+- [minor] A4: the gait varies narrowly. Stride is 0.48 × legLength for all, with identical
+  phases, so every dragon is "the same low skitter at slightly different speeds".
+- [minor] A5/A9: the walk is leg-only. The head nods only about 7 px and the tail tip sways
+  about 6 px, so it reads as legs under a rigid body.
+- [minor] A9: the crouch is low, with the belly near the ground and the wings folded as
+  bars. It is far from the concept's upright, alert dragons.
+- [minor, pre-existing] A8: a faceted crease on the neck collar.
+
+SCORE_MACHINE: 8.7
+
+## gameplay-critic — 7.5 (3.9 of 5.2; G2, G4 and G5 n/a)
+
+G1 2.0 · G3 0.9 · G6 1.0.
+
+- **[major] D1: dragging in `?view=walk` loses the tracked dragon.** `setYaw` rotates the
+  parent group, but `frame()` tracks world x only, so the dragon walks out of frame within
+  about 7 s. Touch does the same. See `src/dragon-view.ts:661-692` against `:396-402`.
+- **[major] D2: zoom does nothing in `?view=walk`** (wheel and pinch). `zoomBy` moves the
+  camera, and `frame()` resets it from `walkCam.pos` (`:398`).
+- [minor] D3: the walk view's world ends. The ground is a fixed 400×400 plane and the sky
+  sphere has radius 150, so by t ≈ 320–450 s the dragon is in a black void.
+- [minor] D4: `?walk=1` teleports every 3 cycles (by design).
+- [minor, G2 advisory] The gait varies only in scale and tempo, and the walk reads as a slow
+  shuffle (about 0.1 body-lengths per second). Children's gaits sit between their parents'.
+
+SCORE_MACHINE: 7.5
+
+---
+
 # M7a — run 29, 2026-10-14 — cycle 1, at `6cbc451`
 
 **Scores: art-critic 9.1 · perf-critic 9.5 · gameplay-critic 8.4.** No blocking or major defect.
