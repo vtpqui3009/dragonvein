@@ -10,12 +10,9 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-14** · at commit `e53fb3b`. **Run 29 is in flight on M7a** in the
-owner's main session. The criteria and the decided approach (a vertex-shader idle from
-attributes the mesher bakes, not skinning) are in STATE.md run 29. The integrator is
-building, and nothing lands until the gates are green. **Do not start M7a from a second
-session while this line stands.** If there is no `feat(dragon)` commit after `e53fb3b`
-hours later, run 29 died: take M7a from the STATE.md run 29 criteria.
+Last updated: **2026-10-14** · at commit `6cbc451`, the last commit of run 29 that changed
+code. The close-out commits that wrote this file follow it. Run 29 is **finished**, and
+nothing is in flight.
 
 ---
 
@@ -36,54 +33,48 @@ question into this file and waits for the owner to play it.
 
 ## Current step
 
-**M7a — procedural idle (breathing, blink, weight shift) driven by genome proportions** ·
-`TODO`. It is the first step in reading order that is not `DONE`. M7 continues with M7b and
-M7c, then M8 and M9, then the playable checkpoint.
+**M7b — walk cycle, feet planted, no sliding** · `TODO`. It is the first step in reading order
+that is not `DONE`. M7c (flap and glide) comes next, then M8, M9 and the playable checkpoint.
+M5 still waits only on the owner's look (§Open items).
 
-**M5f closed** in run 28 on its first pass: art **8.6**, perf **9.2**, gameplay **9.3**.
-- The hero island is dressed from the generated set, 15 kinds, in **one `BatchedMesh`**
-  (`src/render/flora.ts`, `FloraBatch`) with a shadow-caster prefix.
-- Draws went from 28 to **17**, and Potato from 20 to 14.
-- Heap is 37 594 B of 40 960, triangles 216 714 and cpu p95 1.5.
-- Wind is a baked per-vertex `windBend`.
-- The generated dead tree replaces the snags.
+**M7a closed** in run 29 on its first pass: art **9.1**, perf **9.5**, gameplay **8.4**. Each
+dragon now idles at its own genome-driven rhythm:
+- breath at 2.6–5.0 s, deeper for heavy bodies;
+- a blink every 3.5–6 s;
+- a weight shift with the feet exactly planted.
 
-**Every M5 step is `DONE` and the last pass is ≥ 8.0, but M5 the milestone stays
-`IN_PROGRESS`** until the owner has seen the dressed island running (CLAUDE.md §7). See
-§Open items.
+The idle is a vertex-only patch (`src/render/idle.ts`) on attributes the worker mesher bakes
+(`idleBreathSway`, `idleBlink` in `src/assets/dragon/idle.ts`). It adds no draw, allocates
+nothing per frame, and leaves parity untouched.
 
 ## The single next action
 
-**Take M7a.** Animate the dragon procedurally from its genome:
-- breathing that scales with body mass;
-- a blink;
-- a weight shift.
+**Take M7b, the walk cycle.** The real decision is the **animation path**. M7a's
+vertex-shader shear cannot bend a knee: the gameplay and art critics both noted that the
+legs "shear rather than bend". A walk needs limbs that rotate about joints, with feet
+planted per stance phase and no sliding. So:
+- **Decide skinning or vertex-shader before code**, and record why in STATE.md.
+  - The skin graph (`graph.ts`) already has the limb nodes, so bones from the graph plus skin
+    weights from the tube sweep is the natural path.
+  - It must keep `gate:parity` green. Parity compares graphs, not weights.
+  - It must keep meshgen at or under 120 ms (it is ~44 ms now) and allocate nothing per frame.
+    `SkinnedMesh` bone updates are CPU work, so measure `cpuFrameMs`.
+- **Define "no sliding" as a number**: a planted foot's world position drifts by ≤ ε over its
+  stance phase, measured in a tool, the way M5a measured wind.
+- **Where it is judged:** `dragon.html` (a walk turntable), until dragons enter the game scene
+  at M8.
 
-M3 already built the dragon's mesh in a worker (`src/assets/dragon/`, `src/dragon-view.ts`),
-and the body genes now drive the outline.
-
-**Before planning:**
-- **Choose the animation path.** It is either skinning (bones from the skin graph, so the
-  mesher must emit skin weights, parity-sensitive) or a vertex-shader deformation keyed on
-  per-vertex attributes (like `windBend`). The vertex-shader path keeps the CPU frame and
-  heap budgets intact and needs no per-frame allocation. Record the choice and why in
-  STATE.md before code.
-- **Where it is judged.** The dragon is only on `dragon.html` today. Make the idle visible
-  and measurable there, for example two frames at fixed animation times differing on the
-  dragon, as the M5a wind shots did.
-- **Perf constraints:**
-  - meshgen must stay ≤ 120 ms; it is at 50.3 ms and trending up, so do not regress it;
-  - any new mesh attribute must keep `gate:parity` green. Parity compares skin graphs, not
-    vertex attributes, but check it.
-
-**Carried perf and art items (minor):**
-- P4 headroom is now about 3.4 kB. Find which per-frame allocation grew in M5f, even though
-  draws fell (`FloraBatch` or the shadow-prefix path), and never raise the budget.
-- The front of the deck is sparse. The flat uniform ground green reads as "props on a green
-  plate". Grass and fern blades are wire-thin. Moss is scaled too big. Rock shadow faces are
-  near-black. These are for a later dressing pass or M6 look dev.
-- `loadFlora` is all-or-nothing: one missing GLB removes all the flora. Load per kind and
-  skip the failures.
+**Carried items (minor):**
+- The idle is subtle at sheet scale. Only the blink reads at a glance, and the blink is a
+  squashed eyeball rather than a lid.
+- `dragon.html` labels overlap at 1280×720.
+- `playtest.log` has no `dragon.html` coverage. Add an idle-advances check and a
+  drag-while-idling check to smoke.
+- `gate:meshgen` flaked once on unmodified HEAD (243.8 ms). Find the cause, perhaps the
+  worker competing with the rasteriser threads, and apply the `rasteriserCap` partition.
+  Never loosen the gate.
+- `dragon-idle.json` should record the draw calls.
+- P4 headroom is about 3.4 kB, unchanged.
 
 ## Open items that need the owner, not a run
 
