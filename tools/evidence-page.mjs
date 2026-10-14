@@ -135,8 +135,8 @@ const dataUri = (p, type) => `data:${type};base64,${readFileSync(p).toString('ba
  * silhouettes by; the PNGs in artifacts/variants/ stay the critics' source. Without ffmpeg
  * the PNG is embedded as before.
  */
-const sheetUri = (p) => {
-  const jpg = path.join(OUT_DIR, 'sheets', path.basename(p, '.png') + '.jpg');
+const jpegUri = (p, sub) => {
+  const jpg = path.join(OUT_DIR, sub, path.basename(p, '.png') + '.jpg');
   try {
     mkdirSync(path.dirname(jpg), { recursive: true });
     execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', p, '-q:v', '4', jpg]);
@@ -145,6 +145,10 @@ const sheetUri = (p) => {
     return dataUri(p, 'image/png');
   }
 };
+const sheetUri = (p) => jpegUri(p, 'sheets');
+/** The in-game shots go the same way since run 29: fifteen 1280x720 PNGs plus a growing set
+ *  of turntables pushed the page past the limit again. The PNGs stay the critics' source. */
+const shotUri = (p) => jpegUri(p, 'shots');
 
 const sha = git('rev-parse', '--short', 'HEAD');
 const subject = git('log', '-1', '--format=%s');
@@ -299,7 +303,7 @@ figcaption b { font: 600 12px var(--mono); color: var(--ink); }
     </div>
     <div class="shots">${shots.map((f) => `
       <figure>
-        <img loading="lazy" alt="${esc(f)}" src="${dataUri(path.join(SHOTS, f), 'image/png')}">
+        <img loading="lazy" alt="${esc(f)}" src="${shotUri(path.join(SHOTS, f))}">
         <figcaption><b>${esc(f)}</b> ${esc(captions.get(f) ?? '')}</figcaption>
       </figure>`).join('')}
     </div>
