@@ -10,9 +10,11 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-13** · at commit `ea77a4f`, the last commit of run 27 that changed
-code. The close-out commits that wrote this file follow it. Run 27 is **finished**, and
-nothing is in flight.
+Last updated: **2026-10-14** · at commit `2c25da2`. **Run 28 is in flight on M5f** in the
+owner's main session. The criteria are in STATE.md run 28. The integrator is dressing the
+island with merged draws, and nothing lands until the gates are green. **Do not start M5f
+from a second session while this line stands.** If there is no `feat(render)` or `feat(scene)`
+commit after `2c25da2` hours later, run 28 died: take M5f from the STATE.md run 28 criteria.
 
 ---
 
