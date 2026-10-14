@@ -167,6 +167,58 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-14 · run 29 · M7a — procedural idle driven by the genome
+
+**Step**: `M7a`, the first step in reading order that is not `DONE`. M5 waits only on the
+owner's look. The marker commit precedes this one.
+
+**The animation path, decided before code.** The idle is a **vertex-shader deformation keyed
+on per-vertex attributes that the mesher bakes**, the same pattern as `windBend` (M5f). It
+is not skinning. The reasons:
+- it allocates nothing per frame and adds no draw call (P4 headroom is about 3.4 kB);
+- the dragon stays one draw;
+- `gate:parity`, which compares skin graphs, is untouched, because the attributes are an
+  output of the TS mesher only.
+
+Bone skinning stays open for M7b (walk) and M7c (flap), where limbs must rotate rather than
+breathe. Whether the attributes are enough there is M7b's call.
+
+**Ownership**: one sequential owner, the integrator, across `src/assets/dragon/` (mesher
+attributes), `src/render/` (the idle patch), `src/dragon-view.ts`, `tools/` and `tests/`.
+
+### Acceptance criteria
+
+1. **The genome drives the idle.** A pure TS function `idleParams(genome)` gives the breath
+   rate and depth, the blink interval and the weight-shift amplitude and period from body
+   genes. For example:
+   - heavier bodyMass breathes slower and deeper;
+   - chestDepth scales the chest swell;
+   - legLength and bodyMass set the sway.
+
+   `tests/dragon-idle.test.ts` proves:
+   - monotonic in the genes it names;
+   - bounded;
+   - deterministic: the same genome gives the same params, with no `Math.random` or
+     `Date.now`;
+   - two different sheet genomes give different params.
+2. **Baked attributes.** The worker mesher emits the per-vertex weights the shader needs:
+   chest or breath, eyelid, sway. They are applied in a vertex-only patch, with one shared
+   time uniform set once per frame without allocating.
+3. **Seen moving.** `dragon.html` animates the idle. `tools/dragon-sheet.mjs` writes
+   `artifacts/variants/dragon-idle-a.png` and `dragon-idle-b.png`: the same camera at two
+   fixed idle times, with one time at mid-blink. It logs the changed-pixel count and fails if
+   it is 0, and the changed pixels lie on the dragons. It also writes
+   `artifacts/turntables/dragon-idle.webm`, a few seconds of one dragon idling.
+4. **Budgets.**
+   - `gate:meshgen` ≤ 120 ms, with no regression past the noise of the current ~50 ms;
+   - `gate:parity` green;
+   - no new draw call on `dragon.html`;
+   - `npm run gates` exits 0.
+5. **No blocking or major art defect** on the idle frames or turntable: no tearing, no
+   eyelid through the skull, no wing or body interpenetration from the sway (§4).
+
+---
+
 ## 2026-10-14 · run 28 · M5f DONE (M5 awaits the owner) — dress the island with the generated flora and rocks
 
 **Step**: `M5f`, the first step in reading order that is not `DONE`. The marker commit
@@ -707,4 +759,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-14T03:43Z
