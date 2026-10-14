@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng } from './core/rng';
-import { WIND_UNIFORMS, setWindTime, withWind } from './render/wind';
+import { FloraBatch, batchable } from './render/flora';
+import { bakeWindBend, setWindTime, withWind } from './render/wind';
 
 /**
  * M0 spine: prove the whole chain works end to end — build, deploy, render, measure.
@@ -11,7 +12,9 @@ import { WIND_UNIFORMS, setWindTime, withWind } from './render/wind';
  * Within that, it still has to meet `docs/ART_BIBLE.md`, because the critics score the
  * frame, not the intent: a sky gradient from the bible's palette, one sun plus a cool fill
  * plus a warm rim, visible contact shadows, and enough scatter that the ground is never
- * bare. Every repeated prop is an `InstancedMesh` — one draw call per prop type.
+ * bare. Every repeated prop is instanced: an `InstancedMesh` per prop type, or — for the
+ * hero island's generated flora and rocks, a dozen kinds — one `BatchedMesh` for all of
+ * them (M5f, src/render/flora.ts).
  *
  * Deliberately NOT here (milestone M6): the full camera system (follow, inertia, keys),
  * day/night, bloom, quality tiers. M0f's minimal drag/wheel/pinch orbit is here.
@@ -751,7 +754,7 @@ const islandBody = (() => {
 })();
 void islandBody;
 
-// --- scatter: every repeated prop is one InstancedMesh = one draw call ------------------
+// --- scatter: every repeated prop is instanced, never one draw per copy -----------------
 type Spot = { x: number; z: number; r: number };
 const taken: Spot[] = [];
 
@@ -933,22 +936,35 @@ const crystalShards: Placed[] = [];
   }
 }
 
-// --- the generated broadleaf (M5a): placements, laid out before the placeholder trees ---
+// --- the generated flora and rocks (M5a, M5f): placements --------------------------------
 /*
- * `public/assets/flora/broadleaf.lod{0,1,2}.glb` — the committed output of
- * `assetgen/flora/broadleaf.py`, seed 1 — is the first `assetgen/` asset the game draws.
- * It replaces the hand-built broadleaf (a trunk under two icosahedron blobs) on the hero
- * island, and it is the grove on every companion island.
+ * The hero island is dressed entirely from `assetgen/`'s committed output (M5f): five tree
+ * kinds, four understory kinds, three ground covers and two rock kinds, plus the path's
+ * stepping stones. The hand-built placeholders they replaced — cone-stack conifers,
+ * cylinder snags, sphere bushes, icosahedron boulders and cone grass tufts — are gone, and
+ * with them eleven draw calls.
  *
- * Placement is decided here, synchronously, and seeded from `src/core/rng.ts`, so the
- * layout is the same in every build and every other prop's rejection sampling already
- * avoids these trunks — whether or not the GLB ever arrives. The meshes themselves are
- * built when the files load (`loadBroadleaf`, below); if the fetch fails the island is
- * simply missing its broadleaves, and the error is logged.
+ * Placement is decided here, synchronously and seeded, so the layout is the same in every
+ * build and every later sample's rejection test already avoids the trunks laid out before
+ * it, whether or not the GLBs ever arrive. The meshes are built when the files load
+ * (`loadFlora`, below); if a fetch fails the island is drawn bare and the error is logged,
+ * which gate:smoke turns into a failure.
  *
- * LOD is chosen per instance at setup by its distance from the default camera
- * (`lodBand`): the hero island's trees are LOD0, the nearest companions LOD1, the rest
- * LOD2. One `InstancedMesh` per LOD in use, every one carrying the wind patch.
+ * Everything on the hero island is **one** `FloraBatch` (src/render/flora.ts): one draw for
+ * the colour pass and one for the shadow pass, whatever the number of kinds. LOD is chosen
+ * per kind at setup, by what the default framing can resolve: a tree there is ~80 px tall
+ * and its LOD1 (600-950 triangles) is indistinguishable from LOD0 at that size, grass and
+ * ferns are a dozen pixels and take LOD2, and the ground cover keeps LOD1 because it is
+ * what the close shot is about. Measured, not assumed: with every tree at LOD0 the frame
+ * was 343 k triangles and SwiftShader took 515 ms a frame against 323 ms for the M5e
+ * scene; at these LODs it is 217 k and 391 ms. The rasteriser's time is not free even
+ * where it is not budgeted — a slower frame stretches gate:perf's window, and the
+ * time-driven part of the heap churn is charged to fewer frames (docs/PERF_BUDGET.md
+ * §Heap churn). Bushes do not cast either: at 0.5 units tall their shadow is under their
+ * own canopy.
+ *
+ * The companion islands' broadleaf groves (M5a) stay as they were: one `InstancedMesh` per
+ * LOD, bobbing with their islands.
  */
 type TreeSpot = {
   x: number; y: number; z: number;
@@ -957,11 +973,11 @@ type TreeSpot = {
   rotY: number; tiltX: number; tiltZ: number;
   /** Brightness multiplier, grey so the vertex colours keep their bible hues. */
   shade: number;
-  /** Companion index, or -1 for the hero island (which rotates instead of bobbing). */
+  /** Companion index. */
   owner: number;
   lod: 0 | 1 | 2;
 };
-/** Model height of the generated tree, from its LOD0 bounding box (max y 7.43). */
+/** Model height of the generated broadleaf, from its LOD0 bounding box (max y 7.43). */
 const BROADLEAF_HEIGHT = 7.43;
 /** Distance bands, world units from the default camera: < 35 LOD0, < 70 LOD1, else LOD2. */
 const LOD_BANDS = [35, 70] as const;
@@ -969,199 +985,302 @@ function lodBand(x: number, y: number, z: number): 0 | 1 | 2 {
   const d = Math.hypot(x - camera.position.x, y - camera.position.y, z - camera.position.z);
   return d < LOD_BANDS[0] ? 0 : d < LOD_BANDS[1] ? 1 : 2;
 }
+/** The companion groves. The hero island's broadleaves are in `heroSpots`. */
 const broadleafSpots: TreeSpot[] = [];
 
-/*
- * Eight on the hero island, the count the hand-built broadleaf had, so the island does not
- * close into a green wall: the conifers and snags below keep their numbers and the glade
- * stays open. 1.6-2.2 units tall — the height band the old broadleaf and the conifers
- * already stand in (a quarter of the island's radius, as in the concept). The trunk
- * footprint reserved is about the crown's half-width, so crowns may touch but trunks never
- * crowd; and these are laid out first, so they get the spread positions and the conifers
- * fill between them.
+/** Every kind the hero island is dressed with. `__dragonveinStats().flora` counts each. */
+const HERO_KINDS = [
+  'conifer', 'broadleaf', 'sapling', 'windtwisted', 'deadtree', 'boulders', 'columnar', 'bush',
+  'flowershrub', 'fern', 'grassclump', 'moss', 'lichen', 'fallenleaves', 'pathstone',
+] as const;
+type HeroKind = typeof HERO_KINDS[number];
+
+type KindSpec = {
+  /** `public/assets/<file>.lod<lod>.glb`, or null for the one geometry built here. */
+  file: string | null;
+  lod: 0 | 1 | 2;
+  /** Model height in geometry units (the file's LOD0 bounding box), for the wind bend. */
+  height: number;
+  /** Wind stiffness: 1 sways like the M5a broadleaf, 0 never moves (src/render/wind.ts). */
+  flex: number;
+  /** Drawn by the shadow pass. Trees and rocks only: understory and ground cover never cast. */
+  casts: boolean;
+};
+const KINDS: Record<HeroKind, KindSpec> = {
+  conifer: { file: 'flora/conifer', lod: 1, height: 9.85, flex: 0.7, casts: true },
+  broadleaf: { file: 'flora/broadleaf', lod: 1, height: BROADLEAF_HEIGHT, flex: 1, casts: true },
+  sapling: { file: 'flora/sapling', lod: 1, height: 2.92, flex: 1.4, casts: true },
+  windtwisted: { file: 'flora/windtwisted', lod: 1, height: 5.51, flex: 0.6, casts: true },
+  deadtree: { file: 'flora/deadtree', lod: 1, height: 7.61, flex: 0.3, casts: true },
+  boulders: { file: 'terrain/boulders', lod: 0, height: 1.4, flex: 0, casts: true },
+  columnar: { file: 'terrain/columnar', lod: 0, height: 0.88, flex: 0, casts: true },
+  bush: { file: 'flora/bush', lod: 1, height: 1.38, flex: 1.2, casts: false },
+  flowershrub: { file: 'flora/flowershrub', lod: 1, height: 1.47, flex: 1.3, casts: false },
+  fern: { file: 'flora/fern', lod: 2, height: 0.5, flex: 1.8, casts: false },
+  grassclump: { file: 'flora/grassclump', lod: 2, height: 1.06, flex: 2.2, casts: false },
+  moss: { file: 'flora/moss', lod: 1, height: 0.25, flex: 0, casts: false },
+  lichen: { file: 'flora/lichen', lod: 1, height: 0.02, flex: 0, casts: false },
+  fallenleaves: { file: 'flora/fallenleaves', lod: 1, height: 0.15, flex: 0, casts: false },
+  pathstone: { file: null, lod: 0, height: 0.3, flex: 0, casts: false },
+};
+
+type HeroSpot = {
+  kind: HeroKind;
+  x: number; y: number; z: number;
+  /** Uniform scale, then extra stretches on y and z. */
+  s: number; sy: number; sz: number;
+  rotY: number; tiltX: number; tiltZ: number;
+  /** Per-instance colour. A grey shade for the generated kinds, a tint for path stones. */
+  color: THREE.Color;
+  /** For lichen grown on a boulder: that boulder's index in `heroSpots`, else -1. */
+  onRock: number;
+};
+const heroSpots: HeroSpot[] = [];
+/** Trunk footprints, so the understory can gather in the shade of a tree. */
+const heroTrees: (Spot & { kind: HeroKind; crown: number })[] = [];
+const heroRocks: (Spot & { index: number })[] = [];
+
+/** Usable deck radius: the cap is 6, and nothing should overhang its lip. */
+const DECK_R = 5.6;
+
+/** Clear of every footprint in `taken`, and on the deck. Shared by both samplers. */
+function isClear(x: number, z: number, radius: number, maxR: number): boolean {
+  if (x * x + z * z > maxR * maxR) return false;
+  for (const s of taken) {
+    const dx = s.x - x;
+    const dz = s.z - z;
+    if (dx * dx + dz * dz < (s.r + radius) * (s.r + radius)) return false;
+  }
+  return true;
+}
+
+/**
+ * `pick`, but around one of `anchors`: how the understory gathers under trees, moss at the
+ * foot of a rock and flowers in the glade. The distance is measured from the anchor's
+ * footprint edge (`anchor.r + dMin` to `anchor.r + dMax`), so the same numbers mean "just
+ * outside the trunk" for a sapling and for a big conifer. Negative values reach inside a
+ * footprint, which is what the glade uses: its `r` is its whole radius.
  */
-const HERO_BROADLEAVES = 8;
+function pickNear(
+  rng: Rng, anchors: readonly Spot[], dMin: number, dMax: number, radius: number,
+  maxR = DECK_R, attempts = 60,
+): Spot | null {
+  if (anchors.length === 0) return null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const a = anchors[Math.floor(rng.next() * anchors.length)] as Spot;
+    const ang = rng.next() * Math.PI * 2;
+    const d = Math.max(0, a.r + dMin + (dMax - dMin) * rng.next());
+    const x = a.x + Math.cos(ang) * d;
+    const z = a.z + Math.sin(ang) * d;
+    if (!isClear(x, z, radius, maxR)) continue;
+    const spot = { x, z, r: radius };
+    taken.push(spot);
+    return spot;
+  }
+  return null;
+}
+
+function heroSpot(
+  kind: HeroKind, x: number, y: number, z: number, s: number, rng: Rng,
+  o: Partial<Pick<HeroSpot, 'sy' | 'sz' | 'rotY' | 'tiltX' | 'tiltZ' | 'color' | 'onRock'>> = {},
+): number {
+  heroSpots.push({
+    kind, x, y, z, s,
+    sy: o.sy ?? 1, sz: o.sz ?? 1,
+    rotY: o.rotY ?? rng.next() * Math.PI * 2,
+    tiltX: o.tiltX ?? 0, tiltZ: o.tiltZ ?? 0,
+    color: o.color ?? new THREE.Color().setScalar(0.88 + rng.next() * 0.12),
+    onRock: o.onRock ?? -1,
+  });
+  return heroSpots.length - 1;
+}
+
+/*
+ * The trees, first, so they get the spread positions. Heights are a composition number:
+ * 1.5-2.6 units on a deck of radius 6 is the quarter-radius the concept draws, and the
+ * band the hand-built trees stood in (the comment that set it is in git history, M0d: a
+ * 4-unit tree hides the whole deck behind it from a camera 14 deg above it). The trunk
+ * footprint reserved is about the crown's half-width, so crowns may touch but trunks
+ * never crowd. None stands in the glade.
+ *
+ *   broadleaf    6, the M5a tree
+ *   conifer      9, the most numerous: the concept's island is a conifer island
+ *   sapling      4, young trees at the glade's edge — the small-tree band
+ *   windtwisted  2, at the rim, leaning out over the drop the way wind-bent trees do
+ *   deadtree     3, in place of the three pale snags
+ */
 {
   const rng = new Rng(0xb10a_df01);
-  const next = (): number => rng.next();
-  for (let i = 0; i < HERO_BROADLEAVES; i++) {
-    const s = (1.6 + rng.next() * 0.6) / BROADLEAF_HEIGHT;
-    const spot = pick(next, 0.28 + s * 1.15, 4.9, CLEARING);
-    if (!spot) continue;
-    broadleafSpots.push({
-      x: spot.x, y: TOP_Y, z: spot.z, s, sy: 0.92 + rng.next() * 0.16,
-      rotY: rng.next() * Math.PI * 2,
+  const tree = (kind: HeroKind, h: number, footprint: number, crown: number, maxR: number): void => {
+    const spec = KINDS[kind];
+    const s = h / spec.height;
+    const spot = pick(() => rng.next(), footprint, maxR, CLEARING);
+    if (!spot) return;
+    heroTrees.push({ ...spot, kind, crown });
+    heroSpot(kind, spot.x, TOP_Y, spot.z, s, rng, {
+      sy: 0.92 + rng.next() * 0.16,
       tiltX: (rng.next() - 0.5) * 0.06, tiltZ: (rng.next() - 0.5) * 0.06,
-      shade: 0.9 + rng.next() * 0.1, owner: -1, lod: lodBand(spot.x, TOP_Y, spot.z),
+    });
+  };
+  for (let i = 0; i < 6; i++) {
+    const h = 1.6 + rng.next() * 0.6;
+    tree('broadleaf', h, 0.28 + h * 0.155, h * 0.33, 4.9);
+  }
+  for (let i = 0; i < 9; i++) {
+    const h = 1.8 + rng.next() * 0.8;
+    tree('conifer', h, 0.26 + h * 0.13, h * 0.3, 5.0);
+  }
+  for (let i = 0; i < 3; i++) {
+    const h = 1.5 + rng.next() * 0.5;
+    tree('deadtree', h, 0.3, h * 0.25, 5.0);
+  }
+  // Saplings stand around the glade, not in it: the edge of a clearing is where young
+  // trees come up.
+  for (let i = 0; i < 4; i++) {
+    const h = 0.75 + rng.next() * 0.4;
+    const spot = pickNear(rng, [CLEARING], -0.2, 0.9, 0.3, 5.2);
+    if (!spot) continue;
+    heroTrees.push({ ...spot, kind: 'sapling', crown: h * 0.28 });
+    heroSpot('sapling', spot.x, TOP_Y, spot.z, h / KINDS.sapling.height, rng);
+  }
+  // The wind-twisted pair at the rim. The generated tree leans along its own +x, so it is
+  // turned to lean straight out from the island's centre.
+  for (let i = 0; i < 2; i++) {
+    const h = 1.25 + rng.next() * 0.35;
+    let placed: Spot | null = null;
+    for (let attempt = 0; attempt < 80 && !placed; attempt++) {
+      const ang = rng.next() * Math.PI * 2;
+      const d = 4.4 + rng.next() * 0.6;
+      const x = Math.cos(ang) * d, z = Math.sin(ang) * d;
+      if (!isClear(x, z, 0.35, DECK_R)) continue;
+      placed = { x, z, r: 0.35 };
+    }
+    if (!placed) continue;
+    taken.push(placed);
+    heroTrees.push({ ...placed, kind: 'windtwisted', crown: h * 0.3 });
+    heroSpot('windtwisted', placed.x, TOP_Y, placed.z, h / KINDS.windtwisted.height, rng, {
+      rotY: -Math.atan2(placed.z, placed.x) + (rng.next() - 0.5) * 0.4,
     });
   }
 }
 
-// Trees — three values per asset (ART_BIBLE §Direction): dark trunk, mid lower canopy,
-// light upper tier. Two tiers so the silhouette still reads as a tree at 25% (rubric A1).
 /*
- * Tree archetypes, because one was the single heaviest mark against rubric A4.
- *
- * The art-critic isolated nine tree apexes, measured a cone half-angle of 14.6-22.8 deg
- * at 25 px below the apex, found three of them identical to the pixel, and wrote: "every
- * tree is the same two-tier cone... No broadleaf, no snag, no dead tree, no shrub-tree."
- * `docs/concept/03-island-scene.png` carries rounded broadleaves beside the conifers, so
- * this is a miss against the concept as well as against the rubric.
- *
- * A4's own note — "a beautiful single asset repeated 200 times is still a dead world" —
- * is the thing to answer, and the answer is not more instances of a better cone. It now
- * cuts the other way too: the generated broadleaf is one committed seed drawn 220 times,
- * varied only by yaw, scale, a y-stretch, a slight lean and a grey shade. More seeds in
- * the scene is the remedy, and a later step's to take.
- *
- *   conifer    trunk + two stacked cones
- *   broadleaf  the generated tree (above) — it used to be a bare trunk under two
- *              icosahedron blobs, built here; M5a replaced it
- *   snag       a dead trunk, leaning, no canopy at all
- *
- * The conifer/snag mix is shuffled with the same seeded rng rather than assigned by
- * index, so the two do not come out in bands, and it is still identical in every build —
- * rubric A5 needs two screenshots taken days apart to differ only by the island's
- * rotation.
+ * Rocks: the M4 boulders, scattered, and two columnar outcrops near the rim — the island
+ * reads as rock under the grass, not as a green coin. Then the stepping stones, from the
+ * reservations above: the one shape still built here, a flattened faceted stone, lighter
+ * than the scatter so the line of them is legible.
  */
-const CONIFERS = 13;
-const SNAGS = 3;
-const TREES = CONIFERS + SNAGS;
-
-const trunks = instanced(new THREE.CylinderGeometry(0.1, 0.16, 1.0, 5), TREES, 0.95);
-const canopies = instanced(new THREE.ConeGeometry(0.66, 1.5, 7), CONIFERS, 0.85);
-const crowns = instanced(new THREE.ConeGeometry(0.45, 1.1, 7), CONIFERS, 0.8);
-trunks.castShadow = true;
-canopies.castShadow = true;
-crowns.castShadow = true;
 {
-  const rng = makeRng(0x10a9_0a1c);
-
-  /** The mix, shuffled in place so the archetypes scatter instead of banding. */
-  const plan: ('conifer' | 'snag')[] = [
-    ...Array<'conifer'>(CONIFERS).fill('conifer'),
-    ...Array<'snag'>(SNAGS).fill('snag'),
-  ];
-  for (let i = plan.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    const swap = plan[i] as typeof plan[number];
-    plan[i] = plan[j] as typeof plan[number];
-    plan[j] = swap;
+  const rng = new Rng(0x5a4a_4f05);
+  for (let i = 0; i < 12; i++) {
+    const s = 0.2 + rng.next() * 0.22;
+    const spot = pick(() => rng.next(), 0.12 + s * 0.85, 5.4, softGlade(() => rng.next()));
+    if (!spot) continue;
+    const index = heroSpot('boulders', spot.x, TOP_Y - 0.02, spot.z, s, rng, {
+      sy: 0.75 + rng.next() * 0.4,
+      color: new THREE.Color().setScalar(0.8 + rng.next() * 0.2),
+    });
+    heroRocks.push({ ...spot, index });
   }
-
-  let t = 0;      // trunks, shared by both
-  let c = 0;      // conifer canopies and crowns
-  for (const kind of plan) {
-    if (kind === 'conifer') {
-      /*
-       * Tree height, which is a composition number and not a taste one.
-       *
-       * At `0.74 + rng * 0.95` a tree stood 1.85-4.2 units on a disc of radius 6 — up to
-       * 0.70 of the island's own radius. The concept draws them at 0.26. With the camera
-       * 17 deg above the deck, a 4-unit tree hides every bit of ground within 16 units
-       * behind it, which is the whole island: there was no deck to see, so there was
-       * nowhere for a shadow to be seen landing, and the canopy closed into the "one
-       * undifferentiated green mass" rubric A1 was marked down for.
-       */
-      const h = 0.52 + rng() * 0.46;
-      const spot = pick(rng, 0.3 + h * 0.13, 5.0, CLEARING);
-      if (!spot) continue;
-      const rotY = rng() * Math.PI * 2;
-      const lean = (rng() - 0.5) * 0.06;
-      const w = 0.82 + rng() * 0.3;
-      place(trunks, t, spot.x, TOP_Y + 0.5 * h, spot.z, w, h, w, rotY, lean, lean);
-      place(canopies, c, spot.x, TOP_Y + h * 1.25, spot.z, w, h, w, rotY, lean, lean);
-      place(crowns, c, spot.x, TOP_Y + h * 1.95, spot.z, w, h, w, rotY, lean, lean);
-      trunks.setColorAt(t, tint.copy(cShadow).lerp(cRock, 0.3 + rng() * 0.35));
-      // Widened from (0.45..0.95) and (0.30..0.75). A1 lost marks for a canopy that
-      // merges into one mass; two tones 0.1 apart in the same green do not separate at
-      // 25% zoom, and the whole point of the second tier is that it should.
-      canopies.setColorAt(c, tint.copy(cDark).lerp(cMid, 0.18 + rng() * 0.82));
-      crowns.setColorAt(c, tint.copy(cMid).lerp(cLight, 0.15 + rng() * 0.8));
-      t++; c++;
-    } else {
-      // A dead tree. Thinner, taller, leaning hard, and pale — a standing snag is grey,
-      // not green, so it also breaks the colour field the critic measured as unimodal.
-      const h = 1.0 + rng() * 0.6;
-      const spot = pick(rng, 0.2, 5.0, CLEARING);
-      if (!spot) continue;
-      const lean = (rng() - 0.5) * 0.3;
-      place(trunks, t, spot.x, TOP_Y + 0.5 * h, spot.z,
-        0.72, h, 0.72, rng() * Math.PI * 2, lean, lean);
-      trunks.setColorAt(t, tint.copy(cRock).lerp(cCloudLit, 0.2 + rng() * 0.35));
-      t++;
+  // Two basalt-column outcrops near the rim: low, wide and hexagonal, a second rock
+  // silhouette that no boulder can be mistaken for.
+  for (let i = 0; i < 2; i++) {
+    let placed: Spot | null = null;
+    for (let attempt = 0; attempt < 80 && !placed; attempt++) {
+      const ang = rng.next() * Math.PI * 2;
+      const d = 3.8 + rng.next() * 1.0;
+      const x = Math.cos(ang) * d, z = Math.sin(ang) * d;
+      if (isClear(x, z, 0.5, DECK_R)) placed = { x, z, r: 0.5 };
     }
+    if (!placed) continue;
+    taken.push(placed);
+    const index = heroSpot('columnar', placed.x, TOP_Y - 0.03, placed.z, 0.32 + rng.next() * 0.1, rng, {
+      sy: 0.9 + rng.next() * 0.4, color: new THREE.Color().setScalar(0.85 + rng.next() * 0.15),
+    });
+    heroRocks.push({ ...placed, index });
   }
-  trunks.count = t;
-  canopies.count = crowns.count = c;
-}
-
-// Scatter rocks — the island reads as rock under the grass, not as a green coin. The
-// stepping stones ride in this mesh too: they are the same material at a different
-// scale, and a second InstancedMesh for 22 flattened discs cost two draw calls (one
-// opaque, one shadow) and about 4 kB a frame of churn for no visual difference that
-// survives at 1080p.
-const ROCKS = 44;
-const rocks = instanced(new THREE.IcosahedronGeometry(0.3, 0), ROCKS + pathStones.length, 1.0);
-rocks.castShadow = true;
-{
-  const rng = makeRng(0x5a4a_4001);
-  let n = 0;
-  for (let i = 0; i < ROCKS; i++) {
-    const s = 0.4 + rng() * 0.95;
-    const spot = pick(rng, 0.13 + s * 0.12, 5.5, softGlade(rng));
-    if (!spot) continue;
-    place(rocks, n, spot.x, TOP_Y + s * 0.11, spot.z,
-      s, s * (0.5 + rng() * 0.4), s * (0.8 + rng() * 0.5),
-      rng() * Math.PI * 2, (rng() - 0.5) * 0.5, (rng() - 0.5) * 0.5);
-    rocks.setColorAt(n, tint.copy(cShadow).lerp(cRock, 0.45 + rng() * 0.55));
-    n++;
-  }
-  // The path, from the reservations above: flattened hard so a faceted rock reads as a
-  // trodden stone, and lighter than the scatter so the line of them is legible.
   for (const c of pathStones) {
-    place(rocks, n, c.x, c.y, c.z, c.sx * 1.25, 0.22, c.sz * 1.25, c.rot, c.tiltX, c.tiltZ);
-    rocks.setColorAt(n, tint.copy(cRock).lerp(cCloudLit, 0.2 + c.mix));
-    n++;
+    heroSpot('pathstone', c.x, c.y, c.z, 1.25 * c.sx, rng, {
+      sy: 0.22 / (1.25 * c.sx), sz: c.sz / c.sx, rotY: c.rot,
+      color: new THREE.Color().copy(cRock).lerp(cCloudLit, 0.2 + c.mix),
+    });
   }
-  rocks.count = n;
 }
 
-// Understory bushes — fills the mid frequency between trees and bare ground (rubric A6).
-const BUSHES = 60;
-const bushes = instanced(new THREE.SphereGeometry(0.34, 7, 5), BUSHES, 0.9);
-bushes.castShadow = true;
+/*
+ * The understory and the ground cover, each where it grows rather than sprinkled evenly:
+ *
+ *   bush          around the trunks and on the glade's ragged edge
+ *   flowershrub   in the glade — it is the one place on the island with full sun
+ *   fern          in the shade, close under the trees
+ *   grassclump    the open ground and the glade, the high frequency between features
+ *   moss          at the foot of rocks and on tree roots
+ *   fallenleaves  under the broadleaves and the dead trees, which are what drop them
+ *   lichen        on the boulders' upper faces, and on the ground at the roots
+ *
+ * Every footprint still goes through `taken`, so nothing grows out of a trunk, a stone or
+ * a crystal. Counts are held to what keeps the deck readable — open ground between
+ * features is what the shadows land on.
+ */
 {
-  const rng = makeRng(0x3f8a_3302);
-  let n = 0;
-  for (let i = 0; i < BUSHES; i++) {
-    const s = 0.5 + rng() * 0.7;
-    const spot = pick(rng, 0.14 + s * 0.14, 5.6, softGlade(rng));
-    if (!spot) continue;
-    place(bushes, n, spot.x, TOP_Y + s * 0.19, spot.z,
-      s, s * 0.62, s, rng() * Math.PI * 2);
-    bushes.setColorAt(n, tint.copy(cDark).lerp(cLight, 0.2 + rng() * 0.55));
-    n++;
-  }
-  bushes.count = n;
-}
+  const rng = new Rng(0x3f8a_5f06);
+  const trunks = heroTrees as readonly Spot[];
+  const deciduous = heroTrees.filter((t) => t.kind === 'broadleaf' || t.kind === 'deadtree');
+  const ground = (kind: HeroKind, spot: Spot | null, s: number, lift: number,
+    o: Parameters<typeof heroSpot>[6] = {}): void => {
+    if (spot) heroSpot(kind, spot.x, TOP_Y + lift, spot.z, s, rng, o);
+  };
 
-// Ground cover — the high frequency. Cheap, never casts a shadow, kills the bare plane.
-const TUFTS = 210;
-const tufts = instanced(new THREE.ConeGeometry(0.075, 0.36, 3), TUFTS, 0.9);
-{
-  const rng = makeRng(0x8fd2_4a03);
-  let n = 0;
-  for (let i = 0; i < TUFTS; i++) {
-    const s = 0.55 + rng() * 0.8;
-    const spot = pick(rng, 0.058 * s, 5.72);
-    if (!spot) continue;
-    place(tufts, n, spot.x, TOP_Y + s * 0.17, spot.z,
-      s, s, s, rng() * Math.PI * 2, (rng() - 0.5) * 0.34, (rng() - 0.5) * 0.34);
-    tufts.setColorAt(n, tint.copy(cMid).lerp(cLight, 0.25 + rng() * 0.75));
-    n++;
+  for (let i = 0; i < 18; i++) {
+    const s = 0.33 + rng.next() * 0.22;
+    const spot = i % 3 === 2
+      ? pickNear(rng, [CLEARING], -0.7, 0.3, 0.2 + s * 0.35)
+      : pickNear(rng, trunks, 0.05, 0.6, 0.2 + s * 0.35);
+    ground('bush', spot, s, 0, { sy: 0.85 + rng.next() * 0.3 });
   }
-  tufts.count = n;
+  for (let i = 0; i < 11; i++) {
+    const s = 0.3 + rng.next() * 0.14;
+    ground('flowershrub', pickNear(rng, [CLEARING], -2.4, -0.15, 0.16 + s * 0.3),
+      s, 0, { sy: 0.85 + rng.next() * 0.3 });
+  }
+  for (let i = 0; i < 22; i++) {
+    const s = 0.6 + rng.next() * 0.35;
+    ground('fern', pickNear(rng, trunks, 0, 0.45, 0.12 + s * 0.12), s, 0);
+  }
+  for (let i = 0; i < 64; i++) {
+    const s = 0.3 + rng.next() * 0.2;
+    const spot = i % 4 === 0
+      ? pickNear(rng, [CLEARING], -2.5, 0, 0.1 + s * 0.3)
+      : pick(() => rng.next(), 0.1 + s * 0.3, 5.7);
+    ground('grassclump', spot, s, 0, { sy: 0.85 + rng.next() * 0.35 });
+  }
+  // Ground cover sits a few millimetres proud of the deck: at 20 units from the camera a
+  // 24-bit depth buffer resolves about 0.0003, so 0.004-0.012 is 15-40 steps — no
+  // z-fighting — and far too little to read as floating.
+  for (let i = 0; i < 22; i++) {
+    const s = 0.75 + rng.next() * 0.45;
+    const nearRock = i % 2 === 0;
+    const anchors = nearRock ? heroRocks : trunks;
+    const spot = pickNear(rng, anchors, -0.05, 0.3, 0.06);
+    ground('moss', spot, s, 0.004, { sy: 0.7 + rng.next() * 0.4 });
+  }
+  for (let i = 0; i < 20; i++) {
+    const s = 0.9 + rng.next() * 0.55;
+    ground('fallenleaves', pickNear(rng, deciduous, -0.1, 0.7, 0.06), s, 0.008);
+  }
+  // Lichen on the ground: around roots and stones.
+  // Spaced by most of their own width: two coplanar patches overlapping would z-fight each
+  // other, and read as a stack of pancakes besides.
+  for (let i = 0; i < 9; i++) {
+    const s = 0.6 + rng.next() * 0.45;
+    ground('lichen', pickNear(rng, i % 2 ? heroRocks : trunks, 0, 0.4, 0.1 + s * 0.1), s, 0.012);
+  }
+  // Lichen on the boulders themselves. Where on each rock is decided once the rock's mesh
+  // has loaded (`loadFlora` casts a ray down onto it); here only which rock, and how big.
+  heroRocks.forEach((r) => {
+    if (heroSpots[r.index]?.kind !== 'boulders') return;
+    heroSpot('lichen', r.x, TOP_Y, r.z, 0.55 + rng.next() * 0.3, rng, { onRock: r.index });
+  });
 }
 
 // --- the world around the island (rubric A6, A1, A9) -----------------------------------
@@ -1365,9 +1484,9 @@ const companionRotY = new Float64Array(COMPANIONS.length);
   coneGeo.rotateX(Math.PI);
   const cones = instanced(coneGeo, COMPANIONS.length, 0.98, far);
   const treeTotal = COMPANIONS.reduce((t, c) => t + c.trees, 0);
-  // The far deck gets the same three archetypes as the hero island (conifer cone,
-  // broadleaf, bare snag), for the same reason: A4 is about the repeat set in the frame,
-  // and ~65 identical cones is a repeat set. The broadleaf is the generated tree, placed
+  // The far deck gets three archetypes (conifer cone, broadleaf, bare snag) — the hero
+  // island's mix before M5f dressed it from the generated set — because A4 is about the
+  // repeat set in the frame, and ~65 identical cones is a repeat set. The broadleaf is the generated tree, placed
   // as a grove after this loop (M5a); it used to be an icosahedron blob on a trunk here.
   // The trunk mesh is now the snag only.
   const farTrees = instanced(new THREE.ConeGeometry(0.62, 1.9, 6), treeTotal, 0.85, far);
@@ -1566,91 +1685,187 @@ const companionRotY = new Float64Array(COMPANIONS.length);
   });
 }
 
-/** Instances of the generated tree actually drawn, all of them wind-patched. Read by the gates. */
+/** Instances drawn with the wind-patched material: the hero batch and the companion
+ *  groves. Read by the gates; 0 until the GLBs have loaded. */
 let windInstances = 0;
+/** Instances per hero-island kind, as built. Read by gate:smoke; empty until loaded. */
+const floraCounts: Record<string, number> = {};
+
+/** The stepping stone: a faceted stone, white, so its per-instance tint is its colour. */
+function pathStoneGeometry(): THREE.BufferGeometry {
+  return new THREE.IcosahedronGeometry(0.3, 0);
+}
 
 /**
- * Loads the three LOD files that are in use and builds one `InstancedMesh` per LOD.
- *
- * One material for every LOD — the stock standard material with the rim patch and then
- * the wind patch (`withWind` composes with `withRim`) — so the three meshes share one
- * program. The vertex colours are the asset's bible ramp; the material colour is white
- * rather than the file's 0.8 grey, so those hexes arrive unmultiplied, and the per-instance
- * colour is a grey shade, which varies brightness without moving a hue.
- *
- * Only the hero island's LOD0 casts: the shadow camera spans the hero island alone, so a
- * companion's tree in the shadow pass would be a draw call that lands nowhere. Its depth
- * material carries the same wind patch, so a shadow sways with the canopy that casts it.
+ * Lichen grows on a boulder's upper faces, so where it goes is read off the rock's own
+ * mesh: a ray straight down at a few points near the rock's centre, the first hit whose
+ * normal is within ~37 deg of up wins, and the patch is laid on that face — tilted to it
+ * and lifted 0.012 along it, so it neither z-fights the rock nor visibly floats. A rock
+ * with no face that flat gets no lichen. Setup-time only.
  */
-async function loadBroadleaf(): Promise<void> {
+function seatLichenOnRocks(rockGeometry: THREE.BufferGeometry): void {
+  const probe = new THREE.Mesh(rockGeometry);
+  probe.matrixAutoUpdate = false;
+  const ray = new THREE.Raycaster();
+  const down = new THREE.Vector3(0, -1, 0);
+  const origin = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+  const normalMatrix = new THREE.Matrix3();
+  const up = new THREE.Vector3(0, 1, 0);
+  const tilt = new THREE.Quaternion();
+  const yaw = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const hits: THREE.Intersection[] = [];
+  const OFFSETS: [number, number][] = [[0, 0], [0.08, 0.05], [-0.07, 0.06], [0.04, -0.09], [-0.06, -0.05]];
+  for (const spot of heroSpots) {
+    if (spot.kind !== 'lichen' || spot.onRock < 0) continue;
+    const rock = heroSpots[spot.onRock] as HeroSpot;
+    euler.set(rock.tiltX, rock.rotY, rock.tiltZ);
+    quat.setFromEuler(euler);
+    probe.matrixWorld.compose(vPos.set(rock.x, rock.y, rock.z), quat,
+      vScale.set(rock.s, rock.s * rock.sy, rock.s * rock.sz));
+    normalMatrix.getNormalMatrix(probe.matrixWorld);
+    spot.onRock = -2;   // unseated until a hit says otherwise
+    for (const [ox, oz] of OFFSETS) {
+      origin.set(rock.x + ox * rock.s * 2, rock.y + 5, rock.z + oz * rock.s * 2);
+      ray.set(origin, down);
+      hits.length = 0;
+      probe.raycast(ray, hits);
+      hits.sort((a, b) => a.distance - b.distance);
+      const hit = hits[0];
+      if (!hit?.face) continue;
+      normal.copy(hit.face.normal).applyMatrix3(normalMatrix).normalize();
+      if (normal.y < 0.8) continue;
+      tilt.setFromUnitVectors(up, normal);
+      yaw.setFromAxisAngle(up, spot.rotY);
+      e.setFromQuaternion(tilt.multiply(yaw), 'XYZ');
+      spot.x = hit.point.x + normal.x * 0.012;
+      spot.y = hit.point.y + normal.y * 0.012;
+      spot.z = hit.point.z + normal.z * 0.012;
+      spot.tiltX = e.x; spot.rotY = e.y; spot.tiltZ = e.z;
+      spot.onRock = -1;
+      break;
+    }
+  }
+}
+
+/**
+ * Loads every file in use and builds the hero island's one `FloraBatch` and the companion
+ * groves' `InstancedMesh`es.
+ *
+ * One material per object type — the stock standard material with the rim patch and then
+ * the wind patch (`withWind` composes with `withRim`). The batch and the instanced groves
+ * each get their own instance of it, because three switches program when one material
+ * alternates between batched and instanced objects (and allocates doing it). The vertex
+ * colours are the assets' bible ramps; the material colour is white rather than the files'
+ * 0.8 grey, so those hexes arrive unmultiplied, and the per-instance colour is a grey
+ * shade, which varies brightness without moving a hue.
+ *
+ * Front faces only, although the files say `doubleSided`: every generator's acceptance
+ * (M4, M5) requires 0 open and 0 non-manifold edges and outward winding at every LOD, and
+ * a back face of a closed outward shell is never visible. Culling them halves the
+ * rasteriser's work, which on SwiftShader is what the frame is made of.
+ *
+ * Only the hero batch casts, and only its prefix of trees and rocks: the shadow
+ * camera spans the hero island alone, so a companion's tree in the shadow pass would be a
+ * draw that lands nowhere. The depth material carries the same wind patch, so a shadow
+ * sways with the canopy that casts it.
+ */
+async function loadFlora(): Promise<void> {
   const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
   const loader = new GLTFLoader();
-  const used = ([0, 1, 2] as const).filter((l) => broadleafSpots.some((t) => t.lod === l));
-  const files = await Promise.all(used.map(async (lod) => {
-    const gltf = await loader.loadAsync(
-      `${import.meta.env.BASE_URL}assets/flora/broadleaf.lod${lod}.glb`);
+  const loadGeometry = async (file: string, lod: number): Promise<THREE.BufferGeometry> => {
+    const gltf = await loader.loadAsync(`${import.meta.env.BASE_URL}assets/${file}.lod${lod}.glb`);
     gltf.scene.updateMatrixWorld(true);
     const found: THREE.Mesh[] = [];
     gltf.scene.traverse((o) => { if (o instanceof THREE.Mesh) found.push(o); });
     const src = found[0];
     if (found.length !== 1 || !src) {
-      throw new Error(`broadleaf.lod${lod}.glb: expected one mesh, found ${found.length}`);
+      throw new Error(`${file}.lod${lod}.glb: expected one mesh, found ${found.length}`);
     }
     const geometry = (src.geometry as THREE.BufferGeometry).clone().applyMatrix4(src.matrixWorld);
-    if (!geometry.getAttribute('color')) throw new Error(`broadleaf.lod${lod}.glb has no vertex colours`);
-    return { lod, geometry };
-  }));
+    if (!geometry.getAttribute('color')) throw new Error(`${file}.lod${lod}.glb has no vertex colours`);
+    return geometry;
+  };
 
-  const first = files[0];
-  if (!first) return;
-  first.geometry.computeBoundingBox();
-  WIND_UNIFORMS.uWindHeight.value = first.geometry.boundingBox?.max.y ?? BROADLEAF_HEIGHT;
-  /*
-   * Front faces only, although the file's material says `doubleSided`. Every LOD of the
-   * committed tree was checked weld-by-position: 0 open edges, 0 non-manifold edges, and
-   * every shell (26 / 23 / 10) has positive signed volume, i.e. closed and wound outward.
-   * A back face of a closed outward shell is never visible from outside it, so culling
-   * them changes no pixel and halves the rasteriser's work on 220 trees — which on
-   * SwiftShader is what the frame is made of. Re-check if the generator changes.
-   */
-  const material = withWind(withRim(new THREE.MeshStandardMaterial({
+  // --- the hero island: every kind, one batch --------------------------------------------
+  const kindsInUse = HERO_KINDS.filter((k) => heroSpots.some((s) => s.kind === k));
+  const geometries = new Map<HeroKind, THREE.BufferGeometry>();
+  await Promise.all(kindsInUse.map(async (kind) => {
+    const spec = KINDS[kind];
+    const raw = spec.file ? await loadGeometry(spec.file, spec.lod) : pathStoneGeometry();
+    geometries.set(kind, bakeWindBend(batchable(raw), spec.height, spec.flex));
+    raw.dispose();
+  }));
+  const rockGeometry = geometries.get('boulders');
+  if (rockGeometry) seatLichenOnRocks(rockGeometry);
+
+  // Casters first: the shadow pass draws a prefix of the instance order. `sort` is stable,
+  // so within each half the seeded layout order is kept.
+  const order = heroSpots
+    .filter((s) => s.onRock === -1)
+    .sort((a, b) => Number(KINDS[b.kind].casts) - Number(KINDS[a.kind].casts));
+  let maxVertices = 0, maxIndices = 0;
+  for (const g of geometries.values()) {
+    maxVertices += g.getAttribute('position').count;
+    maxIndices += g.getIndex()?.count ?? 0;
+  }
+  const heroMaterial = withWind(withRim(new THREE.MeshStandardMaterial({
+    color: 0xffffff, vertexColors: true, roughness: 0.8, side: THREE.FrontSide,
+  })));
+  const hero = new FloraBatch(order.length, maxVertices, maxIndices, heroMaterial);
+  hero.name = 'flora.hero';
+  const ids = new Map<HeroKind, number>();
+  for (const [kind, g] of geometries) ids.set(kind, hero.addGeometry(g));
+  const counts: Record<string, number> = {};
+  for (const spot of order) {
+    euler.set(spot.tiltX, spot.rotY, spot.tiltZ);
+    quat.setFromEuler(euler);
+    mat4.compose(vPos.set(spot.x, spot.y, spot.z), quat,
+      vScale.set(spot.s, spot.s * spot.sy, spot.s * spot.sz));
+    hero.place(ids.get(spot.kind) as number, mat4, spot.color, KINDS[spot.kind].casts);
+    counts[spot.kind] = (counts[spot.kind] ?? 0) + 1;
+  }
+  hero.castShadow = true;
+  hero.receiveShadow = true;
+  hero.customDepthMaterial = withWind(new THREE.MeshDepthMaterial());
+  // Compile off the frame where the driver allows it (KHR_parallel_shader_compile), so the
+  // first frame with the dressing is not also the frame that builds its program.
+  await renderer.compileAsync(hero, camera, scene);
+  island.add(hero);
+  let drawnWithWind = hero.instanceCount;
+
+  // --- the companion groves: the broadleaf, one InstancedMesh per LOD, bobbing ----------
+  const used = ([0, 1, 2] as const).filter((l) => broadleafSpots.some((t) => t.lod === l));
+  const groveMaterial = withWind(withRim(new THREE.MeshStandardMaterial({
     color: 0xffffff, vertexColors: true, roughness: 0.78, side: THREE.FrontSide,
   })));
-  const depthMaterial = withWind(new THREE.MeshDepthMaterial());
-
+  const files = await Promise.all(used.map(async (lod) => ({
+    lod, geometry: bakeWindBend(await loadGeometry('flora/broadleaf', lod), BROADLEAF_HEIGHT, 1),
+  })));
   for (const { lod, geometry } of files) {
     const spots = broadleafSpots.filter((t) => t.lod === lod);
-    const hero = spots.filter((t) => t.owner < 0).length;
-    // The hero island rotates and the companions bob, so one mesh cannot hold both. The
-    // bands keep them apart (every hero tree is nearer than LOD_BANDS[0], every companion
-    // farther); if a band change ever mixed them, that is a layout bug, not a fallback.
-    if (hero !== 0 && hero !== spots.length) {
-      throw new Error(`broadleaf LOD${lod} mixes hero and companion instances`);
-    }
-    const onHero = hero > 0;
-    const mesh = new THREE.InstancedMesh(geometry, material, spots.length);
+    const mesh = new THREE.InstancedMesh(geometry, groveMaterial, spots.length);
     mesh.name = `broadleaf.lod${lod}`;
     mesh.receiveShadow = true;
-    mesh.castShadow = onHero;
-    if (onHero) mesh.customDepthMaterial = depthMaterial;
     const baseY: number[] = [], owner: number[] = [];
     spots.forEach((t, k) => {
       place(mesh, k, t.x, t.y, t.z, t.s, t.s * t.sy, t.s, t.rotY, t.tiltX, t.tiltZ);
       mesh.setColorAt(k, tint.setScalar(t.shade));
       baseY.push(t.y); owner.push(t.owner);
     });
-    const parent = onHero ? island : far;
-    // Compile off the frame where the driver allows it (KHR_parallel_shader_compile), so the
-    // first frame with trees is not also the frame that builds their program.
     await renderer.compileAsync(mesh, camera, scene);
-    parent.add(mesh);
-    if (!onHero) registerBobber(mesh, baseY, owner);
-    windInstances += mesh.count;
+    far.add(mesh);
+    registerBobber(mesh, baseY, owner);
+    drawnWithWind += mesh.count;
   }
+  // Published last, so a reader that waits for them sees the whole set, not the first half.
+  windInstances = drawnWithWind;
+  Object.assign(floraCounts, counts);
 }
-loadBroadleaf().catch((e: unknown) => {
+loadFlora().catch((e: unknown) => {
   // The rest of the world still renders; gate:smoke turns this console error into a failure.
-  console.error('broadleaf: the generated tree did not load, so the islands are drawn without it:', e);
+  console.error('flora: the generated plants and rocks did not load, so the islands are drawn without them:', e);
 });
 
 /*
@@ -2226,10 +2441,19 @@ declare global {
     drawCalls: number | null; triangles: number | null;
     frameMs: number | null; cpuFrameMs: number | null;
     contextLost: boolean;
-    /** Instances of the generated broadleaf in the scene, every one wind-patched (M5a).
-     *  0 until the GLBs have loaded. */
+    /** Instances drawn with the wind-patched material — the hero island's flora batch and
+     *  the companion groves (M5a, M5f). 0 until the GLBs have loaded. */
     windInstances: number;
+    /** Instances per hero-island kind (M5f). Empty until the GLBs have loaded. */
+    flora: Readonly<Record<string, number>>;
   }) | undefined;
+  /** Test hook for gate:smoke's close shot (M5f): a camera pose the orbit clamps would
+   *  refuse, with the scene clock pinned at `sceneMs` so the island's spin — and so the
+   *  framing — is the same on every run. `release` puts the orbit pose back. Not used in play. */
+  var __dragonveinShot: {
+    pose: (position: [number, number, number], target: [number, number, number], sceneMs: number) => void;
+    release: () => void;
+  } | undefined;
   /** Test hook for gate:smoke's wind shots. Not used in play. */
   var __dragonveinWind: {
     /** Freeze spin, bob and flock at the current instant (kept across repeated calls)
@@ -2275,6 +2499,7 @@ declare global {
  */
 globalThis.__dragonveinStats = () => (framesSinceRestore === 0 && !contextLost ? {
   drawCalls: null, triangles: null, frameMs: null, cpuFrameMs: null, contextLost, windInstances,
+  flora: floraCounts,
 } : {
   drawCalls: contextLost ? null : renderer.info.render.calls,
   triangles: contextLost ? null : renderer.info.render.triangles,
@@ -2285,6 +2510,7 @@ globalThis.__dragonveinStats = () => (framesSinceRestore === 0 && !contextLost ?
   /** So a reader that gets nulls can tell "dead" from "not started". */
   contextLost,
   windInstances,
+  flora: floraCounts,
 });
 
 globalThis.__dragonveinWind = {
@@ -2294,6 +2520,20 @@ globalThis.__dragonveinWind = {
     windFrozenSec = windSeconds;
   },
   release: () => { sceneFrozenAt = null; windFrozenSec = null; },
+};
+
+globalThis.__dragonveinShot = {
+  pose: (position, target, sceneMs) => {
+    sceneFrozenAt = sceneMs;
+    camera.position.set(...position);
+    camera.lookAt(...target);
+    camera.updateMatrixWorld();
+  },
+  release: () => {
+    sceneFrozenAt = null;
+    // Re-applies the orbit's own pose on the next frame.
+    setOrbit(orbit.azimuth, orbit.pitch, orbit.distance);
+  },
 };
 
 /** Read by `gate:smoke` to prove the camera answers input (rubric G6). Degrees for logs. */

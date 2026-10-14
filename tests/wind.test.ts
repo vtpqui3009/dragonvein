@@ -1,11 +1,16 @@
 /**
- * M5a criterion 1: the wind sway, proven on its TS mirror (`windSway`), which is the same
- * function as the GLSL in `src/render/wind.ts`. The GLSL side is checked by the smoke
- * run's `11-wind-a` / `11-wind-b` pixel difference.
+ * M5a criterion 1: the wind sway, proven on its TS mirror (`windSway` / `windOffset`),
+ * which is the same function as the GLSL in `src/render/wind.ts`. The GLSL side is checked
+ * by the smoke run's `11-wind-a` / `11-wind-b` pixel difference.
+ *
+ * M5f: the bend is baked per vertex (`bakeWindBend`) so one batched draw can carry plants
+ * of every height and rocks that never move; the per-kind cases are pinned below.
  */
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
-import { WIND, WIND_UNIFORMS, setWindTime, windSway, withWind } from '../src/render/wind';
+import {
+  WIND, WIND_UNIFORMS, bakeWindBend, setWindTime, windBend, windOffset, windSway, withWind,
+} from '../src/render/wind';
 
 const mag = (o: { along: number; across: number }): number => Math.hypot(o.along, o.across);
 const TIMES = Array.from({ length: 97 }, (_, i) => i * 0.137);
@@ -88,6 +93,57 @@ describe('windSway (TS mirror of the wind vertex shader)', () => {
   });
 });
 
+describe('windBend and bakeWindBend (the per-kind weight, M5f)', () => {
+  it('is the M5a model for the reference tree: h * h, 0 at the base, 1 at the top', () => {
+    for (let k = 0; k <= 20; k++) {
+      const y = (k / 20) * WIND.height;
+      expect(windBend(y, WIND.height)).toBeCloseTo((y / WIND.height) ** 2, 12);
+    }
+    expect(windBend(-0.2, WIND.height)).toBe(0);
+    expect(windBend(WIND.height * 3, WIND.height)).toBe(1);
+  });
+
+  it('never moves a rigid kind: flex 0 is 0 at every height', () => {
+    for (const y of [0, 0.3, 1, 5, 50]) expect(windBend(y, 1.4, 0)).toBe(0);
+    expect(windBend(1, 0, 1)).toBe(0);   // a degenerate height cannot divide by zero
+  });
+
+  it('sways in proportion to the plant: same relative bend at the same relative height', () => {
+    // A 1.06 m grass clump at flex 1 moves, relative to its own height, exactly as far as
+    // the 7.4 m tree does at the same fraction of its height.
+    const grass = 1.06;
+    for (const f of [0.25, 0.5, 1]) {
+      expect(windBend(f * grass, grass) / grass).toBeCloseTo(windBend(f * WIND.height, WIND.height) / WIND.height, 12);
+    }
+    // ...and flex scales it linearly.
+    expect(windBend(0.8, grass, 2.2)).toBeCloseTo(2.2 * windBend(0.8, grass, 1), 12);
+  });
+
+  it('windSway is windOffset of the reference bend, so the M5a numbers did not move', () => {
+    for (const [x, z] of SPOTS) {
+      for (const t of TIMES) {
+        const a = windSway(WIND.height * 0.7, x, z, t);
+        const b = windOffset(0.49, x, z, t);
+        expect(a.along).toBeCloseTo(b.along, 12);
+        expect(a.across).toBeCloseTo(b.across, 12);
+      }
+    }
+  });
+
+  it('bakes one weight per vertex, from the vertex height', () => {
+    const geometry = new THREE.BufferGeometry();
+    const ys = [0, 0.25, 0.5, 1.0, 1.38, -0.04];
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(ys.flatMap((y) => [0.1, y, -0.2]), 3));
+    bakeWindBend(geometry, 1.38, 1.2);
+    const bend = geometry.getAttribute('windBend');
+    expect(bend.itemSize).toBe(1);
+    expect(bend.count).toBe(ys.length);
+    ys.forEach((y, i) => expect(bend.getX(i)).toBeCloseTo(windBend(y, 1.38, 1.2), 6));
+    bakeWindBend(geometry, 1.38, 0);
+    ys.forEach((_, i) => expect(geometry.getAttribute('windBend').getX(i)).toBe(0));
+  });
+});
+
 describe('withWind (the material patch)', () => {
   it('sets the shared time uniform in place', () => {
     const before = WIND_UNIFORMS.uWindTime;
@@ -121,8 +177,12 @@ describe('withWind (the material patch)', () => {
     expect(shader.vertexShader).not.toContain('#include <project_vertex>');
     expect(shader.vertexShader).toContain('mvPosition.xz += windOff;');
     expect(shader.vertexShader).toContain('instanceMatrix[ 3 ].xz');
+    // M5f: a BatchedMesh's instance transform is batchingMatrix, and the bend is baked.
+    expect(shader.vertexShader).toContain('batchingMatrix[ 3 ].xz');
+    expect(shader.vertexShader).toContain('attribute float windBend;');
+    expect(shader.vertexShader).toContain('uWindAmp * windScale * windBend');
     // Shared by reference, so one write per frame reaches every program.
     expect(shader.uniforms['uWindTime']).toBe(WIND_UNIFORMS.uWindTime);
-    expect(material.customProgramCacheKey()).toBe('rim-v4|dragonvein-wind-v1');
+    expect(material.customProgramCacheKey()).toBe('rim-v4|dragonvein-wind-v2');
   });
 });
