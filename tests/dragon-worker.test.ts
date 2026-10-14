@@ -4,7 +4,8 @@
  * measures it there. Here, `handle()` is called directly, so the protocol is checked in Node:
  * - the three-free arrays equal what `buildDragon` puts in its geometry, byte for byte;
  * - a genome survives `toJSON` → `fromJSON` unchanged;
- * - the worker's reply equals the direct build and transfers six distinct buffers (M7a added the idle's two weights).
+ * - the worker's reply equals the direct build and transfers eight distinct buffers (M7a added the idle's two
+ *   weights, M7b the skin's index and weight).
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -36,6 +37,8 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (_i, gm) => 
     expect(bytes(a.normal).equals(bytes(g.getAttribute('normal').array as Float32Array))).toBe(true);
     expect(bytes(a.color).equals(bytes(g.getAttribute('color').array as Float32Array))).toBe(true);
     expect(bytes(a.index).equals(bytes(g.getIndex()!.array as Uint32Array))).toBe(true);
+    expect(bytes(a.skinIndex).equals(bytes(g.getAttribute('skinIndex').array as Uint16Array))).toBe(true);
+    expect(bytes(a.skinWeight).equals(bytes(g.getAttribute('skinWeight').array as Float32Array))).toBe(true);
     expect(g.groups.map((x) => [x.start, x.count, x.materialIndex])).toEqual(a.groups.map((x) => [x.start, x.count, x.mat]));
   });
 
@@ -46,16 +49,17 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (_i, gm) => 
     for (const k of GENE_NAMES) expect(Object.is(back.phenotype[k], gm.phenotype[k]), k).toBe(true);
   });
 
-  it('the worker reply equals the direct build and transfers its six buffers', () => {
+  it('the worker reply equals the direct build and transfers its eight buffers', () => {
     const { reply, transfer } = handle({ id: 7, genome: JSON.parse(JSON.stringify(gm.toJSON())) });
     const direct = buildDragonArrays(gm);
     expect(reply.id).toBe(7);
     expect(reply.workerMs).toBeGreaterThanOrEqual(0);
-    for (const k of ['position', 'normal', 'color', 'index', 'idleBreathSway', 'idleBlink'] as const) {
+    for (const k of ['position', 'normal', 'color', 'index', 'idleBreathSway', 'idleBlink', 'skinIndex', 'skinWeight'] as const) {
       expect(bytes(reply.arrays[k]).equals(bytes(direct[k])), k).toBe(true);
     }
-    expect(new Set(transfer).size).toBe(6);
-    for (const k of ['position', 'normal', 'color', 'index', 'idleBreathSway', 'idleBlink'] as const) {
+    expect(new Set(transfer).size).toBe(8);
+    expect(reply.arrays.rig).toEqual(direct.rig);
+    for (const k of ['position', 'normal', 'color', 'index', 'idleBreathSway', 'idleBlink', 'skinIndex', 'skinWeight'] as const) {
       expect(transfer, k).toContain(reply.arrays[k].buffer);
     }
   });

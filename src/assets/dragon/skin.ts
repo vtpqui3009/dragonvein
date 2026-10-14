@@ -64,9 +64,19 @@ export interface SkinMesh {
   index: Uint32Array;
   /** One entry per tube: its range in `index` (triangles × 3). Every tube is closed. */
   parts: { start: number; count: number }[];
+  /**
+   * Tubes only (`skinGraph`): where along its path each vertex's ring sits, for the skin
+   * weights (./rig.ts, M7b). Per vertex: the tube (`path`, an index into `tubes`), the
+   * segment between path points k and k+1 (`k`), and the curve parameter u ∈ [0, 1] along it.
+   * Cap rings and poles take their end's segment at u = 0 or 1.
+   */
+  rings?: { path: Uint16Array; k: Uint16Array; u: Float32Array };
+  /** Per tube, per path point: the graph node ids at that point (coincident nodes merge) and its radius. */
+  tubes?: { ids: number[][]; r: number[] }[];
 }
 
-interface Station { c: Vec3; r: number }
+/** A sample along a path: centre, radius, and the segment k (points k → k+1) and parameter u it lies at. */
+interface Station { c: Vec3; r: number; k: number; u: number }
 
 /** Split the tree into paths. Each path lists node ids; `from` is the node a branch grows out of. */
 export function paths(g: Graph, root: number): { from: number | null; nodes: number[] }[] {
@@ -157,7 +167,7 @@ function sampleCurve(pts: Vec3[], rad: number[], step: number): Station[] {
     return pts[i]!;
   };
   const R = (i: number) => rad[Math.min(Math.max(i, 0), n - 1)]!;
-  const out: Station[] = [{ c: pts[0]!, r: rad[0]! }];
+  const out: Station[] = [{ c: pts[0]!, r: rad[0]!, k: 0, u: 0 }];
   for (let i = 0; i < n - 1; i++) {
     const steps = Math.max(1, Math.ceil(len(sub(pts[i + 1]!, pts[i]!)) / step));
     for (let s = 1; s <= steps; s++) {
@@ -165,6 +175,7 @@ function sampleCurve(pts: Vec3[], rad: number[], step: number): Station[] {
       out.push({
         c: s === steps ? pts[i + 1]! : catmull(P(i - 1), P(i), P(i + 1), P(i + 2), u),
         r: radiusAt(R(i - 1), R(i), R(i + 1), R(i + 2), u),
+        k: i, u,
       });
     }
   }
@@ -177,24 +188,32 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
   const idx: number[] = [];
   const parts: SkinMesh['parts'] = [];
   const all = paths(g, root);
+  // Where each vertex sits along its tube, for the skin weights (./rig.ts): one record per
+  // ring (tube, segment, parameter, vertex count), expanded per vertex at the end.
+  const ringRec: number[] = [];
+  const tubes: NonNullable<SkinMesh['tubes']> = [];
 
   all.forEach((path, pi) => {
     const pts: Vec3[] = [];
     const rad: number[] = [];
+    const ids: number[][] = [];
     if (path.from !== null) {
       // A branch grows out of its parent's centre, at a fraction of the parent's radius but
       // no more than branchCap times its own first node: a horn rooted at 0.8 of the skull's
       // radius would be a second skull (run 12).
       pts.push(g.v[path.from]!);
       rad.push(Math.min(g.r[path.from]! * o.branchRoot, g.r[path.nodes[0]!]! * o.branchCap));
+      ids.push([path.from]);
     }
     for (const id of path.nodes) {
       // Coincident nodes merge, keeping the larger radius. The reference puts the tail
       // root and the hip at the same point; a zero-length span there cut a ring-shaped
       // step into the body where the radius jumped (run 11, first sheet).
       const q = g.v[id]!, prev = pts[pts.length - 1];
-      if (prev && len(sub(q, prev)) < 1e-6) rad[rad.length - 1] = Math.max(rad[rad.length - 1]!, g.r[id]!);
-      else { pts.push(q); rad.push(g.r[id]!); }
+      if (prev && len(sub(q, prev)) < 1e-6) {
+        rad[rad.length - 1] = Math.max(rad[rad.length - 1]!, g.r[id]!);
+        ids[ids.length - 1]!.push(id);
+      } else { pts.push(q); rad.push(g.r[id]!); ids.push([id]); }
     }
     if (pts.length < 2) return; // a lone node: nothing to sweep (the graph has none)
     // Fill pinches: a node thinner than both neighbours is raised toward their mean, so the
@@ -248,18 +267,18 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
     }
 
     // Rings along the curve, with cap rings prepended and appended.
-    type Ring = { c: Vec3; r: number; t: Vec3; n: Vec3 };
-    const rings: Ring[] = st.map((s, i) => ({ c: s.c, r: s.r, t: T[i]!, n: N[i]! }));
+    type Ring = { c: Vec3; r: number; t: Vec3; n: Vec3; k: number; u: number };
+    const rings: Ring[] = st.map((s, i) => ({ c: s.c, r: s.r, t: T[i]!, n: N[i]!, k: s.k, u: s.u }));
     const first = rings[0]!, last = rings[rings.length - 1]!;
     const capStart: Ring[] = [], capEnd: Ring[] = [];
     for (let k = capRingsStart; k >= 1; k--) {
       const a = (k / (capRingsStart + 1)) * (Math.PI / 2);
-      capStart.push({ c: add(first.c, scale(first.t, -first.r * Math.sin(a))), r: first.r * Math.cos(a), t: first.t, n: first.n });
+      capStart.push({ c: add(first.c, scale(first.t, -first.r * Math.sin(a))), r: first.r * Math.cos(a), t: first.t, n: first.n, k: first.k, u: first.u });
     }
     const capRingsEnd = last.r <= o.thinRadius ? o.capRingsThin : capRings;
     for (let k = 1; k <= capRingsEnd; k++) {
       const a = (k / (capRingsEnd + 1)) * (Math.PI / 2);
-      capEnd.push({ c: add(last.c, scale(last.t, last.r * Math.sin(a))), r: last.r * Math.cos(a), t: last.t, n: last.n });
+      capEnd.push({ c: add(last.c, scale(last.t, last.r * Math.sin(a))), r: last.r * Math.cos(a), t: last.t, n: last.n, k: last.k, u: last.u });
     }
     const seq = [...capStart, ...rings, ...capEnd];
 
@@ -267,9 +286,13 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
     const base = pos.length / 3;
     const poleA = add(first.c, scale(first.t, -first.r));
     const poleB = add(last.c, scale(last.t, last.r));
+    const ti = tubes.length;
+    tubes.push({ ids, r: rad });
     pos.push(...poleA);
+    ringRec.push(ti, first.k, first.u, 1);
     for (const ring of seq) {
       const b = cross(ring.t, ring.n);
+      ringRec.push(ti, ring.k, ring.u, seg);
       for (let j = 0; j < seg; j++) {
         const phi = (j / seg) * Math.PI * 2;
         const cs = Math.cos(phi) * ring.r, sn = Math.sin(phi) * ring.r;
@@ -281,6 +304,7 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
       }
     }
     pos.push(...poleB);
+    ringRec.push(ti, last.k, last.u, 1);
     const ringAt = (i: number, j: number) => base + 1 + i * seg + (j % seg);
     const pa = base, pb = base + 1 + seq.length * seg;
     for (let j = 0; j < seg; j++) idx.push(pa, ringAt(0, j + 1), ringAt(0, j));
@@ -297,7 +321,16 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
 
   const position = new Float32Array(pos);
   const index = new Uint32Array(idx);
-  return { position, normal: vertexNormals(position, index), index, parts };
+  const nv = position.length / 3;
+  const rings = { path: new Uint16Array(nv), k: new Uint16Array(nv), u: new Float32Array(nv) };
+  for (let r = 0, v = 0; r < ringRec.length; r += 4) {
+    const end = v + ringRec[r + 3]!;
+    rings.path.fill(ringRec[r]!, v, end);
+    rings.k.fill(ringRec[r + 1]!, v, end);
+    rings.u.fill(ringRec[r + 2]!, v, end);
+    v = end;
+  }
+  return { position, normal: vertexNormals(position, index), index, parts, rings, tubes };
 }
 
 /** A closed UV sphere, outward-wound, as its own part. */

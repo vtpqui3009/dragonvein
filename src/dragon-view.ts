@@ -32,6 +32,20 @@
  * and turntable shows), and `idlePlay()` lets it run again. The masks and the sweep never
  * idle: their outlines are measurements.
  *
+ * The sheet and turntable dragons are `SkinnedMesh`es over a skeleton read off their own skin
+ * graph (M7b: src/assets/dragon/rig.ts, src/render/walk.ts). At rest every bone is the
+ * identity, so they draw exactly as the static mesh; `?static=1` builds plain meshes instead,
+ * so a driver can prove it. They walk on demand:
+ *   dragon.html?view=walk&i=K    sheet dragon K walking, a three-quarter side camera tracking
+ *                                it over a checkered ground (so planted feet can be seen to
+ *                                stay put); `&cam=` offsets the camera from the dragon
+ *   dragon.html?walk=1           the sheet, every dragon walking (each jumps back to its cell
+ *                                every WRAP_CYCLES cycles, feet and all)
+ * `__dragonView.walkAt(t)` pins every dragon at walk time `t` seconds, `walkAt(null)` stands
+ * them at rest, `walkPlay()` lets the walk clock run; `walkDrift(k)` walks dragon k through
+ * fixed time steps and measures its planted feet in the world; `frameStats()` reports the
+ * main-thread cost of the frames the clock drove.
+ *
  * The genome code is the one tests/genome.test.ts proves equal to assetgen/genome.py, and
  * the graph the one tests/dragon-graph.test.ts proves equal to the reference's.
  *
@@ -47,6 +61,9 @@ import { paths } from './assets/dragon/skin';
 import type { DragonBody } from './assets/dragon/builder';
 import { idleParams, type IdleParams } from './assets/dragon/idle';
 import { blinkMidTime, idleWaves, setIdleMix, setIdleTime, withIdle, type IdleWaves } from './render/idle';
+import { walkParams, type WalkParams } from './assets/dragon/walk';
+import { BONE, LEG_NAMES } from './assets/dragon/rig';
+import { DragonWalk, bindSkinned } from './render/walk';
 
 /**
  * The sheet: six wild dragons, one per element, on seeds 1-6 taken in order (not picked),
@@ -89,7 +106,9 @@ const genomes: Genome[] = [];
 for (const r of SHEET) genomes.push(r.op === 'wild' ? wild(r.seed, r.element) : breed(genomes[r.a]!, genomes[r.b]!, r.seed));
 
 const params = new URLSearchParams(location.search);
-const turn = params.get('view') === 'turn';
+/** One dragon walking, a side camera tracking it (M7b). Otherwise as the turntable. */
+const walkView = params.get('view') === 'walk';
+const turn = params.get('view') === 'turn' || walkView;
 /** All colour removed: the greyscale sheet. */
 const grey = params.get('grey') === '1';
 /** One dragon at a time from a driver's phenotype, as a mask: the one-gene sweep. */
@@ -98,6 +117,12 @@ const sweep = !turn && params.get('sweep') === '1';
 const mask = !turn && (sweep ? params.get('mask') !== '0' : params.get('mask') === '1');
 /** The sheet and turntable idle; the masks and the sweep hold still. */
 const animate = !mask && !sweep;
+/** Plain meshes instead of skinned ones: the pre-M7b path, for the rest-pose comparison. */
+const staticMesh = params.get('static') === '1';
+/** Skinned, so they can walk. */
+const rigged = animate && !staticMesh;
+/** On the sheet, each walking dragon jumps back to its cell every this many cycles. */
+const WRAP_CYCLES = 3;
 const pick = Math.min(Math.max(Number(params.get('i') ?? 0) | 0, 0), SHEET.length - 1);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -176,12 +201,18 @@ const materials: THREE.Material[] = mask
   ? [0, 1, 2].map(() => new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, toneMapped: false }))
   : [lit(0.42), lit(0.85), lit(0.32, true)];
 
-interface Placed { mesh: THREE.Mesh; label: HTMLDivElement; anchor: THREE.Vector3; cell: number }
+interface Placed {
+  mesh: THREE.Mesh; label: HTMLDivElement; anchor: THREE.Vector3; cell: number;
+  /** The rigged dragons' walk, and the mesh's x at rest (centred on its graph). */
+  walk: DragonWalk | null; baseX: number;
+}
 const placed: Placed[] = [];
 const labels = document.getElementById('labels')!;
 let tris = 0;
 /** Each shown dragon's idle, in build order. */
 const idle: IdleParams[] = [];
+/** Each shown dragon's walk params, in build order. */
+const gaits: WalkParams[] = [];
 /** Each dragon's round trip through the mesh worker, in ms, in build order. */
 const buildTimes: number[] = [];
 // The dragons are built off the main thread, as the game builds them (M3c). The worker is
@@ -207,7 +238,20 @@ for (const [k, gi] of shown.entries()) {
   // (one program between them all) and a depth material that moves its shadow with it.
   const ip = idleParams(gm);
   idle.push(ip);
-  const mesh = new THREE.Mesh(body.geometry, animate ? materials.map((m) => withIdle(m.clone(), ip)) : materials);
+  const mats = animate ? materials.map((m) => withIdle(m.clone(), ip)) : materials;
+  const gait = walkParams(gm);
+  gaits.push(gait);
+  let walk: DragonWalk | null = null;
+  let mesh: THREE.Mesh;
+  if (rigged) {
+    // M7b: skinned over the graph's own skeleton, at rest the identity.
+    walk = new DragonWalk(body.rig, gait);
+    const sk = new THREE.SkinnedMesh(body.geometry, mats);
+    bindSkinned(sk, walk);
+    mesh = sk;
+  } else {
+    mesh = new THREE.Mesh(body.geometry, mats);
+  }
   if (animate) mesh.customDepthMaterial = withIdle(new THREE.MeshDepthMaterial(), ip);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
@@ -231,7 +275,7 @@ for (const [k, gi] of shown.entries()) {
   label.innerHTML = `${r.label} · ${origin}<br><small>${el} · gen ${gm.generation} · ${wingForm(gm.phenotype)} wings · ${gm.gid()}</small>`;
   labels.appendChild(label);
   if (mask) label.style.display = 'none';
-  placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 3.4)), cell: gi });
+  placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 3.4)), cell: gi, walk, baseX: -cx });
 }
 const buildMs = performance.now() - t0;
 if (!sweep) mesher.dispose();
@@ -257,8 +301,56 @@ if (cam.length === 6 && cam.every(Number.isFinite)) {
   camera.position.set(cam[0]!, cam[1]!, cam[2]!);
   target.set(cam[3]!, cam[4]!, cam[5]!);
 }
+/**
+ * The walk view's camera: on the dragon's right side, turned WALK_CAM_AZIMUTH_DEG toward its
+ * front so the far legs show between the near ones, a little above it, far enough back to
+ * frame the whole dragon with room ahead and behind, and tracking it as it walks. `?cam=`
+ * sets the same six numbers relative to the dragon's travel, for close-ups of a joint.
+ */
+const WALK_CAM_ELEVATION_DEG = 14;
+const WALK_CAM_AZIMUTH_DEG = 25;
+/** The walk view's ground is a checker of this many world units a square, so a planted foot can be seen to stay put. */
+const WALK_TILE = 0.5;
+const walkCam = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
+if (walkView && placed[0]) {
+  const geo = placed[0].mesh.geometry;
+  if (!geo.boundingBox) geo.computeBoundingBox();
+  const box = geo.boundingBox!;
+  const len = box.max.x - box.min.x, tall = box.max.y;
+  // 30° vertical field of view: frame about 1.25 × the length across and 1.4 × the height up.
+  const half = Math.tan((15 * Math.PI) / 180);
+  const dist = Math.max((0.62 * len) / (half * aspect), (0.7 * tall) / half, 7);
+  const az = (WALK_CAM_AZIMUTH_DEG * Math.PI) / 180, elev = (WALK_CAM_ELEVATION_DEG * Math.PI) / 180;
+  // Looking a little ahead of the middle: turned toward the front, the near head draws larger than the far tail.
+  walkCam.look.set(0.04 * len, Math.min(1.4, 0.36 * tall), 0);
+  walkCam.pos.set(dist * Math.cos(elev) * Math.sin(az), walkCam.look.y + dist * Math.sin(elev), dist * Math.cos(elev) * Math.cos(az));
+  if (cam.length === 6 && cam.every(Number.isFinite)) {
+    walkCam.pos.set(cam[0]!, cam[1]!, cam[2]!);
+    walkCam.look.set(cam[3]!, cam[4]!, cam[5]!);
+  }
+  camera.position.copy(walkCam.pos);
+  target.copy(walkCam.look);
+  // The ground becomes a checker (a texture, not another draw), so travel and planted feet read.
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g2 = c.getContext('2d')!;
+  g2.fillStyle = '#8a7f7c'; g2.fillRect(0, 0, 64, 64);
+  g2.fillStyle = '#9d9390'; g2.fillRect(0, 0, 32, 32); g2.fillRect(32, 32, 32, 32);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.NearestFilter;
+  tex.anisotropy = 8;
+  tex.repeat.set(400 / (2 * WALK_TILE), 400 / (2 * WALK_TILE));
+  const gm = ground.material;
+  gm.color.set(0xffffff);
+  gm.map = tex;
+  gm.needsUpdate = true;
+}
 camera.lookAt(target);
 sun.target.position.copy(target);
+/** Where the sun sits from what it lights: the walk view moves both with the dragon. */
+const sunOffset = sun.position.clone().sub(target);
 const ext = turn ? 7 : 22;
 /**
  * The head crop's geometry: the spine tube, the eyes and the crown, nothing else. In the
@@ -300,6 +392,17 @@ document.getElementById('note')!.textContent = mask ? '' :
 
 const labelAt = new THREE.Vector3();
 function frame(): void {
+  if (walkView && placed[0]) {
+    // Track the dragon: the camera, its target, the sun and its shadow box move with it.
+    const x = placed[0].mesh.position.x - placed[0].baseX;
+    camera.position.copy(walkCam.pos);
+    camera.position.x += x;
+    target.copy(walkCam.look);
+    target.x += x;
+    camera.lookAt(target);
+    sun.target.position.copy(target);
+    sun.position.copy(target).add(sunOffset);
+  }
   renderer.render(scene, camera);
   const v = labelAt;
   for (const p of placed) {
@@ -337,6 +440,21 @@ declare global {
       blinkMid(k: number, from?: number): number;
       /** Shown dragon k's idle waves at time t (the shader's mirror): breath, shut, shift. */
       idleWaves(k: number, t: number): IdleWaves;
+      /** Each shown dragon's walk params (src/assets/dragon/walk.ts), in the order shown. */
+      gaits: WalkParams[];
+      /** Pin every dragon at walk time `t` seconds; null stands them at rest (every bone the identity). Redraws. */
+      walkAt(t: number | null): void;
+      /** Let the walk clock run, from walk time 0. */
+      walkPlay(): void;
+      /**
+       * Walk shown dragon k alone through `cycles` gait cycles in `steps` fixed steps (no
+       * wrap), and measure each foot (LEG_NAMES order) in the world: the ball node's and the
+       * skinned contact patch's (the foot's and toes' vertices within CONTACT_Y of the ground)
+       * largest move while planted, and the knee angle's range. Leaves the dragon at rest.
+       */
+      walkDrift(k: number, cycles?: number, steps?: number): WalkDrift;
+      /** Main-thread ms of the frames the clocks drove (pose + render): p50, p95, max, count; `reset` starts a new window. */
+      frameStats(reset?: boolean): { p50: number; p95: number; max: number; n: number };
     };
   }
 }
@@ -400,14 +518,14 @@ window.__dragonView = {
   idle,
   idleAt(t: number | null) {
     playing = false;
-    cancelAnimationFrame(rafId);
     setIdleMix(t === null ? 0 : 1);
     setIdleTime(t ?? 0);
     frame();
+    if (!running()) cancelAnimationFrame(rafId);
   },
   idlePlay() {
     setIdleMix(1);
-    if (!playing && animate) { playing = true; rafId = requestAnimationFrame(tick); }
+    if (!playing && animate) { playing = true; loop(); }
   },
   blinkMid(k: number, from = 0) {
     return blinkMidTime(idle[k]!, from);
@@ -415,18 +533,131 @@ window.__dragonView = {
   idleWaves(k: number, t: number) {
     return idleWaves(idle[k]!, t);
   },
+  gaits,
+  walkAt(t: number | null) {
+    walkClock = t;
+    poseWalk(t);
+    frame();
+    if (!running()) cancelAnimationFrame(rafId);
+  },
+  walkPlay() {
+    if (!rigged) return;
+    walkClock = 'run';
+    walkFrom = performance.now();
+    loop();
+  },
+  walkDrift(k: number, cycles = 2, steps = 480) {
+    return walkDrift(k, cycles, steps);
+  },
+  frameStats(reset = true) {
+    const xs = frameMs.slice(0, frameCount).sort((a, b) => a - b);
+    const at = (q: number) => xs[Math.min(xs.length - 1, Math.floor(q * xs.length))] ?? NaN;
+    const out = { p50: at(0.5), p95: at(0.95), max: xs[xs.length - 1] ?? NaN, n: xs.length };
+    if (reset) frameCount = 0;
+    return out;
+  },
 };
-// The idle clock: the page's own time, one uniform write and one render per frame. Pinned
-// by idleAt, so a driver's shots are reproducible.
+// The clocks: the page's own time, one uniform write, the walk's pose and one render per
+// frame. The idle and the walk are pinned separately (idleAt, walkAt), so a driver's shots
+// are reproducible; the frame loop runs while either clock does.
 let playing = false;
 let rafId = 0;
+/** 'run' follows the page's clock; a number pins walk time; null stands every dragon at rest. */
+let walkClock: number | null | 'run' = null;
+let walkFrom = 0;
+const running = () => playing || walkClock === 'run';
+function loop(): void {
+  cancelAnimationFrame(rafId);
+  if (running()) rafId = requestAnimationFrame(tick);
+}
+/** Main-thread ms per clock-driven frame: a fixed ring, so measuring allocates nothing. */
+const frameMs = new Float64Array(2048);
+let frameCount = 0;
 function tick(now: number): void {
-  if (!playing) return;
-  setIdleTime(now / 1000);
+  if (!running()) return;
+  const t0 = performance.now();
+  if (playing) setIdleTime(now / 1000);
+  if (walkClock === 'run') poseWalk((now - walkFrom) / 1000);
   frame();
+  frameMs[frameCount % frameMs.length] = performance.now() - t0;
+  frameCount = Math.min(frameCount + 1, frameMs.length);
   rafId = requestAnimationFrame(tick);
 }
+/** Pose every rigged dragon at walk time t (null: at rest) and move it by its travel. Allocation-free. */
+function poseWalk(t: number | null): void {
+  for (let i = 0; i < placed.length; i++) {
+    const p = placed[i]!;
+    if (!p.walk) continue;
+    p.walk.pose(t);
+    let x = p.walk.travel;
+    // On the sheet each dragon jumps back to its cell every WRAP_CYCLES cycles, all of it at once.
+    if (!walkView && t !== null) x -= WRAP_CYCLES * p.walk.params.stride * Math.floor(t / (WRAP_CYCLES * p.walk.params.period));
+    p.mesh.position.x = p.baseX + x;
+  }
+}
+
+/** A foot's contact patch: its leg's lower vertices (shin, foot, toes) this close to the ground at rest. */
+const CONTACT_Y = 0.10;
+interface WalkDrift {
+  label: string; stride: number; period: number; duty: number; cycles: number; steps: number;
+  legs: { leg: string; ballDrift: number; contactDrift: number; contactVerts: number; stances: number;
+    kneeMinDeg: number; kneeMaxDeg: number; stretched: number }[];
+}
+function walkDrift(k: number, cycles: number, steps: number): WalkDrift {
+  const p = placed[k];
+  if (!p?.walk || !(p.mesh instanceof THREE.SkinnedMesh)) throw new Error('walkDrift: that dragon is not rigged (?static=1, a mask or the sweep)');
+  const walk = p.walk, mesh = p.mesh, g = walk.params;
+  const pos = mesh.geometry.getAttribute('position'), si = mesh.geometry.getAttribute('skinIndex'), sw = mesh.geometry.getAttribute('skinWeight');
+  const legs = LEG_NAMES.map((leg, i) => {
+    // Every vertex of this leg's shin, foot and toes that is this near the ground at rest.
+    const shin = BONE.leg0 + 3 * i + 1, foot = shin + 1;
+    const verts: number[] = [];
+    for (let v = 0; v < pos.count; v++) {
+      if (pos.getY(v) > CONTACT_Y) continue;
+      for (let j = 0; j < 4; j++) {
+        const b = si.getComponent(v, j);
+        if ((b === foot || b === shin) && sw.getComponent(v, j) > 0) { verts.push(v); break; }
+      }
+    }
+    return { leg, verts, start: new Float64Array(verts.length * 3), ballStart: new THREE.Vector3(), was: false, stances: 0,
+      ballDrift: 0, contactDrift: 0, kneeMin: Infinity, kneeMax: -Infinity, stretched: 0 };
+  });
+  const v3 = new THREE.Vector3();
+  for (let s = 0; s <= steps; s++) {
+    const t = (cycles * g.period * s) / steps;
+    walk.pose(t);
+    mesh.position.x = p.baseX + walk.travel;
+    mesh.parent!.updateMatrixWorld(true);
+    legs.forEach((L, i) => {
+      const st = walk.legState(i);
+      L.kneeMin = Math.min(L.kneeMin, st.kneeAngle);
+      L.kneeMax = Math.max(L.kneeMax, st.kneeAngle);
+      if (st.stretched) L.stretched++;
+      if (!st.planted) { L.was = false; return; }
+      const fresh = !L.was;
+      if (fresh) L.stances++;
+      L.was = true;
+      walk.ball(i, v3).applyMatrix4(mesh.matrixWorld);
+      if (fresh) L.ballStart.copy(v3);
+      L.ballDrift = Math.max(L.ballDrift, v3.distanceTo(L.ballStart));
+      L.verts.forEach((v, j) => {
+        mesh.getVertexPosition(v, v3).applyMatrix4(mesh.matrixWorld);
+        if (fresh) { L.start[3 * j] = v3.x; L.start[3 * j + 1] = v3.y; L.start[3 * j + 2] = v3.z; }
+        L.contactDrift = Math.max(L.contactDrift, Math.hypot(v3.x - L.start[3 * j]!, v3.y - L.start[3 * j + 1]!, v3.z - L.start[3 * j + 2]!));
+      });
+    });
+  }
+  poseWalk(typeof walkClock === 'number' ? walkClock : null);
+  frame();
+  const deg = (r: number) => (r * 180) / Math.PI;
+  return {
+    label: SHEET[p.cell]!.label, stride: g.stride, period: g.period, duty: g.duty, cycles, steps,
+    legs: legs.map((L) => ({ leg: L.leg, ballDrift: L.ballDrift, contactDrift: L.contactDrift, contactVerts: L.verts.length,
+      stances: L.stances, kneeMinDeg: deg(L.kneeMin), kneeMaxDeg: deg(L.kneeMax), stretched: L.stretched })),
+  };
+}
 window.__dragonView.idlePlay();
+if (walkView || params.get('walk') === '1') window.__dragonView.walkPlay();
 // Drag to turn the dragons (mouse or touch), so a person can inspect them by hand.
 let yaw = turn ? 0 : -0.55;
 let dragX: number | null = null;

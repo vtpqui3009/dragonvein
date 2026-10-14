@@ -13,7 +13,7 @@ import { SKIN_LOD0, type SkinOptions } from './skin';
 
 export * from './arrays';
 
-export interface DragonBody extends Omit<DragonArrays, 'position' | 'normal' | 'color' | 'index' | 'groups' | 'idleBreathSway' | 'idleBlink'> {
+export interface DragonBody extends Omit<DragonArrays, 'position' | 'normal' | 'color' | 'index' | 'groups' | 'idleBreathSway' | 'idleBlink' | 'skinIndex' | 'skinWeight'> {
   geometry: BufferGeometry;
 }
 
@@ -26,11 +26,14 @@ export function toGeometry(a: DragonArrays): DragonBody {
   // The idle's baked weights (./idle.ts), read by src/render/idle.ts `withIdle`.
   geometry.setAttribute('idleBreathSway', new BufferAttribute(a.idleBreathSway, 4));
   geometry.setAttribute('idleBlink', new BufferAttribute(a.idleBlink, 3));
+  // The skin weights (./rig.ts), for a SkinnedMesh over `rig` (src/render/walk.ts, M7b).
+  geometry.setAttribute('skinIndex', new BufferAttribute(a.skinIndex, 4));
+  geometry.setAttribute('skinWeight', new BufferAttribute(a.skinWeight, 4));
   geometry.setIndex(new BufferAttribute(a.index, 1));
   for (const g of a.groups) geometry.addGroup(g.start, g.count, g.mat);
   geometry.computeBoundingBox();
   geometry.computeBoundingSphere();
-  return { geometry, graph: a.graph, idx: a.idx, parts: a.parts, kinds: a.kinds };
+  return { geometry, graph: a.graph, idx: a.idx, parts: a.parts, kinds: a.kinds, rig: a.rig };
 }
 
 /** Skeleton, torso, limbs and eyes: M3a's subset. */

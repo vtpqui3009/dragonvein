@@ -17,6 +17,7 @@ import type { Genome, Phenotype } from '../../core/genome';
 import { bodyGraph, fullGraph, headScale, membranePolys, ornamentParams, spikeParams, type Anchors, type Graph } from './graph';
 import { bakeIdle, torsoLine } from './idle';
 import { membraneMesh, primitiveMesh } from './parts';
+import { BONE, bakeSkin, buildRig, type Attach, type Rig } from './rig';
 import { SKIN_LOD0, skinGraph, sphere, type SkinMesh, type SkinOptions } from './skin';
 
 /** Everything a renderer needs, as transferable typed arrays plus small plain data. */
@@ -33,6 +34,13 @@ export interface DragonArrays {
    */
   idleBreathSway: Float32Array;
   idleBlink: Float32Array;
+  /**
+   * The skin weights (./rig.ts `bakeSkin`, M7b): 4 bone indices and 4 weights per vertex,
+   * the weights summing to 1. `rig` is the bone table they index.
+   */
+  skinIndex: Uint16Array;
+  skinWeight: Float32Array;
+  rig: Rig;
   /** Material groups over `index`: 0 skin, 1 membrane, 2 horn (MATERIAL_OF). */
   groups: { start: number; count: number; mat: number }[];
   /** Index ranges of the closed parts, triangles × 3. */
@@ -135,32 +143,38 @@ function build(genome: Genome, full: boolean, opts: SkinOptions): DragonArrays {
   // Eyes sit on the skull node, exactly where builder.py's `place` puts them.
   const [ex, , ez] = idx.headMidPos;
   const HS = headScale(p.headSize); // the skull's own scale (graph.ts headScale)
-  const extras: { mesh: SkinMesh; kind: PartKind }[] = [];
+  const extras: { mesh: SkinMesh; kind: PartKind; attach: Attach }[] = [];
+  const head: Attach = { kind: 'bone', bone: BONE.head };
   const eyeCentres: [number, number, number][] = [];
   for (const s of [1, -1]) {
     // In three.js's frame, (x, y, z) → (x, z, -y), for the idle's blink.
     eyeCentres.push([ex + 0.10 * HS, ez + 0.13 * HS, -0.215 * HS * s]);
-    extras.push({ mesh: sphere([ex + 0.10 * HS, 0.215 * HS * s, ez + 0.13 * HS], 0.112 * HS, 12, 6), kind: 'eye' });
-    extras.push({ mesh: sphere([ex + 0.17 * HS, 0.258 * HS * s, ez + 0.17 * HS], 0.038 * HS, 6, 4), kind: 'glint' });
+    extras.push({ mesh: sphere([ex + 0.10 * HS, 0.215 * HS * s, ez + 0.13 * HS], 0.112 * HS, 12, 6), kind: 'eye', attach: head });
+    extras.push({ mesh: sphere([ex + 0.17 * HS, 0.258 * HS * s, ez + 0.17 * HS], 0.038 * HS, 6, 4), kind: 'glint', attach: head });
   }
   if (full) {
-    for (const side of [1, -1]) extras.push({ mesh: membraneMesh(membranePolys(p, side)), kind: 'membrane' });
-    for (const c of spikeParams(p)) extras.push({ mesh: primitiveMesh(c), kind: 'spike' });
+    for (const side of [1, -1]) extras.push({ mesh: membraneMesh(membranePolys(p, side)), kind: 'membrane', attach: { kind: 'spineAtX' } });
+    for (const c of spikeParams(p)) extras.push({ mesh: primitiveMesh(c), kind: 'spike', attach: { kind: 'spineAt', x: c.location[0] } });
     const orn = ornamentParams(p);
-    if (orn) extras.push({ mesh: primitiveMesh(orn), kind: 'ornament' });
+    if (orn) extras.push({ mesh: primitiveMesh(orn), kind: 'ornament', attach: { kind: 'bone', bone: BONE.tail2 } });
   }
   const kinds: PartKind[] = skin.parts.map((_, i) => (i === 0 ? 'spine' : 'limb'));
   const merged = merge([skin, ...extras.map((e) => e.mesh)]);
   for (const e of extras) kinds.push(e.kind);
   // Each extra's vertex range in the merged arrays, for the blink's eyes and glints.
   const eyeVerts: [number, number][] = [], glintVerts: [number, number][] = [];
+  const attached: { from: number; to: number; attach: Attach }[] = [];
   let vFrom = skin.position.length / 3;
   for (const e of extras) {
     const vTo = vFrom + e.mesh.position.length / 3;
     if (e.kind === 'eye') eyeVerts.push([vFrom, vTo]);
     else if (e.kind === 'glint') glintVerts.push([vFrom, vTo]);
+    attached.push({ from: vFrom, to: vTo, attach: e.attach });
     vFrom = vTo;
   }
+  // Skin weights, while positions are still in the graph's frame (./rig.ts).
+  const { rig, owner } = buildRig(g, idx, p);
+  const { skinIndex, skinWeight } = bakeSkin(g, idx, owner, rig, skin, attached, merged.position);
 
   // Blender z-up → three y-up: (x, y, z) → (x, z, -y).
   const pos = merged.position, nrm = merged.normal;
@@ -207,7 +221,7 @@ function build(genome: Genome, full: boolean, opts: SkinOptions): DragonArrays {
   const idle = bakeIdle(pos, torsoLine(g, idx), eyeCentres, eyeVerts, glintVerts);
   return {
     position: pos, normal: nrm, color: col, index, idleBreathSway: idle.breathSway, idleBlink: idle.blink,
-    groups, parts: merged.parts, kinds, graph: g, idx,
+    skinIndex, skinWeight, rig, groups, parts: merged.parts, kinds, graph: g, idx,
   };
 }
 
