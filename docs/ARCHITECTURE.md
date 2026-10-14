@@ -88,7 +88,11 @@ Hard rules for `src/render/`:
   `three.WebGLRenderer.render` itself allocates roughly 4 kB plus 2 kB per draw call and
   that is not removable from here, so the enforceable rule is the measured total:
   `gate:perf` fails above 40 KiB/frame (docs/PERF_BUDGET.md §Heap churn).
-- Every repeated prop goes through `InstancedMesh` — one draw call per prop type.
+- Every repeated prop goes through `InstancedMesh` — one draw call per prop type — or,
+  where many kinds share one material, a `BatchedMesh`: one draw call for all of them.
+  The hero island's generated flora and rocks are one `FloraBatch` (`src/render/flora.ts`,
+  M5f), whose shadow pass draws only its caster prefix. Per-instance culling and sorting
+  stay off on a batch: both walk every instance every frame and the sort allocates.
 - One `DirectionalLight` for the sun. Glow is emissive + bloom, not real lights.
   Real point lights are capped at 4.
 - Shadows: cascaded, 2 cascades, resolution from the quality tier.

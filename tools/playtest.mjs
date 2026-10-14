@@ -27,6 +27,11 @@
  *    11-wind-b.png             wind time 0.8 s
  *    11-wind-diff.png          the pixels that changed between them, white on black
  *
+ *  And for M5f, the dressed island at close range — a low camera on the deck, the scene
+ *  clock pinned so the framing is the same every run — where the ground cover and the
+ *  understory read, and lichen can be checked for z-fighting:
+ *    12-island-close.png       pose CLOSE_POSE below, island spin at sceneMs 0
+ *
  *  And one motion artefact, `artifacts/turntables/m0-island.webm`: rubric A5 asks whether
  *  anything pops in a scene whose whole definition of done is that it *rotates*, and
  *  three stills are weak evidence for that. The critic should be able to watch it.
@@ -66,6 +71,22 @@ const MIN_WIND_INSTANCES = 200;
 const WIND_TIMES_S = [0, 0.8];
 /** A pixel counts as changed when any channel moved by more than this (0-255). */
 const WIND_DIFF_THRESHOLD = 3;
+/**
+ * M5f criterion 1: every kind the hero island must be dressed with. `__dragonveinStats()
+ * .flora` counts instances per kind; a kind missing or at 0 fails the gate.
+ */
+const REQUIRED_KINDS = [
+  'conifer', 'broadleaf', 'sapling', 'windtwisted', 'deadtree',     // trees
+  'bush', 'fern', 'grassclump', 'flowershrub',                      // understory
+  'moss', 'lichen', 'fallenleaves',                                  // ground cover
+  'boulders',                                                        // rocks
+];
+/**
+ * M5f criterion 4: the close shot. Island-local coordinates (the spin is pinned at 0, so
+ * they are world coordinates too): a camera 1 unit above the deck at its south-east edge,
+ * looking north-west across the columnar outcrops and the glade's edge.
+ */
+const CLOSE_POSE = { position: [2.4, 1.6, 5.2], target: [0.0, 0.45, 1.4], sceneMs: 0 };
 
 /**
  * Runs in the page. Where every visible piece of the HUD sits against the viewport.
@@ -167,6 +188,13 @@ try {
   }
   const wide = await page.screenshot({ path: `${SHOTS}/01-wide.png` });
   say(`shot: ${SHOTS}/01-wide.png  (t+${Date.now() - loadedAt}ms)`);
+  // M5f criterion 1: the generated set dresses the hero island, kind by kind.
+  {
+    const flora = await page.evaluate(() => globalThis.__dragonveinStats?.().flora ?? null);
+    say(`flora (hero island instances per kind): ${JSON.stringify(flora)}`);
+    const missing = REQUIRED_KINDS.filter((k) => !((flora?.[k] ?? 0) > 0));
+    if (missing.length) errors.push(`flora: no instances of ${missing.join(', ')} on the hero island`);
+  }
   // M0e made the HUD wrap. At desktop width it must not: 01-wide is the frame the
   // art-critic scores, and a second HUD row would change it.
   // M0f: no input has happened, so the camera must still be at the framing M0d was scored
@@ -295,6 +323,26 @@ try {
   }
   await flush();
 
+  // --- the dressed island up close (M5f criterion 4) ----------------------------------
+  {
+    const hasHook = await page.evaluate(() => Boolean(globalThis.__dragonveinShot));
+    if (!hasHook) {
+      errors.push('close shot: the page exposes no __dragonveinShot hook');
+    } else {
+      await page.evaluate((p) => globalThis.__dragonveinShot?.pose(p.position, p.target, p.sceneMs), CLOSE_POSE);
+      const f0 = await page.evaluate(() => globalThis.__dragonveinPerf?.read().framesRendered ?? 0);
+      await page.waitForFunction(
+        (f) => (globalThis.__dragonveinPerf?.read().framesRendered ?? 0) >= f + 2,
+        f0, { timeout: 30_000 },
+      );
+      await page.screenshot({ path: `${SHOTS}/12-island-close.png` });
+      await page.evaluate(() => globalThis.__dragonveinShot?.release());
+      say(`shot: ${SHOTS}/12-island-close.png  (camera ${JSON.stringify(CLOSE_POSE.position)} -> ` +
+        `${JSON.stringify(CLOSE_POSE.target)}, island spin pinned at sceneMs ${CLOSE_POSE.sceneMs}; M5f criterion 4)`);
+    }
+  }
+  await flush();
+
   // --- the same frame with the shadow pass off (rubric A3, rubric P6) -----------------
   // `?tier=potato` is the only switch in the build that turns the shadow map off, and at
   // deviceScaleFactor 1 — which is what this browser runs at — it is the *only* thing it
@@ -314,6 +362,16 @@ try {
   potato.on('pageerror', (e) => errors.push(`potato: ${String(e)}`));
   await potato.goto(`${preview.url}?tier=potato`, { waitUntil: 'load', timeout: 30_000 });
   await potato.waitForTimeout(3000);
+  // The flora arrives after boot (async GLBs). A potato frame taken before it is not the
+  // frame 01-wide shows, and the A3 differential between the two would count every plant
+  // as "shadow". Wait for it, as 01-wide does.
+  try {
+    await potato.waitForFunction(
+      () => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0, undefined, { timeout: 30_000 });
+    await potato.waitForTimeout(500);
+  } catch {
+    errors.push('potato: the generated flora never appeared, so 05-potato is not the 01-wide frame');
+  }
   await potato.screenshot({ path: `${SHOTS}/05-potato.png` });
   const potatoTier = await potato.evaluate(
     () => globalThis.__dragonveinPerf?.read().tier ?? null);

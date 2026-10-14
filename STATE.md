@@ -220,6 +220,15 @@ hero island's other trees, bushes, rocks and snags are hand-built placeholders.
 5. `npm run gates` exits 0.
 6. No blocking or major art defect against the scene shots (§4).
 
+**Contract change (integrator, for the other owners):** `docs/ARCHITECTURE.md` §Render
+contract now allows a `BatchedMesh` where many prop kinds share one material, beside the
+existing `InstancedMesh`-per-type rule. The hero island's flora and rocks are one
+`FloraBatch` (`src/render/flora.ts`), and its shadow pass draws only the caster prefix. The
+wind patch (`src/render/wind.ts`) now reads a baked per-vertex `windBend` attribute
+(`bakeWindBend`) instead of a height uniform, and it handles `batchingMatrix` as well as
+`instanceMatrix`. Any new wind-patched mesh must bake the attribute; a mesh without it
+stands still.
+
 ---
 
 ## 2026-10-13 · run 27 · M5e DONE — flowering shrub and ground cover generators
