@@ -167,6 +167,61 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-14 · run 28 · M5f — dress the island with the generated flora and rocks
+
+**Step**: `M5f`, the first step in reading order that is not `DONE`. The marker commit
+precedes this one.
+
+**Ownership**: one sequential owner, the integrator, across `src/main.ts`, `src/render/` and
+`tools/` (CLAUDE.md §2.4).
+
+**Baseline** (perf, M5e at `4310718`):
+- `drawCalls` 28, `triangles` 174 012;
+- `heap.bytesPerFrame` 35 232 of 40 960, about 3 draws of headroom at ~1.8 kB per draw;
+- `cpuFrameMs.p95` 2.3;
+- Potato: 20 draws and 142 800 triangles.
+
+The generated assets in the scene today are only `flora/broadleaf` (220 instances). The
+hero island's other trees, bushes, rocks and snags are hand-built placeholders.
+
+### Acceptance criteria
+
+1. **The generated set dresses the hero island.** It must include at least:
+   - trees: conifer, broadleaf and one more kind;
+   - understory: bush, fern, grassclump and flowershrub;
+   - ground cover: moss, lichen and fallenleaves;
+   - rocks: one M4 rock kind or more;
+   - `flora/deadtree` in place of the hand-built snags.
+
+   `__dragonveinStats()` reports an instance count per kind. `gate:smoke` logs it and
+   **fails if any listed kind is 0**.
+2. **Merged draws.**
+   - All placed flora renders as **at most one draw per LOD**: one batched or merged draw
+     per LOD across every kind, with the vertex-colour material and wind in the vertex
+     shader.
+   - Shadow-pass draws are limited to the near trees.
+   - Ground cover casts no shadow.
+   - Hand-built placeholders that the generated set replaces are removed, so their draws
+     are freed.
+3. **Inside budget, with no budget raised.** `npm run gate:perf` gives:
+   - `drawCalls` ≤ 31 (the baseline plus the ~3-draw headroom);
+   - `heap.withinBudget` true;
+   - `cpuFrameMs.p95` ≤ 3.5 with the tail enforced;
+   - `triangles` ≤ 900 000;
+   - Potato draws ≤ 23.
+
+   Before and after are both recorded.
+4. **Seen.**
+   - `artifacts/shots/01-wide.png` shows the dressed island.
+   - A new smoke shot `artifacts/shots/12-island-close.png` frames the ground at close range,
+     so the ground cover and understory read.
+   - The wind shots (`11-wind-a/b`) still show sway on the placed flora.
+   - Lichen does not z-fight against ground or rock in the close shot.
+5. `npm run gates` exits 0.
+6. No blocking or major art defect against the scene shots (§4).
+
+---
+
 ## 2026-10-13 · run 27 · M5e DONE — flowering shrub and ground cover generators
 
 **Step**: `M5e`, the first step in reading order that is not `DONE`. The marker commit
@@ -706,4 +761,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-14T02:23Z
