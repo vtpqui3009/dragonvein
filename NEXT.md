@@ -10,11 +10,9 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-14** · at commit `2c25da2`. **Run 28 is in flight on M5f** in the
-owner's main session. The criteria are in STATE.md run 28. The integrator is dressing the
-island with merged draws, and nothing lands until the gates are green. **Do not start M5f
-from a second session while this line stands.** If there is no `feat(render)` or `feat(scene)`
-commit after `2c25da2` hours later, run 28 died: take M5f from the STATE.md run 28 criteria.
+Last updated: **2026-10-14** · at commit `1bb31e8`, the last commit of run 28 that changed
+code. The close-out commits that wrote this file follow it. Run 28 is **finished**, and
+nothing is in flight.
 
 ---
 
@@ -35,51 +33,64 @@ question into this file and waits for the owner to play it.
 
 ## Current step
 
-**M5f — dress the island with the generated flora and rocks, kinds merged per LOD into
-shared draws, inside budget** · `TODO`. It is the first step in reading order that is not
-`DONE`. After M5f, M5 is complete, then comes M7.
+**M7a — procedural idle (breathing, blink, weight shift) driven by genome proportions** ·
+`TODO`. It is the first step in reading order that is not `DONE`. M7 continues with M7b and
+M7c, then M8 and M9, then the playable checkpoint.
 
-**M5e closed** in run 27 after one rework cycle, at `ea77a4f`: art **8.2**, perf **9.5**,
-gameplay **8.5**. It added `flora/flowershrub`, `flora/moss`, `flora/lichen` and
-`flora/fallenleaves`. The cycle-1 majors on moss and lichen (same shape per habit pair,
-told apart only by colour) were fixed in the generators: each habit's two seeds now differ
-in structure.
+**M5f closed** in run 28 on its first pass: art **8.6**, perf **9.2**, gameplay **9.3**.
+- The hero island is dressed from the generated set, 15 kinds, in **one `BatchedMesh`**
+  (`src/render/flora.ts`, `FloraBatch`) with a shadow-caster prefix.
+- Draws went from 28 to **17**, and Potato from 20 to 14.
+- Heap is 37 594 B of 40 960, triangles 216 714 and cpu p95 1.5.
+- Wind is a baked per-vertex `windBend`.
+- The generated dead tree replaces the snags.
+
+**Every M5 step is `DONE` and the last pass is ≥ 8.0, but M5 the milestone stays
+`IN_PROGRESS`** until the owner has seen the dressed island running (CLAUDE.md §7). See
+§Open items.
 
 ## The single next action
 
-**Take M5f.** It is the first time generated assets dress the game at scale. It crosses
-`src/main.ts`, `src/render/` and possibly `tools/`, so use **one sequential owner (the
-integrator)**.
+**Take M7a.** Animate the dragon procedurally from its genome:
+- breathing that scales with body mass;
+- a blink;
+- a weight shift.
 
-**The constraint that binds** (perf critic, M5e cycle 1, major forward-looking):
-- Heap-churn headroom is **5 728 B**, about **3 draws** (`heap.bytesPerFrame 35232` of
-  40 960, ~1.8 kB per draw).
-- Four kinds × 3 LODs placed separately would come to about 57 kB per frame and fail
-  `gate:perf`. P2's limit of 180 draws will not catch it; the heap gate will.
-- **Merge every flora kind into one batched or merged draw per LOD**, for example
-  `BatchedMesh`, or one `InstancedMesh` over a merged variant atlas. That covers the trees,
-  understory and ground cover, which all share the vertex-colour material.
-- Ground cover casts **no shadow** and sits mostly at LOD1/2, with a tight LOD0 radius.
-- Wind stays in the vertex shader (`src/render/wind.ts`). There are no per-frame matrix
-  rewrites.
-- **Never raise a budget.**
+M3 already built the dragon's mesh in a worker (`src/assets/dragon/`, `src/dragon-view.ts`),
+and the body genes now drive the outline.
 
-**What to place:**
-- the generated `flora/deadtree` replaces the hand-built pale snags;
-- trees, understory, flowershrub, moss, lichen and fallen leaves on the hero island;
-- rocks from the M4 generators.
+**Before planning:**
+- **Choose the animation path.** It is either skinning (bones from the skin graph, so the
+  mesher must emit skin weights, parity-sensitive) or a vertex-shader deformation keyed on
+  per-vertex attributes (like `windBend`). The vertex-shader path keeps the CPU frame and
+  heap budgets intact and needs no per-frame allocation. Record the choice and why in
+  STATE.md before code.
+- **Where it is judged.** The dragon is only on `dragon.html` today. Make the idle visible
+  and measurable there, for example two frames at fixed animation times differing on the
+  dragon, as the M5a wind shots did.
+- **Perf constraints:**
+  - meshgen must stay ≤ 120 ms; it is at 50.3 ms and trending up, so do not regress it;
+  - any new mesh attribute must keep `gate:parity` green. Parity compares skin graphs, not
+    vertex attributes, but check it.
 
-Keep the frame readable, not a green wall.
-
-**Checks the critics asked for:**
-- a smoke check that the placed instances are present, by count per kind;
-- lichen z-fighting against ground and rock;
-- the trunks rendered near-black in game (check ambient and normals);
-- moss seeds 3 and 8, which may read as debris.
-
-**Re-measure `gate:perf` before and after.**
+**Carried perf and art items (minor):**
+- P4 headroom is now about 3.4 kB. Find which per-frame allocation grew in M5f, even though
+  draws fell (`FloraBatch` or the shadow-prefix path), and never raise the budget.
+- The front of the deck is sparse. The flat uniform ground green reads as "props on a green
+  plate". Grass and fern blades are wire-thin. Moss is scaled too big. Rock shadow faces are
+  near-black. These are for a later dressing pass or M6 look dev.
+- `loadFlora` is all-or-nothing: one missing GLB removes all the flora. Load per kind and
+  skip the failures.
 
 ## Open items that need the owner, not a run
+
+- **Please look at the dressed island, so M5 can close (CLAUDE.md §7).** Once the Pages
+  deploy of `1bb31e8` or later is live, open https://vtpqui3009.github.io/dragonvein/. It
+  should look the same at `?tier=potato` too. The hero island now carries 15 generated plant
+  and rock kinds: conifers, broadleaves, a wind-twisted tree, dead trees, bushes, ferns,
+  flowers, grass, moss, lichen, fallen leaves, boulders, basalt columns and path stones. Say
+  what you saw, and the FPS the HUD shows. The scene changed (17 draws, ~217k triangles), so
+  this also refreshes the real-GPU sighting.
 
 - **Have a fresh look at the dragons (optional; M3 is already closed).** Run 26 changed every
   dragon's body: mass, legs, neck, head and crown now shape the outline, and there are three
