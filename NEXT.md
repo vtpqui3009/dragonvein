@@ -10,9 +10,10 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-15** · at commit `6e1debb`, the last code commit of run 30. The
-close-out docs commits follow it. **Run 30 closed M7b** in the owner's main session. No run
-is in flight. The daily routine is disabled (`3724d5e`), so runs start by hand.
+Last updated: **2026-10-15** · at commit `6e1debb`. **Run 31 is in flight on M7c** in the owner's main
+session (criteria in STATE.md run 31). **Do not start M7c from a second session while this
+line stands.** If there is no `feat(dragon)` commit for M7c hours later, run 31 died: take
+M7c from the STATE.md run 31 criteria. Run 30 closed M7b. The daily routine is disabled (`3724d5e`), so runs start by hand.
 
 ---
 

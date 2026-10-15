@@ -167,6 +167,80 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-15 · run 31 · M7c — wing flap and glide, no interpenetration at any wing span
+
+**Step**: `M7c`, the first step in reading order that is not `DONE`. The marker commit
+precedes this one.
+
+**The path, decided before code: extend the M7b skinning to the wings.** In M7b each wing
+"rides its root" on one bone, so a wing can only swing as a rigid board. A flap needs the
+arm to fold and the fingers to fan, so each wing gets a bone chain taken from the graph's
+own wing nodes (4 + 2·wingFingers per wing): root → elbow → wrist → one bone per finger.
+- Membrane vertices are weighted in the worker to the finger and arm bones that bound their
+  panel, with at most 4 influences, as in M7b.
+- `graph.ts` does not change, so `gate:parity` stays exact.
+- **Flap** is a procedural cycle on those bones: downstroke with the wing spread,
+  upstroke with the arm folding and the fingers trailing, and a body heave against the
+  stroke.
+- **Glide** is a held spread pose with a slow bank and soar.
+- Both blend with the M7b weight ramp, so rest → flap → glide → rest never snaps.
+- The idle and walk are unchanged. Wingless bodies (if any genome yields one) skip the wing
+  bones.
+
+**Ownership**: one sequential owner, the integrator, across `src/assets/dragon/` (bone
+table, weights, `flightParams`), `src/render/` (the flap and glide pose),
+`src/dragon-view.ts`, `tools/` and `tests/`.
+
+### Acceptance criteria
+
+1. **The genome drives the flap.** `flightParams(genome)` gives:
+   - the beat period, which grows with wingSpan and bodyMass (big wings beat slower);
+   - the stroke amplitude;
+   - the downstroke share of the cycle;
+   - the glide bank and soar period, broad wings (low wingShape) soaring slower.
+
+   `tests/dragon-flight.test.ts` proves it monotone, bounded and deterministic. `pose(t, 0)`
+   equals rest at any t.
+2. **Wing bones.** The rig has a per-wing chain derived from the graph's wing nodes: arm,
+   then one bone per finger. Membrane weights total 1 with at most 4 influences, which is
+   tested. The rest pose against static on `dragon.html` differs by **0 px**, as in M7b. Parity
+   is exact.
+3. **No interpenetration, as a number.** A tool flaps each winged sheet dragon for 2 cycles
+   and holds the glide, plus two synthetic genomes at wingSpan 0.55 and 1.65. It samples at
+   least 32 phases per cycle. At every sample it records:
+   - the minimum clearance between the deformed wing vertices and the body's own swept tubes
+     (torso, neck, head, tail, legs);
+   - the clearance between the two wings;
+   - whether any finger chain crosses its neighbour.
+
+   The results go to `artifacts/variants/dragon-flight.json`, and the tool **fails if any
+   clearance ≤ 0 or any finger crosses**. The flap must also be visible: wingtip vertical
+   travel per stroke ≥ 30 % of the half-span, reported per dragon.
+4. **Budgets.**
+   - meshgen ≤ 120 ms, with no regression past noise (~40 ms max now);
+   - `gate:parity` exact;
+   - no new draw on `dragon.html`;
+   - `cpuFrameMs` with 8 dragons flapping is measured and reported, and it stays under the
+     3.5 ms main-thread budget;
+   - no per-frame allocation in the flap and glide path;
+   - `dragon.html` heap for flapping is reported against idle with the floor subtracted, as
+     `dragon-walk.json` does;
+   - `npm run gates` exits 0.
+5. **Seen.**
+   - `artifacts/turntables/dragon-flight.webm` is one dragon going rest → flap (2+ cycles)
+     → glide → rest, framed whole, so the ramps are on camera.
+   - `dragon-flap-a.png` (top of the downstroke) and `dragon-flap-b.png` (bottom of the
+     downstroke) show all 8 dragons, so the gene spread is visible.
+   - `dragon-glide.png` shows the glide pose on all 8.
+6. **No blocking or major art defect**:
+   - no wing through the body or through the other wing;
+   - no membrane tearing, inverting or candy-wrapping at the wrist;
+   - fingers stay ordered;
+   - all three wing forms (sail, spread, segmented) flap;
+   - walk and idle still work.
+
+---
+
 ## 2026-10-14 · run 30 · M7b DONE — walk cycle, feet planted, no sliding
 
 **Step**: `M7b`, the first step in reading order that is not `DONE`. The marker commit
@@ -725,4 +799,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-15T10:57Z
