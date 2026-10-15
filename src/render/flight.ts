@@ -46,8 +46,10 @@ import type { DragonWalk, FlightLayer } from './walk';
  * glide pose after them (smoothstep of (a − LATE) / (1 − LATE), shared between the two in
  * proportion to flap and glide), so the wing never rises before it has swept clear. Every angle
  * is a continuous function of the weights and is 0 at 0, 0: the rest pose at any t. A caller
- * that eases the weights gets rest → flap → glide → rest with no snap. The altitude (`hover`,
- * enough to keep the lowest wing and the tucked feet off the ground) and the tuck follow a.
+ * that eases the weights gets rest → flap → glide → rest with no snap. The altitude and the leg
+ * tuck follow a: `hover` is HOVER_OF_CHEST of the chest's height, or more if the lowest wing
+ * point or tucked foot would come within GROUND_CLEARANCE of the ground; the feet fold up and
+ * back (src/render/walk.ts TUCK).
  *
  * Nothing allocates per pose.
  */
@@ -68,8 +70,16 @@ const PITCH = 0.03;
 const GLIDE_FLEX = 0.03;
 /** The lowest wing point or foot sits at least this far above the ground at full flight. */
 const GROUND_CLEARANCE = 0.35;
-/** ... and the dragon rises at least this far. */
-const MIN_HOVER = 0.6;
+/**
+ * ... and the dragon rises at least this share of its chest's height: high enough that its
+ * shadow leaves its tucked feet and the lift reads from any camera (M7c cycle 1, art A9).
+ */
+const HOVER_OF_CHEST = 0.9;
+/**
+ * Seconds a flight command eases its weights over (the page's clock, and the clip's). Short,
+ * so the first 100 ms of a command already shows (M7c cycle 1, gameplay D3).
+ */
+export const FLIGHT_RAMP_S = 0.5;
 
 interface WingState {
   humerus: number; forearm: number; hand: number; fingers: number[];
@@ -182,7 +192,7 @@ export class DragonFlight implements FlightLayer {
         this.reachPoints.push(tmp.x, tmp.y, tmp.z);
       }
     }
-    this.hover = Math.max(MIN_HOVER, GROUND_CLEARANCE - low);
+    this.hover = Math.max(HOVER_OF_CHEST * rig.pivot[7]!, GROUND_CLEARANCE - low);
     box.min.y += this.hover; box.max.y += this.hover;
     for (let i = 1; i < this.reachPoints.length; i += 3) this.reachPoints[i] = this.reachPoints[i]! + this.hover;
     this.reach.copy(box);

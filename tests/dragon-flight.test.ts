@@ -15,7 +15,8 @@
  * - the probe tools/dragon-flight.mjs runs in the browser, run here on every fixture genome and on
  *   the two synthetic spans (fewer phases): a dragon whose wings are clear of its body at rest
  *   keeps every wing vertex clear of it in flight, the wings never touch, no finger crosses its
- *   neighbour, and each wingtip travels ≥ 30 % of the half-span. Two fixtures have a frill
+ *   neighbour, each wingtip travels ≥ 30 % of the half-span, and in full flight the feet are
+ *   ≥ 0.3 off the ground with every leg tucked to ≤ 95 % of its length. Two fixtures have a frill
  *   through a wing in the rest mesh already (graph.ts); they are named, not skipped.
  */
 import { readFileSync } from 'node:fs';
@@ -29,7 +30,7 @@ import { FLIGHT_BOUNDS, flightParams, flightParamsOf, type FlightParams } from '
 import { fullGraph } from '../src/assets/dragon/graph';
 import { BODY_BONES, BONE } from '../src/assets/dragon/rig';
 import { walkParams } from '../src/assets/dragon/walk';
-import { DragonFlight } from '../src/render/flight';
+import { DragonFlight, FLIGHT_RAMP_S } from '../src/render/flight';
 import { flightSamples, probeFlight } from '../src/render/flight-probe';
 import { DragonWalk } from '../src/render/walk';
 
@@ -86,6 +87,15 @@ describe('flightParams', () => {
     const byBM = sweep(0.70, 1.45).map((BM) => flightParamsOf(pheno({ bodyMass: BM })));
     expect(rising(byBM.map((f) => f.period))).toBe(true);
     expect(rising(byBM.map((f) => f.down))).toBe(true);
+    expect(falling(byBM.map((f) => f.stroke))).toBe(true);
+  });
+  it('the wing\'s shape sets the stroke\'s character: a falcate wing strokes higher, a broad fan opens wider', () => {
+    const bySH = sweep(0, 1).map((SH) => flightParamsOf(pheno({ wingShape: SH })));
+    expect(rising(bySH.map((f) => f.upShare))).toBe(true);
+    expect(falling(bySH.map((f) => f.fanOpen))).toBe(true);
+    // Across the sheet's range of genes the stroke differs by a visible amount, not a rounding.
+    const strokes = [0.55, 1.65].flatMap((WS) => [0.70, 1.45].map((BM) => flightParamsOf(pheno({ wingSpan: WS, bodyMass: BM })).stroke));
+    expect(Math.max(...strokes) - Math.min(...strokes)).toBeGreaterThan(0.35);
   });
   it('broad wings (low wingShape) soar slower and bank less; a drooping wing glides flatter', () => {
     const bySH = sweep(0, 1).map((SH) => flightParamsOf(pheno({ wingShape: SH })));
@@ -184,7 +194,7 @@ describe('rest → flap → glide → rest', () => {
       }
       const at = () => nodes.map((n) => n.p.clone().applyMatrix4(walk.bones[n.bone]!.matrixWorld));
       const step = (prev: THREE.Vector3[], next: THREE.Vector3[]) => Math.max(...next.map((q, i) => q.distanceTo(prev[i]!)));
-      const dt = 1 / 60, ramp = 0.8;
+      const dt = 1 / 60, ramp = FLIGHT_RAMP_S;
       // The beat alone at full weight: the largest move in one frame.
       let beat = 0;
       flight.pose(0, 1, 0);
@@ -243,6 +253,9 @@ describe('the probe: no wing through the body or the other wing, fingers in orde
     expect(r.midplaneGap.min, 'the wings stay on their own sides').toBeGreaterThan(0);
     expect(r.fingers.crossings, `fingers at ${JSON.stringify(r.fingers.at)}`).toBe(0);
     for (const t of r.tips) expect(t.ratio).toBeGreaterThanOrEqual(0.30);
+    // In full flight it is off the ground with its legs folded (cycle 1, art A9 and gameplay D5).
+    expect(r.airborne.footMin, 'the feet leave the ground').toBeGreaterThanOrEqual(0.3);
+    expect(r.airborne.legSpanMax, 'every leg tucks').toBeLessThanOrEqual(0.95);
   });
   it('the only dragons not clean at rest are the known crest-through-wing fixtures', () => {
     expect(pierced).toEqual(CREST_THROUGH_WING_AT_REST);

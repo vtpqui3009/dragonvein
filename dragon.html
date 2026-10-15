@@ -11,13 +11,21 @@
     #labels div { position: absolute; transform: translate(-50%, 0); color: #fff; text-align: center;
       text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); white-space: nowrap; }
     #labels small { font-weight: 400; opacity: 0.85; }
-    #note { position: fixed; left: 12px; bottom: 10px; color: #e8e8e8; font: 12px system-ui, sans-serif;
+    #note { position: fixed; left: 12px; right: 12px; bottom: 10px; color: #e8e8e8; font: 12px/1.35 system-ui, sans-serif;
       text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6); }
+    /* ?view=flight: Flap, Glide, Land, big enough for a thumb (src/dragon-view.ts). */
+    #flight { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; }
+    #flight[hidden] { display: none; }
+    #flight button { min-width: 72px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 22px;
+      font: 600 15px system-ui, sans-serif; color: #fff; background: rgba(20, 24, 32, 0.72);
+      touch-action: manipulation; cursor: pointer; }
+    #flight button:active { background: rgba(60, 90, 140, 0.9); }
   </style>
 </head>
 <body>
   <div id="labels"></div>
   <div id="note"></div>
+  <div id="flight" hidden></div>
   <script type="module" src="/src/dragon-view.ts"></script>
 </body>
 </html>

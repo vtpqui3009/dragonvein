@@ -53,14 +53,14 @@ const unit = (v: number, lo: number, hi: number) => Math.min(1, Math.max(0, (v -
 /** Bounds every `FlightParams` field stays inside, whatever the genome. Tests hold them. */
 export const FLIGHT_BOUNDS = {
   period: [0.55, 1.30],
-  stroke: [0.80, 1.10],
-  upShare: [0.66, 0.66],
+  stroke: [0.75, 1.15],
+  upShare: [0.58, 0.72],
   down: [0.52, 0.62],
   handBend: [0.30, 0.45],
   handLag: [0.08, 0.08],
   fold: [0.30, 0.45],
   wristFold: [0.35, 0.50],
-  fanOpen: [1.06, 1.06],
+  fanOpen: [1.02, 1.12],
   heave: [0.06, 0.16],
   glideLift: [0.04, 0.10],
   bank: [0.10, 0.22],
@@ -73,11 +73,13 @@ export const FLIGHT_BOUNDS = {
  * normalised to its documented range (0..1):
  *
  *   period     = 0.55 + 0.50 s + 0.25 m      big wings and heavy bodies beat slower
- *   stroke     = 1.10 − 0.30 s               big wings sweep a smaller angle
+ *   stroke     = 1.15 − 0.30 s − 0.10 m      big wings and heavy bodies sweep a smaller angle
+ *   upShare    = 0.58 + 0.14 h               a falcate wing strokes high; a broad one pushes down deep
  *   down       = 0.52 + 0.10 m               a heavy body spends longer pushing down
  *   handBend   = 0.30 + 0.15 h               a falcate hand flexes more
  *   fold       = 0.30 + 0.15 h               ... and folds more on the upstroke
  *   wristFold  = 0.35 + 0.15 h
+ *   fanOpen    = 1.02 + 0.10 (1 − h)         a broad fan opens wider on the downstroke
  *   heave      = 0.06 + 0.06 s + 0.04 (1 − m)  big wings lift a light body furthest
  *   glideLift  = 0.04 + 0.06 (1 − d)         a drooping wing glides flatter
  *   bank       = 0.10 + 0.12 h               a falcate glider banks harder
@@ -96,14 +98,14 @@ export function flightParamsOf(p: Phenotype): FlightParams {
   const d = unit(p.wingDroop, 0.0, 1.0);
   return {
     period: 0.55 + 0.50 * s + 0.25 * m,
-    stroke: 1.10 - 0.30 * s,
-    upShare: 0.66,
+    stroke: 1.15 - 0.30 * s - 0.10 * m,
+    upShare: 0.58 + 0.14 * h,
     down: 0.52 + 0.10 * m,
     handBend: 0.30 + 0.15 * h,
     handLag: 0.08,
     fold: 0.30 + 0.15 * h,
     wristFold: 0.35 + 0.15 * h,
-    fanOpen: 1.06,
+    fanOpen: 1.02 + 0.10 * (1 - h),
     heave: 0.06 + 0.06 * s + 0.04 * (1 - m),
     glideLift: 0.04 + 0.06 * (1 - d),
     bank: 0.10 + 0.12 * h,

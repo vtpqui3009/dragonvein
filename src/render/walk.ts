@@ -75,8 +75,17 @@ export interface FlightLayer {
   readonly rootPivot: THREE.Vector3;
   readonly rootLift: number;
 }
-/** A tucked foot's ankle rises this share of the shortest leg's drop, and moves back half as far. */
-const TUCK = 0.38;
+/**
+ * A tucked foot's ankle rises this share of the shortest leg's drop, and moves back TUCK_BACK of
+ * it: the legs fold up under the body in flight (M7c cycle 1, gameplay D5).
+ */
+export const TUCK = 0.62;
+export const TUCK_BACK = 0.30;
+/**
+ * The forelegs fold this share of the hind legs' tuck: their thighs hang beside the wings' roots,
+ * and folded as far they rise into the skin where the wing grows from the shoulder.
+ */
+export const TUCK_FORE = 0.6;
 
 interface LegState {
   anchor: number; thigh: number; shin: number; foot: number; phase: number;
@@ -263,8 +272,9 @@ export class DragonWalk {
     }
     // The foot keeps its rest orientation: the ankle sits where it does over the ball at rest.
     const T = this.t.copy(s.ankle);
-    T.x += k * dx - 0.5 * TUCK * tuck * this.drop;
-    T.y += k * lift + TUCK * tuck * this.drop;
+    const fold = tuck * (s.anchor === BONE.pelvis ? 1 : TUCK_FORE) * this.drop;
+    T.x += k * dx - TUCK_BACK * fold;
+    T.y += k * lift + TUCK * fold;
     // The hip joint, carried by the body.
     const a = s.anchor;
     const H = P[s.thigh]!.subVectors(s.hip, this.rest[a]!).applyQuaternion(R[a]!).add(P[a]!);
