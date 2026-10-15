@@ -10,13 +10,9 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-14** · at commit `84ebacb`. **Run 30 is in flight on M7b** in the
-owner's main session. The criteria and the decided path (SkinnedMesh with bones from the
-graph, weights baked in the worker, two-bone IK) are in STATE.md run 30. The integrator is
-building, and nothing lands until the gates are green. **Do not start M7b from a second
-session while this line stands.** If there is no `feat(dragon)` commit after `84ebacb` hours
-later, run 30 died: take M7b from the STATE.md run 30 criteria. The daily routine is disabled
-(`3724d5e`), so runs start by hand.
+Last updated: **2026-10-15** · at commit `6e1debb`, the last code commit of run 30. The
+close-out docs commits follow it. **Run 30 closed M7b** in the owner's main session. No run
+is in flight. The daily routine is disabled (`3724d5e`), so runs start by hand.
 
 ---
 
@@ -37,50 +33,68 @@ question into this file and waits for the owner to play it.
 
 ## Current step
 
-**M7b — walk cycle, feet planted, no sliding** · `TODO`. It is the first step in reading order
-that is not `DONE`. M7c (flap and glide) comes next, then M8, M9 and the playable checkpoint.
+**M7c — wing flap and glide, no interpenetration at any wing span** · `TODO`. It is the first
+step in reading order that is not `DONE`. M8, M9 and the playable checkpoint come after it.
 M5 still waits only on the owner's look (§Open items).
 
-**M7a closed** in run 29 on its first pass: art **9.1**, perf **9.5**, gameplay **8.4**. Each
-dragon now idles at its own genome-driven rhythm:
-- breath at 2.6–5.0 s, deeper for heavy bodies;
-- a blink every 3.5–6 s;
-- a weight shift with the feet exactly planted.
-
-The idle is a vertex-only patch (`src/render/idle.ts`) on attributes the worker mesher bakes
-(`idleBreathSway`, `idleBlink` in `src/assets/dragon/idle.ts`). It adds no draw, allocates
-nothing per frame, and leaves parity untouched.
+**M7b closed** in run 30 at cycle 2. Cycle 2 scored art **8.2**, perf **9.1** and gameplay
+**9.4**. Cycle 1 scored 8.7, 9.0 and 7.5; two gameplay majors and one perf major were fixed
+in rework. What the dragon now does:
+- It is a `SkinnedMesh` with 26 bones taken from the skin graph's own nodes. The worker
+  bakes weights, at most 4 influences per vertex.
+- A genome-driven lateral-sequence walk sets stride (0.48·legLength) and period from
+  bodyMass and legLength.
+- Two-bone IK keeps each foot planted. Drift is 0 % of stride, confirmed by the art critic
+  in pixels, and the knee swings 39–51°.
+- A 0.4 s walk-weight ramp eases rest→walk→rest.
+- Hips and shoulders roll with the gait.
+- `dragon.html?view=walk&i=K` is a follow view: drag turns the dragon, wheel and pinch zoom,
+  and the ground and sky follow it.
 
 ## The single next action
 
-**Take M7b, the walk cycle.** The real decision is the **animation path**. M7a's
-vertex-shader shear cannot bend a knee: the gameplay and art critics both noted that the
-legs "shear rather than bend". A walk needs limbs that rotate about joints, with feet
-planted per stance phase and no sliding. So:
-- **Decide skinning or vertex-shader before code**, and record why in STATE.md.
-  - The skin graph (`graph.ts`) already has the limb nodes, so bones from the graph plus skin
-    weights from the tube sweep is the natural path.
-  - It must keep `gate:parity` green. Parity compares graphs, not weights.
-  - It must keep meshgen at or under 120 ms (it is ~44 ms now) and allocate nothing per frame.
-    `SkinnedMesh` bone updates are CPU work, so measure `cpuFrameMs`.
-- **Define "no sliding" as a number**: a planted foot's world position drifts by ≤ ε over its
-  stance phase, measured in a tool, the way M5a measured wind.
-- **Where it is judged:** `dragon.html` (a walk turntable), until dragons enter the game scene
-  at M8.
+**Take M7c, flap and glide.** Write the criteria into STATE.md first. The real work:
+- **The wings need their own bones.** In M7b the wings "ride their roots", one bone each.
+  A flap needs at least a shoulder → elbow → finger chain per wing, taken from the graph's
+  wing nodes, like the legs.
+  - Keep `graph.ts` unchanged so `gate:parity` stays exact.
+  - The three wing forms (sail, spread, segmented, from `wingFingers` and `wingShape`) must
+    all flap.
+- **Define "no interpenetration" as a number.** For example, the minimum distance from the
+  membrane vertices to the torso and the other wing across the whole flap cycle, at the
+  smallest and largest wing span in the sheet, must stay > 0. Measure it in a tool, as M7b
+  measured drift.
+- **Glide** is a held spread pose with a slow bank or soar. Flap and glide are driven by
+  genes: span and mass set the beat frequency.
+- **Budget hazards:**
+  - each walking dragon costs about 1 kB/frame of heap on three's skinned path (unattributed,
+    probably the bone-texture upload). The game page has about 9 kB of headroom (31 873 of
+    40 960);
+  - more bones mean more of that cost.
 
-**Carried items (minor):**
-- The idle is subtle at sheet scale. Only the blink reads at a glance, and the blink is a
-  squashed eyeball rather than a lid.
-- `dragon.html` labels overlap at 1280×720.
-- `playtest.log` has no `dragon.html` coverage. Add an idle-advances check and a
-  drag-while-idling check to smoke.
-- `gate:meshgen` flaked once on unmodified HEAD (243.8 ms). Find the cause, perhaps the
-  worker competing with the rasteriser threads, and apply the `rasteriserCap` partition.
-  Never loosen the gate.
-- `dragon-idle.json` should record the draw calls.
-- P4 headroom is about 3.4 kB, unchanged.
+**Carried minors from M7b (FINDINGS):**
+- The gait varies narrowly: one phase layout for every dragon, left equal to right, and
+  B/E/F/H within 4 % on stride.
+- The head and neck are nearly rigid while walking (5.5 px of nod).
+- The crouch is low next to the concept's upright dragons.
+- The walk clip shows dragon A only; add a multi-dragon clip.
+- No artefact shows the rest↔walk ramp; capture a rest-walk-rest segment.
+- The `?view=walk` input fix has no regression guard. Assert `walkViewState().ndc` stays at
+  [0,0] after a drag and that zoom moves, in `dragon-walk.mjs` or smoke.
+- There is no on-screen hint for drag and zoom.
+- The `dragon.html` caption contrast is 2.2:1.
+- `dragon-full.json` is stale.
+- Potato rasteriser-cap verification flakes (1 thread out of set).
+- The new `gate:meshgen` stall partition fired 0 times; the 178.8 ms stall was never
+  reproduced, so whether it would now be caught is unproven.
 
 ## Open items that need the owner, not a run
+
+- **Please watch a dragon walk before M7 closes (CLAUDE.md §7).** After the Pages deploy of
+  `6e1debb` or later, open https://vtpqui3009.github.io/dragonvein/dragon.html?walk=1 (all
+  eight walking) and `dragon.html?view=walk&i=0` (one dragon, follow camera: drag to turn it,
+  wheel or pinch to zoom). Do the feet stay planted? Does it feel like a dragon or a lizard?
+  Say what you saw and the FPS. This is also the first real-GPU reading with skinning.
 
 - **Please look at the dressed island, so M5 can close (CLAUDE.md §7).** Once the Pages
   deploy of `1bb31e8` or later is live, open https://vtpqui3009.github.io/dragonvein/. It
@@ -110,11 +124,13 @@ planted per stance phase and no sliding. So:
   the reference, now, rather than wait for M7". Nothing further needed unless you disagree
   with that reading.
 
-- **The evidence page link changed.** The old URL (`Pgkt22EifnK5hUzmXqssoj`) is not reachable
+- **Evidence page links.** The owner's main session (runs 28–30) republishes to
+  https://claude.ai/artifact/Pgkt22EifnK5hUzmXqssoj. The old URL (`Pgkt22EifnK5hUzmXqssoj`) is not reachable
   from the account the scheduled runs use — reading it returns "artifact not found" — so run
   23 published to **https://claude.ai/artifact/HXPyJnjvcwr5tayAwbpD9a**. Either re-share the
   original to that account and say so here, or adopt the new link as standing. **Do not create
   a third.**
+- **`wip/m7b` can be deleted.** It is a run 30 snapshot, superseded by `6e1debb` on `main`.
 
 - **`wip/m5d` can be deleted.** Confirmed to differ from `main` only in `NEXT.md` and
   `STATE.md` — no code or asset delta. The push that deletes it is refused from the container.
@@ -123,11 +139,9 @@ planted per stance phase and no sliding. So:
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
-- **P4 is the live perf risk, and it is a `major`.** The frame loop allocates 35 108 B per
-  frame, 86% of the 40 960 budget, with a 3 995 kB sawtooth over 18 scavenges. Preallocate
-  scratch vectors and matrices, drop per-frame arrays and closures, build the stats string only
-  when it changes. **Never raise the budget.** M5e's instance matrices will spend this
-  headroom, so fix it before placement.
+- **P4 headroom.** The game page now churns 31 873 B per frame, 78 % of the 40 960 budget
+  (perf.json at `6e1debb`). That leaves about 9 kB, and a walking dragon costs about 1 kB.
+  **Never raise the budget.**
 - **M5e must merge the understory into instanced batches** — one `InstancedMesh` per plant
   type with LOD inside the instance. At 28 draws there are about 2 draws of headroom. Four
   independent perf rounds now agree.
