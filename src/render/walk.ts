@@ -170,7 +170,8 @@ export class DragonWalk {
 
   /**
    * Pose the skeleton at walk time `t` seconds, or at rest for null (every bone the identity,
-   * `travel` 0). Allocation-free.
+   * `travel` 0; under an active flight, the walk at rest with the flight on top).
+   * Allocation-free.
    */
   pose(t: number | null, weight = 1): void {
     const fl = this.flight !== null && this.flight.active ? this.flight : null;
