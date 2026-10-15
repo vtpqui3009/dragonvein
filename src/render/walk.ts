@@ -27,7 +27,14 @@ import type { WalkParams } from '../assets/dragon/walk';
  * - the hips and shoulders swing side to side, each toward its own swinging leg (`flex`),
  *   the spine between them bending to join them; the neck turns back against the shoulders
  *   so the head holds its line; the tail's three segments sway in a wave that travels down
- *   it; the body sinks (`crouch`) and bobs twice a cycle; the wings ride the shoulders.
+ *   it; the body sinks (`crouch`) and bobs twice a cycle, and the hips and shoulders roll
+ *   onto the side whose legs carry them (ROLL of `flex`); the wings ride the shoulders.
+ *
+ * **Walk weight.** `pose(t, w)` scales everything above (body motion, and each foot's offset
+ * from its rest place) by w ∈ [0, 1]: w = 0 is the rest pose, w = 1 the walk. A caller eases
+ * w over a fraction of a second to start and stop without a snap, and moves the mesh by
+ * ∫ w · speed dt. At w = 1 a planted foot is still in the world; while w ramps it is not
+ * exactly, which is the price of a cheap start.
  *
  * Nothing allocates per pose: every vector, quaternion and matrix is preallocated here.
  */
@@ -38,6 +45,9 @@ const NECK_COUNTER = 0.8;
 const TAIL_LAG = 0.9;
 /** The IK keeps the leg this far short of straight (a share of its length), so the knee never locks. */
 const REACH = 0.999;
+/** The hips and shoulders roll this share of `flex` onto their stance side. */
+const ROLL = 0.6;
+const X = new THREE.Vector3(1, 0, 0);
 
 const NECK = [BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3] as const;
 const TAIL = [BONE.tail0, BONE.tail1, BONE.tail2] as const;
@@ -60,8 +70,10 @@ export class DragonWalk {
   readonly bones: THREE.Bone[] = [];
   readonly skeleton: THREE.Skeleton;
   readonly params: WalkParams;
-  /** Distance travelled along the mesh's +x at the last pose. */
+  /** Distance travelled along the mesh's +x at the last pose, at full weight. */
   travel = 0;
+  /** The walk weight of the last pose: 0 rest, 1 walking. */
+  weight = 0;
   private readonly parent: number[];
   private readonly rest: THREE.Vector3[] = [];
   private readonly R: THREE.Quaternion[] = [];
@@ -131,32 +143,39 @@ export class DragonWalk {
    * Pose the skeleton at walk time `t` seconds, or at rest for null (every bone the identity,
    * `travel` 0). Allocation-free.
    */
-  pose(t: number | null): void {
+  pose(t: number | null, weight = 1): void {
     if (t === null) {
       for (let i = 0; i < this.bones.length; i++) this.bones[i]!.matrixWorld.identity();
       for (let i = 0; i < this.legs.length; i++) { this.legs[i]!.planted = true; this.legs[i]!.stretched = false; }
       this.travel = 0;
+      this.weight = 0;
       return;
     }
     const w = this.params;
+    const k = Math.min(1, Math.max(0, weight));
+    this.weight = k;
     const c = t / w.period;
     this.travel = w.stride * c;
-    // Each girdle swings toward the side whose leg is swinging, at the middle of that swing.
+    // Each girdle swings toward the side whose leg is swinging, at the middle of that swing,
+    // and rolls a quarter cycle later.
     const midSwing = (1 + w.duty) / 2;
-    const hips = -w.flex * Math.cos(TWO_PI * (c - w.phase[0] - midSwing));
-    const shoulders = -w.flex * Math.cos(TWO_PI * (c - w.phase[1] - midSwing));
+    const hipA = TWO_PI * (c - w.phase[0] - midSwing), shoulderA = TWO_PI * (c - w.phase[1] - midSwing);
+    const hips = -k * w.flex * Math.cos(hipA);
+    const shoulders = -k * w.flex * Math.cos(shoulderA);
+    const hipRoll = k * ROLL * w.flex * Math.sin(hipA);
+    const shoulderRoll = k * ROLL * w.flex * Math.sin(shoulderA);
     const twice = Math.cos(2 * TWO_PI * c); // 1 at each hind footfall
-    const pitch = w.pitch * twice;
-    const lower = w.crouch * this.drop + w.bob * (0.5 + 0.5 * twice);
+    const pitch = k * w.pitch * twice;
+    const lower = k * (w.crouch * this.drop + w.bob * (0.5 + 0.5 * twice));
 
     const L = this.local;
     for (let i = 0; i < L.length; i++) L[i]!.identity();
-    yawPitch(L[BONE.pelvis]!, hips, pitch, this.q);
-    yawPitch(L[BONE.spine1]!, (shoulders - hips) / 2, -pitch, this.q);
-    yawPitch(L[BONE.spine2]!, (shoulders - hips) / 2, 0, this.q);
-    for (let i = 0; i < NECK.length; i++) yawPitch(L[NECK[i]!]!, (-NECK_COUNTER * shoulders) / NECK.length, 0, this.q);
+    turn(L[BONE.pelvis]!, hips, pitch, hipRoll, this.q);
+    turn(L[BONE.spine1]!, (shoulders - hips) / 2, -pitch, -hipRoll, this.q);
+    turn(L[BONE.spine2]!, (shoulders - hips) / 2, 0, shoulderRoll, this.q);
+    for (let i = 0; i < NECK.length; i++) turn(L[NECK[i]!]!, (-NECK_COUNTER * shoulders) / NECK.length, 0, -shoulderRoll / NECK.length, this.q);
     for (let i = 0; i < TAIL.length; i++) {
-      yawPitch(L[TAIL[i]!]!, w.tailSway * Math.sin(TWO_PI * (c - w.phase[0] - midSwing) - TAIL_LAG * (i + 1)), 0, this.q);
+      turn(L[TAIL[i]!]!, k * w.tailSway * Math.sin(hipA - TAIL_LAG * (i + 1)), 0, 0, this.q);
     }
 
     // Forward kinematics for the body: every bone but the legs' (whose parents come first).
@@ -173,7 +192,7 @@ export class DragonWalk {
         P[i]!.subVectors(rest[i]!, rest[p]!).applyQuaternion(R[p]!).add(P[p]!);
       }
     }
-    for (let i = 0; i < this.legs.length; i++) this.solveLeg(this.legs[i]!, c);
+    for (let i = 0; i < this.legs.length; i++) this.solveLeg(this.legs[i]!, c, k);
     for (let i = 0; i < BONE_COUNT; i++) {
       const mw = this.bones[i]!.matrixWorld;
       mw.makeRotationFromQuaternion(R[i]!);
@@ -186,7 +205,7 @@ export class DragonWalk {
   }
 
   /** One leg: the foot's target this phase, then the two-bone IK from the hip joint to the ankle. */
-  private solveLeg(s: LegState, c: number): void {
+  private solveLeg(s: LegState, c: number, k: number): void {
     const w = this.params, R = this.R, P = this.P;
     const ph = c - s.phase;
     const phi = ph - Math.floor(ph);
@@ -202,8 +221,8 @@ export class DragonWalk {
     }
     // The foot keeps its rest orientation: the ankle sits where it does over the ball at rest.
     const T = this.t.copy(s.ankle);
-    T.x += dx;
-    T.y += lift;
+    T.x += k * dx;
+    T.y += k * lift;
     // The hip joint, carried by the body.
     const a = s.anchor;
     const H = P[s.thigh]!.subVectors(s.hip, this.rest[a]!).applyQuaternion(R[a]!).add(P[a]!);
@@ -254,10 +273,11 @@ export class DragonWalk {
   get legCount(): number { return this.legs.length; }
 }
 
-/** q = yaw about y, then pitch about z, in the parent's frame. Allocation-free. */
-function yawPitch(out: THREE.Quaternion, yaw: number, pitch: number, tmp: THREE.Quaternion): void {
+/** q = yaw about y, then pitch about z, then roll about x, in the parent's frame. Allocation-free. */
+function turn(out: THREE.Quaternion, yaw: number, pitch: number, roll: number, tmp: THREE.Quaternion): void {
   out.setFromAxisAngle(Y, yaw);
   if (pitch !== 0) out.multiply(tmp.setFromAxisAngle(Z, pitch));
+  if (roll !== 0) out.multiply(tmp.setFromAxisAngle(X, roll));
 }
 
 /**

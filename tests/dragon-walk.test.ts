@@ -6,7 +6,8 @@
  *   legLength, period and duty in bodyMass), a lateral-sequence gait, speed = stride / period;
  * - every vertex is bound: at most 4 influences, weights ≥ 0 summing to 1 within 1e-6, bone
  *   indices inside the table; the table's parents come first and its pivots are graph nodes;
- * - the solver at rest is the identity (the skinned mesh is the static one), and walking two
+ * - the solver at rest is the identity (the skinned mesh is the static one), so is walk weight
+ *   0 at any time (the ramp starts and ends there), and walking two
  *   cycles every planted foot stays within 1 % of the stride in the world, the IK never runs
  *   out of reach, and every knee swings through more than 15°.
  * tools/dragon-walk.mjs measures the same drift in the browser, on the rendered skeleton.
@@ -111,6 +112,18 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (_i, gm) => 
       expect(nodes.some((n) => n.every((c, k) => c === q[k])), rig.names[i]).toBe(true);
     }
     expect(buildRig(fullGraph(gm.phenotype).g, fullGraph(gm.phenotype).idx, gm.phenotype).rig).toEqual(rig);
+  });
+  it('at walk weight 0 is the rest pose at any time, and weight 1 is the default', () => {
+    const w = walkParams(gm);
+    const a0 = new DragonWalk(a.rig, w), a1 = new DragonWalk(a.rig, w);
+    const id = new THREE.Matrix4();
+    for (const t of [0, 0.37 * w.period, 1.81 * w.period]) {
+      a0.pose(t, 0);
+      for (const b of a0.bones) b.matrixWorld.elements.forEach((e, k) => expect(Math.abs(e - id.elements[k]!)).toBeLessThan(1e-9));
+      a0.pose(t);
+      a1.pose(t, 1);
+      a0.bones.forEach((b, i) => expect(b.matrixWorld.equals(a1.bones[i]!.matrixWorld)).toBe(true));
+    }
   });
   it('rests at the identity, and walks with planted feet and bending knees', () => {
     const w = walkParams(gm);

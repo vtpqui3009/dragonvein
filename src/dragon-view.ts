@@ -38,11 +38,18 @@
  * so a driver can prove it. They walk on demand:
  *   dragon.html?view=walk&i=K    sheet dragon K walking, a three-quarter side camera tracking
  *                                it over a checkered ground (so planted feet can be seen to
- *                                stay put); `&cam=` offsets the camera from the dragon
+ *                                stay put); `&cam=` offsets the camera from the dragon.
+ *                                Drag turns the dragon about where it stands and the camera
+ *                                follows it wherever it walks; wheel or pinch scale the follow
+ *                                distance (0.3–3×); the ground (snapped to whole checker
+ *                                periods) and the backdrop travel with it, so it never walks
+ *                                off the world
  *   dragon.html?walk=1           the sheet, every dragon walking (each jumps back to its cell
  *                                every WRAP_CYCLES cycles, feet and all)
  * `__dragonView.walkAt(t)` pins every dragon at walk time `t` seconds, `walkAt(null)` stands
- * them at rest, `walkPlay()` lets the walk clock run; `walkDrift(k)` walks dragon k through
+ * them at rest, `walkPlay()` lets the walk clock run (from rest it eases in over
+ * WALK_RAMP_S), `walkStop()` eases it out and leaves each dragon standing where it stopped;
+ * `walkViewState()` reports the walk view's camera and tracking; `walkDrift(k)` walks dragon k through
  * fixed time steps and measures its planted feet in the world; `frameStats()` reports the
  * main-thread cost of the frames the clock drove.
  *
@@ -136,6 +143,11 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
+/** The studio backdrop; the walk view keeps it centred on the walking dragon. */
+const backdrop = new THREE.Mesh(
+  new THREE.SphereGeometry(150, 24, 12),
+  new THREE.MeshBasicMaterial({ color: 0x5d6063, side: THREE.BackSide }),
+);
 // The ground fades into the backdrop instead of ending at a hard horizon line. The
 // backdrop is a fogged sphere, not `scene.background`: the background skips tone mapping
 // and fog does not, so the two greys met in a visible seam.
@@ -144,10 +156,7 @@ if (mask) {
   document.body.style.background = '#000';
 } else {
   scene.fog = new THREE.Fog(0x5d6063, turn ? 40 : 95, turn ? 95 : 140);
-  scene.add(new THREE.Mesh(
-    new THREE.SphereGeometry(150, 24, 12),
-    new THREE.MeshBasicMaterial({ color: 0x5d6063, side: THREE.BackSide }),
-  ));
+  scene.add(backdrop);
 }
 // Greyscale: the lights keep their warm and cool tints, so the canvas is desaturated as well
 // as the albedo flattened. What is left is light and shape.
@@ -205,6 +214,8 @@ interface Placed {
   mesh: THREE.Mesh; label: HTMLDivElement; anchor: THREE.Vector3; cell: number;
   /** The rigged dragons' walk, and the mesh's x at rest (centred on its graph). */
   walk: DragonWalk | null; baseX: number;
+  /** Distance walked while the clock runs: ∫ walk weight · speed dt (wrapped on the sheet). */
+  dist: number;
 }
 const placed: Placed[] = [];
 const labels = document.getElementById('labels')!;
@@ -275,7 +286,7 @@ for (const [k, gi] of shown.entries()) {
   label.innerHTML = `${r.label} · ${origin}<br><small>${el} · gen ${gm.generation} · ${wingForm(gm.phenotype)} wings · ${gm.gid()}</small>`;
   labels.appendChild(label);
   if (mask) label.style.display = 'none';
-  placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 3.4)), cell: gi, walk, baseX: -cx });
+  placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 3.4)), cell: gi, walk, baseX: -cx, dist: 0 });
 }
 const buildMs = performance.now() - t0;
 if (!sweep) mesher.dispose();
@@ -311,7 +322,19 @@ const WALK_CAM_ELEVATION_DEG = 14;
 const WALK_CAM_AZIMUTH_DEG = 25;
 /** The walk view's ground is a checker of this many world units a square, so a planted foot can be seen to stay put. */
 const WALK_TILE = 0.5;
-const walkCam = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
+/**
+ * The follow camera: `look` is the tracked point in the dragon's own frame (its holder's,
+ * before travel), `offset` the camera's place from it in the world, scaled by `zoom`. Drag
+ * turns the dragon about where it stands (setYaw) and the camera keeps the same world
+ * offset, so it follows the dragon in any direction; zoom scales the offset (D1, D2).
+ */
+const walkCam = { pos: new THREE.Vector3(), look: new THREE.Vector3(), offset: new THREE.Vector3(), zoom: 1 };
+/** Follow-camera zoom limits: the offset's scale. */
+const WALK_ZOOM: readonly [number, number] = [0.3, 3];
+/** The ground snaps to whole checker periods (two tiles), so its texture never swims (D3). */
+const GROUND_SNAP = 2 * 0.5;
+const focus = new THREE.Vector3();
+const pivotA = new THREE.Vector3(), pivotB = new THREE.Vector3();
 if (walkView && placed[0]) {
   const geo = placed[0].mesh.geometry;
   if (!geo.boundingBox) geo.computeBoundingBox();
@@ -328,6 +351,7 @@ if (walkView && placed[0]) {
     walkCam.pos.set(cam[0]!, cam[1]!, cam[2]!);
     walkCam.look.set(cam[3]!, cam[4]!, cam[5]!);
   }
+  walkCam.offset.subVectors(walkCam.pos, walkCam.look);
   camera.position.copy(walkCam.pos);
   target.copy(walkCam.look);
   // The ground becomes a checker (a texture, not another draw), so travel and planted feet read.
@@ -391,17 +415,24 @@ document.getElementById('note')!.textContent = mask ? '' :
   `runtime dragons, built in a worker · ${shown.length} in ${buildMs.toFixed(0)} ms after a ${startupMs.toFixed(0)} ms warm-up · ${tris} tris`;
 
 const labelAt = new THREE.Vector3();
+/** The walk view's tracked point in the world: `walkCam.look` carried by the dragon's travel and its holder's turn. */
+function trackedPoint(p: Placed, out: THREE.Vector3): THREE.Vector3 {
+  const holder = p.mesh.parent!;
+  holder.updateMatrixWorld();
+  return out.copy(walkCam.look).setX(walkCam.look.x + p.mesh.position.x - p.baseX).applyMatrix4(holder.matrixWorld);
+}
 function frame(): void {
   if (walkView && placed[0]) {
-    // Track the dragon: the camera, its target, the sun and its shadow box move with it.
-    const x = placed[0].mesh.position.x - placed[0].baseX;
-    camera.position.copy(walkCam.pos);
-    camera.position.x += x;
-    target.copy(walkCam.look);
-    target.x += x;
+    // Track the dragon where it actually is in the world, whatever way it has been turned:
+    // the camera, its target, the sun and its shadow box, the ground and the backdrop.
+    trackedPoint(placed[0], focus);
+    target.copy(focus);
+    camera.position.copy(walkCam.offset).multiplyScalar(walkCam.zoom).add(focus);
     camera.lookAt(target);
     sun.target.position.copy(target);
     sun.position.copy(target).add(sunOffset);
+    ground.position.set(Math.round(focus.x / GROUND_SNAP) * GROUND_SNAP, 0, Math.round(focus.z / GROUND_SNAP) * GROUND_SNAP);
+    backdrop.position.set(focus.x, 0, focus.z);
   }
   renderer.render(scene, camera);
   const v = labelAt;
@@ -444,8 +475,15 @@ declare global {
       gaits: WalkParams[];
       /** Pin every dragon at walk time `t` seconds; null stands them at rest (every bone the identity). Redraws. */
       walkAt(t: number | null): void;
-      /** Let the walk clock run, from walk time 0. */
+      /**
+       * Let the walk clock run: from rest it eases in over WALK_RAMP_S (walk time and distance
+       * from 0); from a pinned time it carries on from there at full weight.
+       */
       walkPlay(): void;
+      /** Ease the walk out over WALK_RAMP_S; each dragon stands where it stopped. */
+      walkStop(): void;
+      /** `?view=walk`: where the tracked dragon is, where the camera is, and where the dragon lands on screen (NDC). */
+      walkViewState(): { dragon: number[]; camera: number[]; distance: number; zoom: number; ndc: number[]; ground: number[]; backdrop: number[]; weight: number };
       /**
        * Walk shown dragon k alone through `cycles` gait cycles in `steps` fixed steps (no
        * wrap), and measure each foot (LEG_NAMES order) in the world: the ball node's and the
@@ -465,7 +503,16 @@ window.__dragonView = {
   startupMs,
   tris,
   setYaw(rad: number) {
-    for (const p of placed) p.mesh.parent!.rotation.y = rad;
+    for (const p of placed) {
+      const holder = p.mesh.parent!;
+      // The walking dragon turns about where it stands, not about where it started (D1).
+      if (walkView) trackedPoint(p, pivotA);
+      holder.rotation.y = rad;
+      if (walkView) {
+        trackedPoint(p, pivotB);
+        holder.position.add(pivotA).sub(pivotB);
+      }
+    }
     frame();
   },
   genes: GENES,
@@ -542,9 +589,33 @@ window.__dragonView = {
   },
   walkPlay() {
     if (!rigged) return;
+    if (walkClock !== 'run') {
+      if (typeof walkClock === 'number') {
+        gaitT = walkClock;
+        walkW = 1;
+        for (const p of placed) if (p.walk) p.dist = p.mesh.position.x - p.baseX;
+      } else {
+        gaitT = 0;
+        walkW = 0;
+        for (const p of placed) p.dist = 0;
+      }
+      lastNow = -1;
+    }
+    walkGoal = 1;
     walkClock = 'run';
-    walkFrom = performance.now();
     loop();
+  },
+  walkStop() {
+    walkGoal = 0;
+  },
+  walkViewState() {
+    const p = placed[0]!;
+    trackedPoint(p, focus);
+    const ndc = focus.clone().project(camera);
+    return {
+      dragon: focus.toArray(), camera: camera.position.toArray(), distance: camera.position.distanceTo(focus), zoom: walkCam.zoom,
+      ndc: [ndc.x, ndc.y], ground: ground.position.toArray(), backdrop: backdrop.position.toArray(), weight: walkW,
+    };
   },
   walkDrift(k: number, cycles = 2, steps = 480) {
     return walkDrift(k, cycles, steps);
@@ -564,7 +635,10 @@ let playing = false;
 let rafId = 0;
 /** 'run' follows the page's clock; a number pins walk time; null stands every dragon at rest. */
 let walkClock: number | null | 'run' = null;
-let walkFrom = 0;
+/** Seconds to ease the walk in or out: the weight's ramp, so a start or stop is not a snap. */
+const WALK_RAMP_S = 0.4;
+/** The running clock: walk time, the weight's linear ramp (eased when used) and its goal, the last frame's time. */
+let gaitT = 0, walkW = 0, walkGoal = 0, lastNow = -1;
 const running = () => playing || walkClock === 'run';
 function loop(): void {
   cancelAnimationFrame(rafId);
@@ -577,11 +651,32 @@ function tick(now: number): void {
   if (!running()) return;
   const t0 = performance.now();
   if (playing) setIdleTime(now / 1000);
-  if (walkClock === 'run') poseWalk((now - walkFrom) / 1000);
+  if (walkClock === 'run') stepWalk(lastNow < 0 ? 0 : Math.min(0.1, Math.max(0, (now - lastNow) / 1000)));
+  lastNow = now;
   frame();
   frameMs[frameCount % frameMs.length] = performance.now() - t0;
   frameCount = Math.min(frameCount + 1, frameMs.length);
   rafId = requestAnimationFrame(tick);
+}
+/**
+ * One frame of the running walk clock: ease the weight toward its goal, advance walk time,
+ * move each dragon by weight · speed, pose it. When the weight reaches 0 on a stop, every
+ * dragon stands at rest where it stopped and the clock ends. Allocation-free.
+ */
+function stepWalk(dt: number): void {
+  walkW = walkGoal > walkW ? Math.min(walkGoal, walkW + dt / WALK_RAMP_S) : Math.max(walkGoal, walkW - dt / WALK_RAMP_S);
+  const w = walkW * walkW * (3 - 2 * walkW);
+  gaitT += dt;
+  for (let i = 0; i < placed.length; i++) {
+    const p = placed[i]!;
+    if (!p.walk) continue;
+    p.dist += w * p.walk.params.speed * dt;
+    // On the sheet each dragon jumps back to its cell every WRAP_CYCLES strides, all of it at once.
+    if (!walkView) { const wrap = WRAP_CYCLES * p.walk.params.stride; if (p.dist > wrap) p.dist -= wrap; }
+    if (walkGoal === 0 && walkW === 0) p.walk.pose(null); else p.walk.pose(gaitT, w);
+    p.mesh.position.x = p.baseX + p.dist;
+  }
+  if (walkGoal === 0 && walkW === 0) walkClock = null;
 }
 /** Pose every rigged dragon at walk time t (null: at rest) and move it by its travel. Allocation-free. */
 function poseWalk(t: number | null): void {
@@ -697,7 +792,10 @@ renderer.domElement.addEventListener('wheel', (e) => {
 }, { passive: false });
 /** k > 1 moves out, k < 1 moves in. */
 function zoomBy(k: number): void {
-  if (camera instanceof THREE.OrthographicCamera) {
+  if (walkView) {
+    // The follow camera: scale its offset from the dragon, clamped (D2).
+    walkCam.zoom = Math.min(Math.max(walkCam.zoom * k, WALK_ZOOM[0]), WALK_ZOOM[1]);
+  } else if (camera instanceof THREE.OrthographicCamera) {
     camera.zoom = Math.min(Math.max(camera.zoom / k, 0.5), 8);
     camera.updateProjectionMatrix();
   } else {

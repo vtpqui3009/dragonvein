@@ -50,6 +50,8 @@ const CPU_VIEW = { width: 900, height: 380 };
 const CPU_SAMPLES = 240;
 const CPU_DEADLINE_MS = 150_000;
 const CPU_WARMUP_MS = 3000;
+const HEAP_EVERY_MS = 250;
+const HEAP_FLOOR_MS = 8000;
 const DRIFT_CYCLES = 2;
 const DRIFT_STEPS = 480;
 const WALK_CLIP_SLOT = Number(process.env.DRAGON_WALK ?? 0);
@@ -163,20 +165,50 @@ try {
   // 3. Main-thread cost: the sheet idling (M7a's frame), then all eight walking, capped.
   const cpuPage = await open('', CPU_VIEW);
   const cap = await verifyRasteriserCap(await applyRasteriserCap({ rootPid: process.pid, software: true }));
+  // Heap, from outside the page as gate:perf reads it: Runtime.getHeapUsage every HEAP_EVERY_MS,
+  // summing the rises (falls are scavenges). The floor is the same reading with no clock
+  // running, so no frames: what the page and this polling allocate by time alone.
+  const cdp = await cpuPage.context().newCDPSession(cpuPage);
+  const rising = (kb) => kb.reduce((a, v, i) => a + (i && v > kb[i - 1] ? v - kb[i - 1] : 0), 0);
+  const heapRead = async () => (await cdp.send('Runtime.getHeapUsage')).usedSize / 1024;
+  await cpuPage.evaluate(() => { window.__dragonView.idleAt(null); window.__dragonView.walkAt(null); });
+  await cpuPage.waitForTimeout(1000);
+  const floorKB = [];
+  const tf = Date.now();
+  while (Date.now() - tf < HEAP_FLOOR_MS) { floorKB.push(await heapRead()); await cpuPage.evaluate(() => window.__dragonView.frameStats(false)); await cpuPage.waitForTimeout(HEAP_EVERY_MS); }
+  const floorBytesPerS = (rising(floorKB) * 1024) / ((Date.now() - tf) / 1000);
   const sample = async () => {
     await cpuPage.waitForTimeout(CPU_WARMUP_MS);
     await cpuPage.evaluate(() => window.__dragonView.frameStats(true));
+    const kb = [];
     const t0 = Date.now();
+    let n = 0;
     while (Date.now() - t0 < CPU_DEADLINE_MS) {
-      await cpuPage.waitForTimeout(1000);
-      if ((await cpuPage.evaluate(() => window.__dragonView.frameStats(false))).n >= CPU_SAMPLES) break;
+      kb.push(await heapRead());
+      n = (await cpuPage.evaluate(() => window.__dragonView.frameStats(false))).n;
+      if (n >= CPU_SAMPLES) break;
+      await cpuPage.waitForTimeout(HEAP_EVERY_MS);
     }
-    return cpuPage.evaluate(() => window.__dragonView.frameStats(true));
+    const seconds = (Date.now() - t0) / 1000;
+    const cpu = await cpuPage.evaluate(() => window.__dragonView.frameStats(true));
+    const raw = rising(kb) * 1024;
+    return { cpu, heap: { frames: n, seconds, uncorrectedBytesPerFrame: Math.round(raw / n),
+      bytesPerFrame: Math.round(Math.max(0, raw - floorBytesPerS * seconds) / n), sawtoothKB: Math.round(Math.max(...kb) - Math.min(...kb)) } };
   };
-  const idleCpu = await sample();
+  await cpuPage.evaluate(() => window.__dragonView.idlePlay());
+  const idling = await sample();
   await cpuPage.evaluate(() => window.__dragonView.walkPlay());
-  const walkCpu = await sample();
+  const walking = await sample();
   await cpuPage.close();
+  const idleCpu = idling.cpu, walkCpu = walking.cpu;
+  out.heap = { what: 'dragon.html heap churn per rendered frame, Runtime.getHeapUsage over CDP from outside the page; rising edges minus ' +
+    'the floor (the same polling with no clock running, charged per second); the 8-dragon sheet', everyMs: HEAP_EVERY_MS,
+    floorBytesPerSecond: Math.round(floorBytesPerS), idling: idling.heap, walking: walking.heap,
+    walkAddsBytesPerFrame: walking.heap.bytesPerFrame - idling.heap.bytesPerFrame,
+    note: 'three.js render allocates ~4 kB + ~2 kB per draw call (docs/ARCHITECTURE.md), and this sheet draws 50, so the sheet ' +
+      'itself sits above the game page\'s 40 960 B/frame budget, which gate:perf holds on the game page. What the walk adds is walkAddsBytesPerFrame.' };
+  console.log(`heap: floor ${Math.round(floorBytesPerS)} B/s; idling ${idling.heap.bytesPerFrame} B/frame (raw ${idling.heap.uncorrectedBytesPerFrame}), ` +
+    `walking ${walking.heap.bytesPerFrame} B/frame (raw ${walking.heap.uncorrectedBytesPerFrame}); the walk adds ${out.heap.walkAddsBytesPerFrame} B/frame`);
   out.cpuFrameMs = { what: 'main-thread ms per clock-driven frame on dragon.html (pose + render + labels), the 8-dragon sheet, ' +
     'under the rasteriser cap (tools/rasteriser-cap.mjs)', budgetMs: CPU_BUDGET_MS, viewport: CPU_VIEW, samplesTarget: CPU_SAMPLES,
     cap: { applied: cap.applied, verified: cap.verified, reason: cap.reason, cpus: cap.cpus }, idling: idleCpu, walking: walkCpu };
