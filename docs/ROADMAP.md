@@ -271,8 +271,8 @@ They meet §Definition of done:
 | step | done when | status |
 |---|---|---|
 | M7a | procedural idle — breathing, blink, weight shift — driven by genome proportions | DONE |
-| **M7b** | **walk cycle, feet planted, no sliding** | **TODO** |
-| M7c | wing flap and glide, no interpenetration at any wing span | TODO |
+| M7b | walk cycle, feet planted, no sliding | DONE |
+| **M7c** | **wing flap and glide, no interpenetration at any wing span** | **TODO** |
 
 ## M8 — Taming & roster
 

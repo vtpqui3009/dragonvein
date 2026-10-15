@@ -167,7 +167,7 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
-## 2026-10-14 · run 30 · M7b — walk cycle, feet planted, no sliding
+## 2026-10-14 · run 30 · M7b DONE — walk cycle, feet planted, no sliding
 
 **Step**: `M7b`, the first step in reading order that is not `DONE`. The marker commit
 precedes this one.
@@ -229,6 +229,75 @@ bone table), `src/render/`, `src/dragon-view.ts`, `tools/` and `tests/`.
    - no tearing or candy-wrapper collapse at the knees or shoulders;
    - wings and tail ride the body;
    - the idle still works at rest.
+
+
+---
+
+### Result — M7b DONE (M7 IN_PROGRESS)
+
+All six criteria hold at `6e1debb`, after one rework cycle.
+
+1. **`walkParams(genome)`** (`src/assets/dragon/walk.ts`) is pure and deterministic. With m
+   for normalised bodyMass and LL for leg length:
+
+   | parameter | formula |
+   |---|---|
+   | stride | 0.48·LL |
+   | period | (0.80 + 0.50m)·√(LL/1.05) |
+   | duty | 0.62 + 0.14m |
+
+   The gait is the lateral sequence LH, LF, RH, RF. `tests/dragon-walk.test.ts` proves it
+   monotone, bounded and deterministic. `pose(t, 0)` equals rest at any t.
+2. **Skinning.** `rig.ts` derives 26 bones from the graph's nodes. `bakeSkin` writes
+   `skinIndex` and `skinWeight` with at most 4 influences, weights summing to 1, and a
+   rigid-sole rule. The worker transfers 8 buffers. The rest pose against static differs by
+   **0 px**.
+3. **No sliding.** `tools/dragon-walk.mjs` measures stance drift at 0 % of stride, for ball
+   and contact, on every foot of all 8 dragons. The knee range is 38.6–51.2°. The art critic
+   independently block-matched all 84 clip frames and found the toes planted to the pixel.
+4. **Budgets.**
+   - meshgen round trip max 39.5 ms (worker 31.9);
+   - parity exact;
+   - 50 draws in every `dragon.html` mode, so no new draw;
+   - cpuFrameMs with 8 walking at p95 1.4 ms;
+   - no per-frame allocation in pose or IK (13 B per call in a Node probe);
+   - `npm run gates` exits 0.
+5. **Seen.** `dragon-walk.webm` (dragon A, 3 cycles), `dragon-walk-a.png` and
+   `dragon-walk-b.png`.
+6. **No blocking or major art defect** in either cycle.
+
+**Rework, cycle 1 → 2.** Cycle 1 at `a68c77f` scored art 8.7, perf 9.0 and gameplay 7.5.
+
+| commit | what it fixed |
+|---|---|
+| `fff1fa3` | **gate:meshgen** (perf major, its own commit). The page now runs under `tools/rasteriser-cap.mjs`. Every GL call is timed, and a round trip over 120 ms passes only when a GL stall of ≥ 8 ms inside its own window accounts for the excess. The worker is held to 120 ms on every sample, and the budget is unchanged. Injected tests: a 200 ms GL wait is partitioned, while a 200 ms non-GL stall fails. |
+| `6e1debb` | **`?view=walk`.** The follow camera now tracks the dragon's world position after yaw (D1), wheel and pinch scale the follow distance 0.3–3× (D2), and the ground (grid-snapped) and backdrop follow the dragon (D3). Also a 0.4 s smoothstep walk-weight ramp, `walkStop()`, and hip, shoulder and neck roll with the gait. |
+
+**Scores (cycle 2):** art **8.2**, perf **9.1**, gameplay **9.4**. Art fell from 8.7: A7
+caption contrast was measured for the first time at 2.2:1, and A9 is the low crouch.
+
+**Why M7 stays IN_PROGRESS.** M7c is `TODO`, and no human has seen the walk running
+(CLAUDE.md §7). NEXT.md asks the owner for a `dragon.html?walk=1` sighting.
+
+**Hazards for the next steps:**
+- Each walking dragon adds about 1 kB/frame of heap on three's skinned path. It is not yet
+  attributed; the likely cause is the bone-texture upload. The game page has about 9 kB of
+  headroom.
+- The meshgen stall partition has not fired in a real run. The 178.8 ms stall was not
+  reproduced, so it is unproven that a recurrence would be a GL wait.
+
+**Open, carried to FINDINGS (all minor):**
+- narrow gait variety;
+- a rigid head and neck;
+- the low crouch;
+- a single-dragon clip, and no ramp artefact;
+- no regression guard on the `?view=walk` input;
+- no input hint;
+- caption contrast;
+- stale `dragon-full.json`;
+- potato cap verification.
+
+`wip/m7b` holds a superseded snapshot and can be deleted.
 
 ---
 
@@ -333,132 +402,6 @@ All five criteria hold at `6cbc451`.
 - the clip covers one dragon;
 - there is no `dragon.html` smoke coverage;
 - the meshgen flake.
-
----
-
-## 2026-10-14 · run 28 · M5f DONE (M5 awaits the owner) — dress the island with the generated flora and rocks
-
-**Step**: `M5f`, the first step in reading order that is not `DONE`. The marker commit
-precedes this one.
-
-**Ownership**: one sequential owner, the integrator, across `src/main.ts`, `src/render/` and
-`tools/` (CLAUDE.md §2.4).
-
-**Baseline** (perf, M5e at `4310718`):
-- `drawCalls` 28, `triangles` 174 012;
-- `heap.bytesPerFrame` 35 232 of 40 960, about 3 draws of headroom at ~1.8 kB per draw;
-- `cpuFrameMs.p95` 2.3;
-- Potato: 20 draws and 142 800 triangles.
-
-The generated assets in the scene today are only `flora/broadleaf` (220 instances). The
-hero island's other trees, bushes, rocks and snags are hand-built placeholders.
-
-### Acceptance criteria
-
-1. **The generated set dresses the hero island.** It must include at least:
-   - trees: conifer, broadleaf and one more kind;
-   - understory: bush, fern, grassclump and flowershrub;
-   - ground cover: moss, lichen and fallenleaves;
-   - rocks: one M4 rock kind or more;
-   - `flora/deadtree` in place of the hand-built snags.
-
-   `__dragonveinStats()` reports an instance count per kind. `gate:smoke` logs it and
-   **fails if any listed kind is 0**.
-2. **Merged draws.**
-   - All placed flora renders as **at most one draw per LOD**: one batched or merged draw
-     per LOD across every kind, with the vertex-colour material and wind in the vertex
-     shader.
-   - Shadow-pass draws are limited to the near trees.
-   - Ground cover casts no shadow.
-   - Hand-built placeholders that the generated set replaces are removed, so their draws
-     are freed.
-3. **Inside budget, with no budget raised.** `npm run gate:perf` gives:
-   - `drawCalls` ≤ 31 (the baseline plus the ~3-draw headroom);
-   - `heap.withinBudget` true;
-   - `cpuFrameMs.p95` ≤ 3.5 with the tail enforced;
-   - `triangles` ≤ 900 000;
-   - Potato draws ≤ 23.
-
-   Before and after are both recorded.
-4. **Seen.**
-   - `artifacts/shots/01-wide.png` shows the dressed island.
-   - A new smoke shot `artifacts/shots/12-island-close.png` frames the ground at close range,
-     so the ground cover and understory read.
-   - The wind shots (`11-wind-a/b`) still show sway on the placed flora.
-   - Lichen does not z-fight against ground or rock in the close shot.
-5. `npm run gates` exits 0.
-6. No blocking or major art defect against the scene shots (§4).
-
-**Contract change (integrator, for the other owners):** `docs/ARCHITECTURE.md` §Render
-contract now allows a `BatchedMesh` where many prop kinds share one material, beside the
-existing `InstancedMesh`-per-type rule. The hero island's flora and rocks are one
-`FloraBatch` (`src/render/flora.ts`), and its shadow pass draws only the caster prefix. The
-wind patch (`src/render/wind.ts`) now reads a baked per-vertex `windBend` attribute
-(`bakeWindBend`) instead of a height uniform, and it handles `batchingMatrix` as well as
-`instanceMatrix`. Any new wind-patched mesh must bake the attribute; a mesh without it
-stands still.
-
----
-
-### Result — M5f DONE; M5 IN_PROGRESS until the owner sees it
-
-Criteria 1–6 hold at `1bb31e8`.
-
-1. **Kinds placed.** All 15 kinds are on the hero island:
-
-   | kind | count | kind | count |
-   |---|---|---|---|
-   | conifer | 9 | flowershrub | 10 |
-   | broadleaf | 6 | fern | 22 |
-   | sapling | 4 | grassclump | 47 |
-   | windtwisted | 2 | moss | 22 |
-   | deadtree | 3 (replacing the snags) | fallenleaves | 20 |
-   | boulders | 12 | lichen | 17 |
-   | columnar | 2 | pathstone | 22 |
-   | bush | 17 | | |
-
-   The smoke fails if any of 13 required kinds is 0.
-2. **One `BatchedMesh` for the island.** `FloraBatch` in `src/render/flora.ts` draws the whole
-   island in 1 colour draw and 1 shadow draw. The shadow casters sit in a prefix, so the
-   ground cover casts no shadow. Culling and sorting are off. The placeholders are removed.
-   Wind is a baked per-vertex `windBend`, and the patch handles `batchingMatrix`.
-   ARCHITECTURE §Render contract now allows a `BatchedMesh` where kinds share one material.
-3. **Perf.** One source, `gate:perf` runs on `2c25da2` and `1bb31e8`:
-
-   | | before | after | limit |
-   |---|---|---|---|
-   | draws | 28 | 17 | ≤ 31 |
-   | triangles | 174 012 | 216 714 | ≤ 900 000 |
-   | heap | 36 128 | 37 594 | ≤ 40 960 |
-   | cpu p95 | 1.4 | 1.5 | ≤ 3.5 |
-   | Potato draws | 20 | 14 | ≤ 23 |
-
-   The run-28 baseline row above (35 232 / 2.3) came from M5e's run at `4310718`, which is
-   noise between runs. No budget was raised.
-
-   The first pass put every tree at LOD0: 343k triangles and a heap of 41 156, which failed.
-   The fix made the frame cheaper rather than touching the gate: trees at LOD1, grass and
-   fern at LOD2.
-4. **Shots.**
-   - `01-wide` shows the dressed island.
-   - `12-island-close` is new.
-   - The wind diff is 17 095 px, 76 % of it foliage.
-   - The lichen is clean, with no z-fighting.
-5. `npm run gates` exits 0.
-6. No blocking or major defect.
-
-**Scores (cycle 1):** art 8.6, perf 9.2, gameplay 9.3.
-
-**Container restart.** The container restarted mid-run. The tree survived and was
-snapshotted to `wip/m5f`, and the integrator resumed. `wip/m5f` is now superseded.
-
-**Open, carried to FINDINGS:**
-- P4 headroom is 3.4 kB;
-- the front of the deck is sparse and the ground green is flat;
-- the grass blades are wire-thin;
-- the moss is scaled too big;
-- the rock faces are near-black;
-- `loadFlora` is all-or-nothing.
 
 ---
 
