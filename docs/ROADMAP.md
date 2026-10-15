@@ -272,13 +272,15 @@ They meet §Definition of done:
 |---|---|---|
 | M7a | procedural idle — breathing, blink, weight shift — driven by genome proportions | DONE |
 | M7b | walk cycle, feet planted, no sliding | DONE |
-| **M7c** | **wing flap and glide, no interpenetration at any wing span** | **TODO** |
+| M7c | wing flap and glide, no interpenetration at any wing span | DONE |
+
+**M7 the milestone is `IN_PROGRESS`, awaiting the owner's look.** M7c closed in run 31 at `9242ee2` (art 8.1, perf 8.9, gameplay 9.3): every step is `DONE` and the last pass is ≥ 8.0, but no human has seen the animation running yet (CLAUDE.md §7). The owner's look at the deployed build closes it; NEXT.md asks.
 
 ## M8 — Taming & roster
 
 | step | done when | status |
 |---|---|---|
-| M8a | IndexedDB save and load; a world survives reload; migrations in place | TODO |
+| **M8a** | **IndexedDB save and load; a world survives reload; migrations in place** | **TODO** |
 | M8b | approach and calm — a wild dragon reacts to the player | TODO |
 | M8c | taming completes and the dragon joins the roster | TODO |
 | M8d | roster UI — list, select, inspect | TODO |

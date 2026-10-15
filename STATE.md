@@ -167,7 +167,7 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
-## 2026-10-15 · run 31 · M7c — wing flap and glide, no interpenetration at any wing span
+## 2026-10-15 · run 31 · M7c DONE — wing flap and glide, no interpenetration at any wing span
 
 **Step**: `M7c`, the first step in reading order that is not `DONE`. The marker commit
 precedes this one.
@@ -238,6 +238,83 @@ table, weights, `flightParams`), `src/render/` (the flap and glide pose),
    - fingers stay ordered;
    - all three wing forms (sail, spread, segmented) flap;
    - walk and idle still work.
+
+
+---
+
+### Result — M7c DONE (M7: all steps DONE, IN_PROGRESS awaiting the owner)
+
+All six criteria hold at `9242ee2`, after one rework cycle.
+
+1. **`flightParams(genome)`** (`src/assets/dragon/flight.ts`) is pure and deterministic. Beat
+   period grows with wingSpan and bodyMass (0.79–1.00 s on the sheet; 0.68 s at span 0.55 and
+   1.18 s at 1.65). Stroke falls with mass. `upShare` = 0.58 + 0.14·wingShape. `fanOpen` =
+   1.02 + 0.10·(1 − wingShape). Glide bank is 0.11–0.19 and the soar period 5.3–6.95 s.
+   `tests/dragon-flight.test.ts` proves all of it monotone, bounded and deterministic, and
+   `pose(t, 0)` equals rest.
+2. **Wing bones.** `rig.ts` reads a chain per wing (arm, then one bone per finger) off the
+   graph's 4 + 2·wingFingers wing nodes. `BONE_COUNT` became `BODY_BONES` (26) plus
+   `boneCount(p)`, and `Rig` gains `wings` and `crownFrom`. Membrane weights sum to 1 with at most
+   4 influences. Rest against static is **0 px**, and parity is exact (graph.ts unchanged).
+3. **No interpenetration** (`tools/dragon-flight.mjs` → `dragon-flight.json`):
+   - coverage: the 8 sheet dragons plus wingSpan 0.55 and 1.65, 128 samples each;
+   - body clearance ≥ 0.003, free wing ≥ 0.186, wing to wing ≥ 0.314;
+   - 0 finger crossings, minimum finger gap 5.3°;
+   - tip travel 74–86 % of the half-span (bar 30 %).
+
+   The C and G body minima are the wing-root seam and equal their rest values. The tool also fails
+   if a foot comes within 0.3 of the ground in flight or a leg stays above 95 % of its rest length.
+   Measured: hover 0.73–1.34, lowest foot 0.83, hip to ankle 41–55 % of rest.
+4. **Budgets.**
+   - meshgen round-trip max 56.7 ms, against 120;
+   - parity exact;
+   - 50 draws in every mode;
+   - 8 flapping at p95 2.6 ms;
+   - the flap and glide path does no per-frame allocation (scratch fields only);
+   - flap heap +7 133 B per frame against idle, with the floor subtracted;
+   - `npm run gates` exits 0.
+5. **Seen.**
+   - `dragon-flight.webm`: rest → flap → glide → land → rest;
+   - `dragon-flap-a.png` and `dragon-flap-b.png`;
+   - `dragon-glide.png`;
+   - `dragon-flight-touch.png`.
+6. **No blocking or major art defect** at cycle 2.
+
+**Rework, cycle 1 → 2.** Cycle 1 at `88441ed` scored art 8.0, perf 9.0 and gameplay 8.1, with two
+majors. One was the glide clip reading as rest: the feet stayed on the ground and the camera was a
+side view. The other was that touch could not glide or land. `9242ee2` fixed both and adds:
+- the lift and leg tuck;
+- a three-quarter camera;
+- Flap, Glide and Land buttons, with a modifier guard;
+- a 0.5 s command ramp;
+- gene-driven `upShare`, `fanOpen` and stroke;
+- a caption that wraps at 390 px.
+
+**Scores (cycle 2):** art **8.1**, perf **8.9**, gameplay **9.3**.
+
+**Why M7 stays IN_PROGRESS.** Every step is `DONE` and the last pass is ≥ 8.0, but no human has
+seen the animation running (CLAUDE.md §7). NEXT.md asks the owner for it.
+
+**For the owner: fixtures #13 and #24 have a frill through a wing at rest** (−0.034 and −0.048). A
+sweep of 288 genomes found 30–51 cases at long necks. This is graph geometry, which M7c could not
+change, and the fix moves parity and the Blender reference. The test names those two fixtures, so
+it fails if the set changes. NEXT.md asks the owner.
+
+**Hazards:**
+- Game-page heap is 38 687 of 40 960 (noisy; it was 31 873 at M7b with no code change).
+- Each skinned dragon costs about 840 B per frame.
+- meshgen is rising: 39.5 → 50.5 → 56.7 ms.
+
+**Open, carried to FINDINGS (all minor):**
+- the glide wing read from the default camera;
+- self-shadow patches on the folded membrane;
+- sail facets;
+- shallow kinematic variation;
+- caption overlaps and contrast;
+- no active state on the buttons;
+- small phone framing.
+
+`wip/m7c` is superseded by `9242ee2` and can be deleted.
 
 ---
 
@@ -372,110 +449,6 @@ caption contrast was measured for the first time at 2.2:1, and A9 is the low cro
 - potato cap verification.
 
 `wip/m7b` holds a superseded snapshot and can be deleted.
-
----
-
-## 2026-10-14 · run 29 · M7a DONE — procedural idle driven by the genome
-
-**Step**: `M7a`, the first step in reading order that is not `DONE`. M5 waits only on the
-owner's look. The marker commit precedes this one.
-
-**The animation path, decided before code.** The idle is a **vertex-shader deformation keyed
-on per-vertex attributes that the mesher bakes**, the same pattern as `windBend` (M5f). It
-is not skinning. The reasons:
-- it allocates nothing per frame and adds no draw call (P4 headroom is about 3.4 kB);
-- the dragon stays one draw;
-- `gate:parity`, which compares skin graphs, is untouched, because the attributes are an
-  output of the TS mesher only.
-
-Bone skinning stays open for M7b (walk) and M7c (flap), where limbs must rotate rather than
-breathe. Whether the attributes are enough there is M7b's call.
-
-**Ownership**: one sequential owner, the integrator, across `src/assets/dragon/` (mesher
-attributes), `src/render/` (the idle patch), `src/dragon-view.ts`, `tools/` and `tests/`.
-
-### Acceptance criteria
-
-1. **The genome drives the idle.** A pure TS function `idleParams(genome)` gives the breath
-   rate and depth, the blink interval and the weight-shift amplitude and period from body
-   genes. For example:
-   - heavier bodyMass breathes slower and deeper;
-   - chestDepth scales the chest swell;
-   - legLength and bodyMass set the sway.
-
-   `tests/dragon-idle.test.ts` proves:
-   - monotonic in the genes it names;
-   - bounded;
-   - deterministic: the same genome gives the same params, with no `Math.random` or
-     `Date.now`;
-   - two different sheet genomes give different params.
-2. **Baked attributes.** The worker mesher emits the per-vertex weights the shader needs:
-   chest or breath, eyelid, sway. They are applied in a vertex-only patch, with one shared
-   time uniform set once per frame without allocating.
-3. **Seen moving.** `dragon.html` animates the idle. `tools/dragon-sheet.mjs` writes
-   `artifacts/variants/dragon-idle-a.png` and `dragon-idle-b.png`: the same camera at two
-   fixed idle times, with one time at mid-blink. It logs the changed-pixel count and fails if
-   it is 0, and the changed pixels lie on the dragons. It also writes
-   `artifacts/turntables/dragon-idle.webm`, a few seconds of one dragon idling.
-4. **Budgets.**
-   - `gate:meshgen` ≤ 120 ms, with no regression past the noise of the current ~50 ms;
-   - `gate:parity` green;
-   - no new draw call on `dragon.html`;
-   - `npm run gates` exits 0.
-5. **No blocking or major art defect** on the idle frames or turntable: no tearing, no
-   eyelid through the skull, no wing or body interpenetration from the sway (§4).
-
----
-
-### Result — M7a DONE (M7 IN_PROGRESS)
-
-All five criteria hold at `6cbc451`.
-
-1. **`idleParams(genome)`** (`src/assets/dragon/idle.ts`) is pure and deterministic. With the
-   body genes normalised as m (bodyMass), c (chestDepth), l (legLength) and h (headSize):
-
-   | parameter | formula | range |
-   |---|---|---|
-   | breathPeriod | 2.6 + 2.4m | 2.6–5.0 s |
-   | breathDepth | (0.014 + 0.014m)(1 + 0.8c) | — |
-   | blinkInterval | 3.5 + 2.5m | 3.5–6.0 s |
-   | blinkDuration | 0.16 + 0.10h | — |
-   | swayAmp | (0.025 + 0.025l)(1.2 − 0.4m) | — |
-   | swayPeriod | (5 + 2.5m)·√legLength | — |
-
-   The phases come from `Rng(gid)`. There are 17 tests, covering monotonicity, bounds,
-   determinism, still feet, and mix 0 equalling the built mesh.
-2. **Baked attributes**, with the worker transferring 6 buffers:
-   - `idleBreathSway` (vec4): the breath field about the torso line, plus a sway weight that
-     is 0 at the feet;
-   - `idleBlink`: the eye squashes to a slit about its centre.
-
-   The vertex-only `withIdle` patch (`src/render/idle.ts`) composes with `withRim`. It uses a
-   shared time uniform, and a per-dragon material clone that matches the depth material.
-3. **Seen moving.**
-   - `dragon-idle-a/b` (b at mid-blink) differ by 49 592 px, 83 % of them on the dragons.
-   - `dragon-idle.webm`.
-   - `__dragonView.idleAt` and `idlePlay`.
-4. **Budgets.**
-   - No new draw on `dragon.html`: 50 per frame before and after, measured by the builder and
-     by the perf critic.
-   - meshgen round-trip max 36.5–43.8 ms, within noise of the base.
-   - Parity is exact, and the rest pose is unchanged.
-   - `npm run gates` exits 0.
-5. No blocking or major art defect. The feet are template-matched at (0,0), and the blink is
-   clean.
-
-**Scores (cycle 1):** art 9.1, perf 9.5, gameplay 8.4.
-
-**Hazard.** `gate:meshgen` flaked once on unmodified HEAD, at 243.8 ms. It passed on rerun at
-25.4 ms. The cause is not found yet.
-
-**Open, carried to FINDINGS:**
-- the idle is subtle at sheet scale;
-- the blink is a squint and there is no lid;
-- the clip covers one dragon;
-- there is no `dragon.html` smoke coverage;
-- the meshgen flake.
 
 ---
 
