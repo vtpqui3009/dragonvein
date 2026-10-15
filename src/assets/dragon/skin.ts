@@ -73,10 +73,12 @@ export interface SkinMesh {
   rings?: { path: Uint16Array; k: Uint16Array; u: Float32Array };
   /** Per tube, per path point: the graph node ids at that point (coincident nodes merge) and its radius. */
   tubes?: { ids: number[][]; r: number[] }[];
+  /** Per tube: its sampled stations (`tubeStations`), the solid the rings lie on (M7c). */
+  stations?: Station[][];
 }
 
 /** A sample along a path: centre, radius, and the segment k (points k → k+1) and parameter u it lies at. */
-interface Station { c: Vec3; r: number; k: number; u: number }
+export interface Station { c: Vec3; r: number; k: number; u: number }
 
 /** Split the tree into paths. Each path lists node ids; `from` is the node a branch grows out of. */
 export function paths(g: Graph, root: number): { from: number | null; nodes: number[] }[] {
@@ -182,6 +184,73 @@ function sampleCurve(pts: Vec3[], rad: number[], step: number): Station[] {
   return out;
 }
 
+/** One tube before it is swept: its points, radii, node ids, ring layout and sampled stations. */
+interface Prepared {
+  pts: Vec3[]; rad: number[]; ids: number[][];
+  thin: boolean; seg: number; capRings: number; capRingsStart: number; st: Station[];
+}
+
+/** Points, radii and stations of one path (`skinGraph`'s first half), or null for a lone node. */
+function prepare(g: Graph, path: { from: number | null; nodes: number[] }, pi: number, o: SkinOptions): Prepared | null {
+  const pts: Vec3[] = [];
+  const rad: number[] = [];
+  const ids: number[][] = [];
+  if (path.from !== null) {
+    // A branch grows out of its parent's centre, at a fraction of the parent's radius but
+    // no more than branchCap times its own first node: a horn rooted at 0.8 of the skull's
+    // radius would be a second skull (run 12).
+    pts.push(g.v[path.from]!);
+    rad.push(Math.min(g.r[path.from]! * o.branchRoot, g.r[path.nodes[0]!]! * o.branchCap));
+    ids.push([path.from]);
+  }
+  for (const id of path.nodes) {
+    // Coincident nodes merge, keeping the larger radius. The reference puts the tail
+    // root and the hip at the same point; a zero-length span there cut a ring-shaped
+    // step into the body where the radius jumped (run 11, first sheet).
+    const q = g.v[id]!, prev = pts[pts.length - 1];
+    if (prev && len(sub(q, prev)) < 1e-6) {
+      rad[rad.length - 1] = Math.max(rad[rad.length - 1]!, g.r[id]!);
+      ids[ids.length - 1]!.push(id);
+    } else { pts.push(q); rad.push(g.r[id]!); ids.push([id]); }
+  }
+  if (pts.length < 2) return null; // a lone node: nothing to sweep (the graph has none)
+  // Fill pinches: a node thinner than both neighbours is raised toward their mean, so the
+  // skin does not waist in where a thin neck meets a broad skull (run 11, critic D3).
+  // The graph keeps the reference's radii; only the skin laid over it is filled.
+  for (let i = 1; i < rad.length - 1; i++) {
+    const a = rad[i - 1]!, b = rad[i + 1]!;
+    if (rad[i]! < a && rad[i]! < b) rad[i] = Math.max(rad[i]!, ((a + b) / 2) * o.pinchFill);
+  }
+
+  // Thickness is judged on the path's own nodes, not the root it borrows from its parent.
+  const ownR = Math.max(...path.nodes.map((id) => g.r[id]!));
+  const thin = pi !== 0 && ownR <= o.thinRadius;
+  const seg = pi === 0 ? o.segMain : thin ? o.segThin : o.segLimb;
+  // A branch's start cap sits at its parent node's centre, inside the parent's own tube,
+  // where nobody sees it; a tapered tube ends thin. Each of those ends takes the thin cap,
+  // which keeps the crown and toes inside the triangle cap (M3f).
+  const capRings = thin ? o.capRingsThin : o.capRings;
+  const capRingsStart = path.from !== null ? o.capRingsThin : capRings;
+  const st = sampleCurve(pts, rad, o.ringStep * (thin ? o.thinStepScale : pi === 0 ? 1 : o.branchStepScale));
+  return { pts, rad, ids, thin, seg, capRings, capRingsStart, st };
+}
+
+/**
+ * The swept tubes as solids, for clearance tests (M7c): per tube (in `skinGraph`'s order and
+ * numbering), its graph node ids and radius per path point, and every sampled station's centre, radius
+ * and place along the path (segment k, parameter u). Consecutive stations bound a round cone;
+ * the union of those is the tube, end caps included (a cap is the end station's hemisphere).
+ * The skin's rings lie on these circles, so the mesh sits on or just inside this solid.
+ */
+export function tubeStations(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): { ids: number[][]; r: number[]; stations: Station[] }[] {
+  const out: { ids: number[][]; r: number[]; stations: Station[] }[] = [];
+  paths(g, root).forEach((path, pi) => {
+    const t = prepare(g, path, pi, o);
+    if (t) out.push({ ids: t.ids, r: t.rad, stations: t.st });
+  });
+  return out;
+}
+
 /** Skin `g` into tubes rooted at `root` (a leaf: the tail tip). */
 export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): SkinMesh {
   const pos: number[] = [];
@@ -192,48 +261,13 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
   // ring (tube, segment, parameter, vertex count), expanded per vertex at the end.
   const ringRec: number[] = [];
   const tubes: NonNullable<SkinMesh['tubes']> = [];
+  const stations: Station[][] = [];
 
   all.forEach((path, pi) => {
-    const pts: Vec3[] = [];
-    const rad: number[] = [];
-    const ids: number[][] = [];
-    if (path.from !== null) {
-      // A branch grows out of its parent's centre, at a fraction of the parent's radius but
-      // no more than branchCap times its own first node: a horn rooted at 0.8 of the skull's
-      // radius would be a second skull (run 12).
-      pts.push(g.v[path.from]!);
-      rad.push(Math.min(g.r[path.from]! * o.branchRoot, g.r[path.nodes[0]!]! * o.branchCap));
-      ids.push([path.from]);
-    }
-    for (const id of path.nodes) {
-      // Coincident nodes merge, keeping the larger radius. The reference puts the tail
-      // root and the hip at the same point; a zero-length span there cut a ring-shaped
-      // step into the body where the radius jumped (run 11, first sheet).
-      const q = g.v[id]!, prev = pts[pts.length - 1];
-      if (prev && len(sub(q, prev)) < 1e-6) {
-        rad[rad.length - 1] = Math.max(rad[rad.length - 1]!, g.r[id]!);
-        ids[ids.length - 1]!.push(id);
-      } else { pts.push(q); rad.push(g.r[id]!); ids.push([id]); }
-    }
-    if (pts.length < 2) return; // a lone node: nothing to sweep (the graph has none)
-    // Fill pinches: a node thinner than both neighbours is raised toward their mean, so the
-    // skin does not waist in where a thin neck meets a broad skull (run 11, critic D3).
-    // The graph keeps the reference's radii; only the skin laid over it is filled.
-    for (let i = 1; i < rad.length - 1; i++) {
-      const a = rad[i - 1]!, b = rad[i + 1]!;
-      if (rad[i]! < a && rad[i]! < b) rad[i] = Math.max(rad[i]!, ((a + b) / 2) * o.pinchFill);
-    }
-
-    // Thickness is judged on the path's own nodes, not the root it borrows from its parent.
-    const ownR = Math.max(...path.nodes.map((id) => g.r[id]!));
-    const thin = pi !== 0 && ownR <= o.thinRadius;
-    const seg = pi === 0 ? o.segMain : thin ? o.segThin : o.segLimb;
-    // A branch's start cap sits at its parent node's centre, inside the parent's own tube,
-    // where nobody sees it; a tapered tube ends thin. Each of those ends takes the thin cap,
-    // which keeps the crown and toes inside the triangle cap (M3f).
-    const capRings = thin ? o.capRingsThin : o.capRings;
-    const capRingsStart = path.from !== null ? o.capRingsThin : capRings;
-    const st = sampleCurve(pts, rad, o.ringStep * (thin ? o.thinStepScale : pi === 0 ? 1 : o.branchStepScale));
+    const prep = prepare(g, path, pi, o);
+    if (!prep) return;
+    const { rad, ids, seg, capRings, capRingsStart, st } = prep;
+    stations.push(st);
 
     // Tangents over a window as wide as the tube is thick, then parallel-transported frames.
     // A plain central difference turned each ring as fast as the curve turned, so where a
@@ -330,7 +364,7 @@ export function skinGraph(g: Graph, root: number, o: SkinOptions = SKIN_LOD0): S
     rings.u.fill(ringRec[r + 2]!, v, end);
     v = end;
   }
-  return { position, normal: vertexNormals(position, index), index, parts, rings, tubes };
+  return { position, normal: vertexNormals(position, index), index, parts, rings, tubes, stations };
 }
 
 /** A closed UV sphere, outward-wound, as its own part. */

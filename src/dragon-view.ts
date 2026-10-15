@@ -49,9 +49,22 @@
  * `__dragonView.walkAt(t)` pins every dragon at walk time `t` seconds, `walkAt(null)` stands
  * them at rest, `walkPlay()` lets the walk clock run (from rest it eases in over
  * WALK_RAMP_S), `walkStop()` eases it out and leaves each dragon standing where it stopped;
- * `walkViewState()` reports the walk view's camera and tracking; `walkDrift(k)` walks dragon k through
+ * `walkViewState()` reports the follow camera and tracking; `walkDrift(k)` walks dragon k through
  * fixed time steps and measures its planted feet in the world; `frameStats()` reports the
  * main-thread cost of the frames the clock drove.
+ *
+ * They fly too (M7c: src/assets/dragon/flight.ts, src/render/flight.ts), each wing a bone
+ * chain read off the graph, beating with its own genome's rhythm:
+ *   dragon.html?flap=1           the sheet, every dragon flapping
+ *   dragon.html?view=flight&i=K  sheet dragon K flapping, the follow camera of `?view=walk`
+ *                                framing everything its wings reach; drag turns it, wheel or
+ *                                pinch zoom; keys F flap, G glide, L land
+ * `flapAt(t)` and `glideAt(t)` pin every dragon at flight time `t` seconds, fully flapping or
+ * gliding (null: at rest); `flightAt(t, flap, glide)` pins any blend of the two;
+ * `flapPhaseAt(ph)` pins each dragon at phase ph of its own beat ('top' and 'bottom' of the
+ * downstroke); `flapPlay()`, `glidePlay()` and `land()` run the flight clock, easing the weights
+ * over FLIGHT_RAMP_S; `flightProbe(k or phenotype)` measures a flap's clearances
+ * (src/render/flight-probe.ts).
  *
  * The genome code is the one tests/genome.test.ts proves equal to assetgen/genome.py, and
  * the graph the one tests/dragon-graph.test.ts proves equal to the reference's.
@@ -71,6 +84,9 @@ import { blinkMidTime, idleWaves, setIdleMix, setIdleTime, withIdle, type IdleWa
 import { walkParams, type WalkParams } from './assets/dragon/walk';
 import { BONE, LEG_NAMES } from './assets/dragon/rig';
 import { DragonWalk, bindSkinned } from './render/walk';
+import { flightParams, type FlightParams } from './assets/dragon/flight';
+import { DragonFlight, strokeTimes } from './render/flight';
+import { flightSamples, probeFlight, type FlightProbe } from './render/flight-probe';
 
 /**
  * The sheet: six wild dragons, one per element, on seeds 1-6 taken in order (not picked),
@@ -115,7 +131,11 @@ for (const r of SHEET) genomes.push(r.op === 'wild' ? wild(r.seed, r.element) : 
 const params = new URLSearchParams(location.search);
 /** One dragon walking, a side camera tracking it (M7b). Otherwise as the turntable. */
 const walkView = params.get('view') === 'walk';
-const turn = params.get('view') === 'turn' || walkView;
+/** One dragon flying, the same follow camera framing its whole reach (M7c). */
+const flightView = params.get('view') === 'flight';
+/** Either: a follow camera over a checkered ground. */
+const followView = walkView || flightView;
+const turn = params.get('view') === 'turn' || followView;
 /** All colour removed: the greyscale sheet. */
 const grey = params.get('grey') === '1';
 /** One dragon at a time from a driver's phenotype, as a mask: the one-gene sweep. */
@@ -212,8 +232,10 @@ const materials: THREE.Material[] = mask
 
 interface Placed {
   mesh: THREE.Mesh; label: HTMLDivElement; anchor: THREE.Vector3; cell: number;
-  /** The rigged dragons' walk, and the mesh's x at rest (centred on its graph). */
-  walk: DragonWalk | null; baseX: number;
+  /** The rigged dragons' walk and flight (on the same skeleton), and the mesh's x at rest (centred on its graph). */
+  walk: DragonWalk | null; flight: DragonFlight | null; baseX: number;
+  /** What the worker built (the rig, graph and genes a probe needs). */
+  body: DragonBody; genome: Genome;
   /** Distance walked while the clock runs: ∫ walk weight · speed dt (wrapped on the sheet). */
   dist: number;
 }
@@ -224,6 +246,8 @@ let tris = 0;
 const idle: IdleParams[] = [];
 /** Each shown dragon's walk params, in build order. */
 const gaits: WalkParams[] = [];
+/** Each shown dragon's flight params, in build order. */
+const flights: FlightParams[] = [];
 /** Each dragon's round trip through the mesh worker, in ms, in build order. */
 const buildTimes: number[] = [];
 // The dragons are built off the main thread, as the game builds them (M3c). The worker is
@@ -252,13 +276,18 @@ for (const [k, gi] of shown.entries()) {
   const mats = animate ? materials.map((m) => withIdle(m.clone(), ip)) : materials;
   const gait = walkParams(gm);
   gaits.push(gait);
+  const fp = flightParams(gm);
+  flights.push(fp);
   let walk: DragonWalk | null = null;
+  let flight: DragonFlight | null = null;
   let mesh: THREE.Mesh;
   if (rigged) {
-    // M7b: skinned over the graph's own skeleton, at rest the identity.
+    // M7b: skinned over the graph's own skeleton, at rest the identity. M7c: the flight
+    // rides the same skeleton; the culling sphere grows by as far as the wings reach.
     walk = new DragonWalk(body.rig, gait);
+    flight = new DragonFlight(walk, body.rig, fp);
     const sk = new THREE.SkinnedMesh(body.geometry, mats);
-    bindSkinned(sk, walk);
+    bindSkinned(sk, walk, Math.max(0.6, flight.maxMove + 0.3));
     mesh = sk;
   } else {
     mesh = new THREE.Mesh(body.geometry, mats);
@@ -286,7 +315,7 @@ for (const [k, gi] of shown.entries()) {
   label.innerHTML = `${r.label} · ${origin}<br><small>${el} · gen ${gm.generation} · ${wingForm(gm.phenotype)} wings · ${gm.gid()}</small>`;
   labels.appendChild(label);
   if (mask) label.style.display = 'none';
-  placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 3.4)), cell: gi, walk, baseX: -cx, dist: 0 });
+  placed.push({ mesh, label, anchor: holder.position.clone().add(new THREE.Vector3(0, 0, 3.4)), cell: gi, walk, flight, baseX: -cx, dist: 0, body, genome: gm });
 }
 const buildMs = performance.now() - t0;
 if (!sweep) mesher.dispose();
@@ -319,6 +348,8 @@ if (cam.length === 6 && cam.every(Number.isFinite)) {
  * sets the same six numbers relative to the dragon's travel, for close-ups of a joint.
  */
 const WALK_CAM_ELEVATION_DEG = 14;
+/** The flight view looks down a little more, onto the spread wings. */
+const FLIGHT_CAM_ELEVATION_DEG = 20;
 const WALK_CAM_AZIMUTH_DEG = 25;
 /** The walk view's ground is a checker of this many world units a square, so a planted foot can be seen to stay put. */
 const WALK_TILE = 0.5;
@@ -335,18 +366,47 @@ const WALK_ZOOM: readonly [number, number] = [0.3, 3];
 const GROUND_SNAP = 2 * 0.5;
 const focus = new THREE.Vector3();
 const pivotA = new THREE.Vector3(), pivotB = new THREE.Vector3();
-if (walkView && placed[0]) {
+if (followView && placed[0]) {
   const geo = placed[0].mesh.geometry;
   if (!geo.boundingBox) geo.computeBoundingBox();
   const box = geo.boundingBox!;
   const len = box.max.x - box.min.x, tall = box.max.y;
   // 30° vertical field of view: frame about 1.25 × the length across and 1.4 × the height up.
   const half = Math.tan((15 * Math.PI) / 180);
-  const dist = Math.max((0.62 * len) / (half * aspect), (0.7 * tall) / half, 7);
-  const az = (WALK_CAM_AZIMUTH_DEG * Math.PI) / 180, elev = (WALK_CAM_ELEVATION_DEG * Math.PI) / 180;
-  // Looking a little ahead of the middle: turned toward the front, the near head draws larger than the far tail.
-  walkCam.look.set(0.04 * len, Math.min(1.4, 0.36 * tall), 0);
-  walkCam.pos.set(dist * Math.cos(elev) * Math.sin(az), walkCam.look.y + dist * Math.sin(elev), dist * Math.cos(elev) * Math.cos(az));
+  const az = (WALK_CAM_AZIMUTH_DEG * Math.PI) / 180;
+  let dist: number, elev: number;
+  if (flightView && placed[0].flight) {
+    // The flight view frames everything the dragon reaches in a beat and a glide (wings up and
+    // down, hovering): the rest mesh's box and the wing nodes and feet sampled over both,
+    // centred on screen and all inside the view.
+    const fl = placed[0].flight;
+    const ox = placed[0].mesh.position.x;
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i < 8; i++) pts.push(new THREE.Vector3((i & 1 ? box.max.x : box.min.x) + ox, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z));
+    for (let i = 0; i < fl.reachPoints.length; i += 3) pts.push(new THREE.Vector3(fl.reachPoints[i]! + ox, fl.reachPoints[i + 1]!, fl.reachPoints[i + 2]!));
+    elev = (FLIGHT_CAM_ELEVATION_DEG * Math.PI) / 180;
+    const d = new THREE.Vector3(Math.cos(elev) * Math.sin(az), Math.sin(elev), Math.cos(elev) * Math.cos(az));
+    const r = new THREE.Vector3(0, 1, 0).cross(d).normalize(), u = d.clone().cross(r);
+    // Centre: the middle of the points' extent across and up the view, and in depth.
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (const q of pts) [q.dot(r), q.dot(u), q.dot(d)].forEach((v, k) => { lo[k] = Math.min(lo[k]!, v); hi[k] = Math.max(hi[k]!, v); });
+    const centre = r.clone().multiplyScalar((lo[0]! + hi[0]!) / 2).addScaledVector(u, (lo[1]! + hi[1]!) / 2).addScaledVector(d, (lo[2]! + hi[2]!) / 2);
+    const tanV = half * 0.9, tanH = half * aspect * 0.9;
+    dist = 7;
+    for (const q of pts) {
+      const c = q.clone().sub(centre);
+      dist = Math.max(dist, c.dot(d) + Math.abs(c.dot(r)) / tanH, c.dot(d) + Math.abs(c.dot(u)) / tanV);
+    }
+    // The tracked point is that centre at zero altitude; the altitude is added as it flies.
+    walkCam.look.set(centre.x, centre.y - fl.hover, centre.z);
+  } else {
+    dist = Math.max((0.62 * len) / (half * aspect), (0.7 * tall) / half, 7);
+    elev = (WALK_CAM_ELEVATION_DEG * Math.PI) / 180;
+    // Looking a little ahead of the middle: turned toward the front, the near head draws larger than the far tail.
+    walkCam.look.set(0.04 * len, Math.min(1.4, 0.36 * tall), 0);
+  }
+  walkCam.pos.set(walkCam.look.x + dist * Math.cos(elev) * Math.sin(az), walkCam.look.y + dist * Math.sin(elev),
+    walkCam.look.z + dist * Math.cos(elev) * Math.cos(az));
   if (cam.length === 6 && cam.every(Number.isFinite)) {
     walkCam.pos.set(cam[0]!, cam[1]!, cam[2]!);
     walkCam.look.set(cam[3]!, cam[4]!, cam[5]!);
@@ -412,17 +472,20 @@ Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ex
 sun.shadow.camera.updateProjectionMatrix();
 
 document.getElementById('note')!.textContent = mask ? '' :
-  `runtime dragons, built in a worker · ${shown.length} in ${buildMs.toFixed(0)} ms after a ${startupMs.toFixed(0)} ms warm-up · ${tris} tris`;
+  `runtime dragons, built in a worker · ${shown.length} in ${buildMs.toFixed(0)} ms after a ${startupMs.toFixed(0)} ms warm-up · ${tris} tris` +
+  (flightView ? ' · drag to turn · wheel to zoom · F flap · G glide · L land' : '');
 
 const labelAt = new THREE.Vector3();
 /** The walk view's tracked point in the world: `walkCam.look` carried by the dragon's travel and its holder's turn. */
 function trackedPoint(p: Placed, out: THREE.Vector3): THREE.Vector3 {
   const holder = p.mesh.parent!;
   holder.updateMatrixWorld();
-  return out.copy(walkCam.look).setX(walkCam.look.x + p.mesh.position.x - p.baseX).applyMatrix4(holder.matrixWorld);
+  // In the air the point rises with the dragon's altitude (not its heave or soar, which the camera leaves on screen).
+  const alt = p.flight ? p.flight.altitude : 0;
+  return out.copy(walkCam.look).setX(walkCam.look.x + p.mesh.position.x - p.baseX).setY(walkCam.look.y + alt).applyMatrix4(holder.matrixWorld);
 }
 function frame(): void {
-  if (walkView && placed[0]) {
+  if (followView && placed[0]) {
     // Track the dragon where it actually is in the world, whatever way it has been turned:
     // the camera, its target, the sun and its shadow box, the ground and the backdrop.
     trackedPoint(placed[0], focus);
@@ -493,6 +556,30 @@ declare global {
       walkDrift(k: number, cycles?: number, steps?: number): WalkDrift;
       /** Main-thread ms of the frames the clocks drove (pose + render): p50, p95, max, count; `reset` starts a new window. */
       frameStats(reset?: boolean): { p50: number; p95: number; max: number; n: number };
+      /** Each shown dragon's flight params (src/assets/dragon/flight.ts), in the order shown. */
+      flights: FlightParams[];
+      /** Seconds the flight clock eases its weights over. */
+      flightRampS: number;
+      /** Pin every dragon at flight time `t` seconds, flapping at full weight; null: on the ground at rest. Redraws. */
+      flapAt(t: number | null): void;
+      /** Pin every dragon at flight time `t` seconds, gliding at full weight; null: on the ground at rest. Redraws. */
+      glideAt(t: number | null): void;
+      /** Pin every dragon at flight time `t` with any flap and glide weights (the ramps' frames); null: at rest. Redraws. */
+      flightAt(t: number | null, flap?: number, glide?: number): void;
+      /** Pin each dragon at phase `ph` of its own beat, flapping: 'top' and 'bottom' of the downstroke, or 0..1. Redraws. */
+      flapPhaseAt(ph: number | 'top' | 'bottom'): void;
+      /** Run the flight clock toward flapping, gliding, or back on the ground, easing over FLIGHT_RAMP_S. */
+      flapPlay(): void;
+      glidePlay(): void;
+      land(): void;
+      /** The flight clock's time, eased weights, and the tracked dragon's altitude. */
+      flightState(): { t: number; flap: number; glide: number; altitude: number };
+      /**
+       * Measure a flap (src/render/flight-probe.ts): sheet dragon k, or a dragon built from a
+       * phenotype, through `cycles` beats at `perCycle` phases, a glide, the ramps and the
+       * crossfade. Leaves the shown dragons as they were.
+       */
+      flightProbe(spec: number | Phenotype, cycles?: number, perCycle?: number): Promise<FlightReport>;
     };
   }
 }
@@ -506,9 +593,9 @@ window.__dragonView = {
     for (const p of placed) {
       const holder = p.mesh.parent!;
       // The walking dragon turns about where it stands, not about where it started (D1).
-      if (walkView) trackedPoint(p, pivotA);
+      if (followView) trackedPoint(p, pivotA);
       holder.rotation.y = rad;
-      if (walkView) {
+      if (followView) {
         trackedPoint(p, pivotB);
         holder.position.add(pivotA).sub(pivotB);
       }
@@ -627,6 +714,23 @@ window.__dragonView = {
     if (reset) frameCount = 0;
     return out;
   },
+  flights,
+  flightRampS: 0,
+  flapAt(t: number | null) { pinFlight(t, 1, 0); },
+  glideAt(t: number | null) { pinFlight(t, 0, 1); },
+  flightAt(t: number | null, flap = 1, glide = 0) { pinFlight(t, flap, glide); },
+  flapPhaseAt(ph: number | 'top' | 'bottom') {
+    pinFlight(0, 1, 0, ph);
+  },
+  flapPlay() { playFlight(1, 0); },
+  glidePlay() { playFlight(0, 1); },
+  land() { flapGoal = 0; glideGoal = 0; },
+  flightState() {
+    return { t: flightT, flap: flapW, glide: glideW, altitude: placed[0]?.flight?.altitude ?? 0 };
+  },
+  flightProbe(spec: number | Phenotype, cycles = 2, perCycle = 32) {
+    return flightProbe(spec, cycles, perCycle);
+  },
 };
 // The clocks: the page's own time, one uniform write, the walk's pose and one render per
 // frame. The idle and the walk are pinned separately (idleAt, walkAt), so a driver's shots
@@ -639,7 +743,72 @@ let walkClock: number | null | 'run' = null;
 const WALK_RAMP_S = 0.4;
 /** The running clock: walk time, the weight's linear ramp (eased when used) and its goal, the last frame's time. */
 let gaitT = 0, walkW = 0, walkGoal = 0, lastNow = -1;
-const running = () => playing || walkClock === 'run';
+/**
+ * The flight clock (M7c): 'run' follows the page's clock; a number pins flight time; null holds
+ * every dragon on the ground. The weights ease linearly toward their goals over FLIGHT_RAMP_S and
+ * are smoothstepped where used; a flap → glide switch moves the two in lockstep, so they always
+ * sum to at most 1.
+ */
+let flightClock: number | null | 'run' = null;
+const FLIGHT_RAMP_S = 0.8;
+window.__dragonView.flightRampS = FLIGHT_RAMP_S;
+let flightT = 0, flapL = 0, glideL = 0, flapGoal = 0, glideGoal = 0, flapW = 0, glideW = 0;
+/** flapPhaseAt: each dragon at this phase of its own beat instead of at flightT. */
+let phasePin: number | 'top' | 'bottom' | null = null;
+const running = () => playing || walkClock === 'run' || flightClock === 'run';
+const ease = (x: number) => x * x * (3 - 2 * x);
+/** Hand each dragon's flight its time and weights. Allocation-free. */
+function applyFlight(): void {
+  for (let i = 0; i < placed.length; i++) {
+    const p = placed[i]!;
+    if (!p.flight) continue;
+    let t = flightT;
+    if (phasePin !== null) {
+      const fp = p.flight.params, st = strokeTimes(fp);
+      t = phasePin === 'top' ? st.top : phasePin === 'bottom' ? st.bottom : phasePin * fp.period;
+    }
+    p.flight.set(t, flapW, glideW);
+  }
+}
+/** Pose every dragon for the walk's and the flight's current state (no time step). */
+function poseNow(): void {
+  applyFlight();
+  if (walkClock === 'run') { for (const p of placed) if (p.walk) { if (walkGoal === 0 && walkW === 0) p.walk.pose(null); else p.walk.pose(gaitT, walkW * walkW * (3 - 2 * walkW)); } } else poseWalk(walkClock);
+}
+function pinFlight(t: number | null, flap: number, glide: number, ph: number | 'top' | 'bottom' | null = null): void {
+  flightClock = t;
+  flightT = t ?? 0;
+  phasePin = ph;
+  flapL = flapW = t === null ? 0 : flap;
+  glideL = glideW = t === null ? 0 : glide;
+  flapGoal = flapL; glideGoal = glideL;
+  poseNow();
+  frame();
+  if (!running()) cancelAnimationFrame(rafId);
+}
+function playFlight(flap: number, glide: number): void {
+  if (!rigged) return;
+  if (flightClock !== 'run') {
+    if (flightClock === null) { flightT = 0; flapL = glideL = flapW = glideW = 0; }
+    lastNow = -1;
+  }
+  phasePin = null;
+  flapGoal = flap; glideGoal = glide;
+  flightClock = 'run';
+  // Take off from a stand: a walk eases out as the flight eases in.
+  if (walkClock === 'run') walkGoal = 0;
+  loop();
+}
+/** One frame of the running flight clock: ease the weights toward their goals, advance flight time. Allocation-free. */
+function stepFlight(dt: number): void {
+  const k = dt / FLIGHT_RAMP_S;
+  flapL = flapGoal > flapL ? Math.min(flapGoal, flapL + k) : Math.max(flapGoal, flapL - k);
+  glideL = glideGoal > glideL ? Math.min(glideGoal, glideL + k) : Math.max(glideGoal, glideL - k);
+  flapW = ease(flapL); glideW = ease(glideL);
+  flightT += dt;
+  if (flapGoal === 0 && glideGoal === 0 && flapL === 0 && glideL === 0) flightClock = null;
+  applyFlight();
+}
 function loop(): void {
   cancelAnimationFrame(rafId);
   if (running()) rafId = requestAnimationFrame(tick);
@@ -651,7 +820,11 @@ function tick(now: number): void {
   if (!running()) return;
   const t0 = performance.now();
   if (playing) setIdleTime(now / 1000);
-  if (walkClock === 'run') stepWalk(lastNow < 0 ? 0 : Math.min(0.1, Math.max(0, (now - lastNow) / 1000)));
+  const dt = lastNow < 0 ? 0 : Math.min(0.1, Math.max(0, (now - lastNow) / 1000));
+  const flying = flightClock === 'run';
+  if (flying) stepFlight(dt);
+  if (walkClock === 'run') stepWalk(dt);
+  else if (flying) poseWalk(walkClock);
   lastNow = now;
   frame();
   frameMs[frameCount % frameMs.length] = performance.now() - t0;
@@ -672,7 +845,7 @@ function stepWalk(dt: number): void {
     if (!p.walk) continue;
     p.dist += w * p.walk.params.speed * dt;
     // On the sheet each dragon jumps back to its cell every WRAP_CYCLES strides, all of it at once.
-    if (!walkView) { const wrap = WRAP_CYCLES * p.walk.params.stride; if (p.dist > wrap) p.dist -= wrap; }
+    if (!followView) { const wrap = WRAP_CYCLES * p.walk.params.stride; if (p.dist > wrap) p.dist -= wrap; }
     if (walkGoal === 0 && walkW === 0) p.walk.pose(null); else p.walk.pose(gaitT, w);
     p.mesh.position.x = p.baseX + p.dist;
   }
@@ -686,9 +859,45 @@ function poseWalk(t: number | null): void {
     p.walk.pose(t);
     let x = p.walk.travel;
     // On the sheet each dragon jumps back to its cell every WRAP_CYCLES cycles, all of it at once.
-    if (!walkView && t !== null) x -= WRAP_CYCLES * p.walk.params.stride * Math.floor(t / (WRAP_CYCLES * p.walk.params.period));
+    if (!followView && t !== null) x -= WRAP_CYCLES * p.walk.params.stride * Math.floor(t / (WRAP_CYCLES * p.walk.params.period));
     p.mesh.position.x = p.baseX + x;
   }
+}
+
+/** What `flightProbe` returns: the probe's numbers, and which dragon they are for. */
+interface FlightReport extends FlightProbe {
+  label: string; gid: string; wingForm: WingForm; wingSpan: number; wingFingers: number; wingShape: number;
+  params: FlightParams; hover: number; bones: number;
+}
+/** Measure one dragon's flap (see the hook). A phenotype is built in a worker of its own, off the scene. */
+async function flightProbe(spec: number | Phenotype, cycles: number, perCycle: number): Promise<FlightReport> {
+  let body: DragonBody, gm: Genome, flight: DragonFlight, label: string, own = false;
+  if (typeof spec === 'number') {
+    const p = placed[spec];
+    if (!p?.flight) throw new Error('flightProbe: that dragon is not rigged (?static=1, a mask or the sweep)');
+    ({ body, genome: gm, flight } = p);
+    label = SHEET[p.cell]!.label;
+  } else {
+    gm = new Genome();
+    for (const k of GENE_NAMES) gm.g[k] = [{ value: spec[k], dominant: true }, { value: spec[k], dominant: true }];
+    gm.element = ['ember', 'ember'];
+    gm.lineage = 'probe';
+    const m = new DragonMesher();
+    try { body = (await m.build(gm)).body; } finally { m.dispose(); }
+    flight = new DragonFlight(new DragonWalk(body.rig, walkParams(gm)), body.rig, flightParams(gm));
+    label = `wingSpan ${spec.wingSpan}`;
+    own = true;
+  }
+  const g = body.geometry;
+  const probe = probeFlight({
+    position: g.getAttribute('position').array, skinIndex: g.getAttribute('skinIndex').array, skinWeight: g.getAttribute('skinWeight').array,
+    rig: body.rig, graph: body.graph, idx: body.idx, phenotype: gm.phenotype,
+  }, flight, flightSamples(flight.params, cycles, perCycle));
+  if (own) g.dispose();
+  else { poseNow(); frame(); }
+  const ph = gm.phenotype;
+  return { ...probe, label, gid: gm.gid(), wingForm: wingForm(ph), wingSpan: ph.wingSpan, wingFingers: ph.wingFingers, wingShape: ph.wingShape,
+    params: flight.params, hover: flight.hover, bones: body.rig.parent.length };
 }
 
 /** A foot's contact patch: its leg's lower vertices (shin, foot, toes) this close to the ground at rest. */
@@ -753,6 +962,16 @@ function walkDrift(k: number, cycles: number, steps: number): WalkDrift {
 }
 window.__dragonView.idlePlay();
 if (walkView || params.get('walk') === '1') window.__dragonView.walkPlay();
+if (flightView || params.get('flap') === '1') window.__dragonView.flapPlay();
+if (flightView) {
+  // F flap, G glide, L land.
+  addEventListener('keydown', (e: KeyboardEvent) => {
+    const k = e.key.toLowerCase();
+    if (k === 'f') window.__dragonView!.flapPlay();
+    else if (k === 'g') window.__dragonView!.glidePlay();
+    else if (k === 'l') window.__dragonView!.land();
+  });
+}
 // Drag to turn the dragons (mouse or touch), so a person can inspect them by hand.
 let yaw = turn ? 0 : -0.55;
 let dragX: number | null = null;
@@ -792,7 +1011,7 @@ renderer.domElement.addEventListener('wheel', (e) => {
 }, { passive: false });
 /** k > 1 moves out, k < 1 moves in. */
 function zoomBy(k: number): void {
-  if (walkView) {
+  if (followView) {
     // The follow camera: scale its offset from the dragon, clamped (D2).
     walkCam.zoom = Math.min(Math.max(walkCam.zoom * k, WALK_ZOOM[0]), WALK_ZOOM[1]);
   } else if (camera instanceof THREE.OrthographicCamera) {

@@ -153,7 +153,12 @@ function build(genome: Genome, full: boolean, opts: SkinOptions): DragonArrays {
     extras.push({ mesh: sphere([ex + 0.17 * HS, 0.258 * HS * s, ez + 0.17 * HS], 0.038 * HS, 6, 4), kind: 'glint', attach: head });
   }
   if (full) {
-    for (const side of [1, -1]) extras.push({ mesh: membraneMesh(membranePolys(p, side)), kind: 'membrane', attach: { kind: 'spineAtX' } });
+    // Each membrane rides its own wing's chain, from the polygon corners that place each vertex (./rig.ts).
+    for (const side of [1, -1]) {
+      const poly = membranePolys(p, side);
+      const mesh = membraneMesh(poly);
+      extras.push({ mesh, kind: 'membrane', attach: { kind: 'membrane', wing: side === 1 ? 0 : 1, poly, corners: mesh.corners } });
+    }
     for (const c of spikeParams(p)) extras.push({ mesh: primitiveMesh(c), kind: 'spike', attach: { kind: 'spineAt', x: c.location[0] } });
     const orn = ornamentParams(p);
     if (orn) extras.push({ mesh: primitiveMesh(orn), kind: 'ornament', attach: { kind: 'bone', bone: BONE.tail2 } });

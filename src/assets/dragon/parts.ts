@@ -117,8 +117,14 @@ export function cornerNormals(v: Vec3[], faces: number[][]): Vec3[] {
   return acc.map(norm);
 }
 
-/** One surface point as weights over the polygon's corners. */
-type Weights = [number, number][];
+/** One surface point as weights over the polygon's corners: (corner, weight) pairs summing to 1. */
+export type Weights = [number, number][];
+
+/** A membrane slab, and every vertex's weights over the polygon corners it was placed from. */
+export interface MembraneMesh extends SkinMesh {
+  /** Per vertex: the polygon corners (indices into the polygon's `v`) and weights that place it. */
+  corners: Weights[];
+}
 
 /** Split each face N ways per edge. Points shared by two faces come out once. */
 function tessellate(v: Vec3[], faces: number[][], N: number): { pts: Weights[]; tris: [number, number, number][] } {
@@ -166,7 +172,7 @@ function tessellate(v: Vec3[], faces: number[][], N: number): { pts: Weights[]; 
  * scalloped fan for a spread wing, or an inner panel plus separate vanes for a segmented
  * one. Vanes share no corner, so each comes out as its own closed slab.
  */
-export function membraneMesh(poly: { v: Vec3[]; f: number[][] }, N = 3, thickness = MEMBRANE_THICKNESS): SkinMesh {
+export function membraneMesh(poly: { v: Vec3[]; f: number[][] }, N = 3, thickness = MEMBRANE_THICKNESS): MembraneMesh {
   const n = cornerNormals(poly.v, poly.f);
   const top = poly.v.map((p, i) => add(p, mul(n[i]!, thickness / 2)));
   const bot = poly.v.map((p, i) => sub(p, mul(n[i]!, thickness / 2)));
@@ -175,9 +181,10 @@ export function membraneMesh(poly: { v: Vec3[]; f: number[][] }, N = 3, thicknes
 
   const pos: number[] = [];
   const idx: number[] = [];
+  const corners: Weights[] = [];
   const P = pts.length;
-  for (const w of pts) pos.push(...place(top, w));
-  for (const w of pts) pos.push(...place(bot, w));
+  for (const w of pts) { pos.push(...place(top, w)); corners.push(w); }
+  for (const w of pts) { pos.push(...place(bot, w)); corners.push(w); }
   for (const [a, b, c] of tris) idx.push(a, b, c);
   for (const [a, b, c] of tris) idx.push(P + a, P + c, P + b);
 
@@ -194,11 +201,12 @@ export function membraneMesh(poly: { v: Vec3[]; f: number[][] }, N = 3, thicknes
     if (used.get(k) !== 1) continue;
     // Its own four vertices, so the rim's hard edge does not smear the shells' normals.
     pos.push(...place(top, pts[y]!), ...place(top, pts[x]!), ...place(bot, pts[x]!), ...place(bot, pts[y]!));
+    corners.push(pts[y]!, pts[x]!, pts[x]!, pts[y]!);
     const o = rimStart + rv;
     idx.push(o, o + 1, o + 2, o, o + 2, o + 3);
     rv += 4;
   }
   const position = new Float32Array(pos);
   const index = new Uint32Array(idx);
-  return { position, normal: vertexNormals(position, index), index, parts: [{ start: 0, count: index.length }] };
+  return { position, normal: vertexNormals(position, index), index, parts: [{ start: 0, count: index.length }], corners };
 }

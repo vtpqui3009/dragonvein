@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BONE, BONE_COUNT, type Rig } from '../assets/dragon/rig';
+import { BODY_BONES, BONE, type Rig } from '../assets/dragon/rig';
 import type { WalkParams } from '../assets/dragon/walk';
 
 /**
@@ -36,6 +36,11 @@ import type { WalkParams } from '../assets/dragon/walk';
  * ∫ w · speed dt. At w = 1 a planted foot is still in the world; while w ramps it is not
  * exactly, which is the price of a cheap start.
  *
+ * **Flight (M7c).** A `FlightLayer` (src/render/flight.ts) can ride on top: while it is
+ * active it writes the wing chains' local rotations, tucks the feet (their IK targets rise and
+ * move back), and moves the whole posed skeleton rigidly (heave, bank, altitude). With no layer,
+ * or one at weight 0, the pose is the walk's alone, and the wing chains ride the shoulders.
+ *
  * Nothing allocates per pose: every vector, quaternion and matrix is preallocated here.
  */
 const TWO_PI = Math.PI * 2;
@@ -53,6 +58,25 @@ const NECK = [BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3] as const;
 const TAIL = [BONE.tail0, BONE.tail1, BONE.tail2] as const;
 const Y = new THREE.Vector3(0, 1, 0);
 const Z = new THREE.Vector3(0, 0, 1);
+
+/** A pose added on top of the walk (src/render/flight.ts `DragonFlight`). */
+export interface FlightLayer {
+  /** Whether it moves anything: false at weight 0, and then the walk poses alone. */
+  readonly active: boolean;
+  /**
+   * Add its local rotations: the wing chains' (each the identity on entry) and any turn of the
+   * body's own bones on top of the walk's (the neck stretching forward).
+   */
+  locals(local: THREE.Quaternion[]): void;
+  /** How far the feet tuck, 0..1. */
+  readonly tuck: number;
+  /** The rigid motion of the whole skeleton after the walk: `rootQ` about `rootPivot`, then up by `rootLift`. */
+  readonly rootQ: THREE.Quaternion;
+  readonly rootPivot: THREE.Vector3;
+  readonly rootLift: number;
+}
+/** A tucked foot's ankle rises this share of the shortest leg's drop, and moves back half as far. */
+const TUCK = 0.38;
 
 interface LegState {
   anchor: number; thigh: number; shin: number; foot: number; phase: number;
@@ -74,6 +98,10 @@ export class DragonWalk {
   travel = 0;
   /** The walk weight of the last pose: 0 rest, 1 walking. */
   weight = 0;
+  /** The flight riding on this walk, if any (src/render/flight.ts). */
+  flight: FlightLayer | null = null;
+  /** How many bones: the body's, then the wing chains. */
+  readonly boneCount: number;
   private readonly parent: number[];
   private readonly rest: THREE.Vector3[] = [];
   private readonly R: THREE.Quaternion[] = [];
@@ -94,10 +122,11 @@ export class DragonWalk {
   private readonly m2 = new THREE.Matrix4();
 
   constructor(rig: Rig, params: WalkParams) {
-    if (rig.parent.length !== BONE_COUNT) throw new Error(`walk: ${rig.parent.length} bones, expected ${BONE_COUNT}`);
+    if (rig.parent.length < BODY_BONES) throw new Error(`walk: ${rig.parent.length} bones, expected at least ${BODY_BONES}`);
     this.params = params;
     this.parent = rig.parent;
-    for (let i = 0; i < BONE_COUNT; i++) {
+    this.boneCount = rig.parent.length;
+    for (let i = 0; i < this.boneCount; i++) {
       const bone = new THREE.Bone();
       bone.name = rig.names[i]!;
       // Not in the scene graph: the pose writes matrixWorld, nothing else touches it.
@@ -144,7 +173,8 @@ export class DragonWalk {
    * `travel` 0). Allocation-free.
    */
   pose(t: number | null, weight = 1): void {
-    if (t === null) {
+    const fl = this.flight !== null && this.flight.active ? this.flight : null;
+    if (t === null && fl === null) {
       for (let i = 0; i < this.bones.length; i++) this.bones[i]!.matrixWorld.identity();
       for (let i = 0; i < this.legs.length; i++) { this.legs[i]!.planted = true; this.legs[i]!.stretched = false; }
       this.travel = 0;
@@ -152,10 +182,10 @@ export class DragonWalk {
       return;
     }
     const w = this.params;
-    const k = Math.min(1, Math.max(0, weight));
+    const k = t === null ? 0 : Math.min(1, Math.max(0, weight));
     this.weight = k;
-    const c = t / w.period;
-    this.travel = w.stride * c;
+    const c = (t ?? 0) / w.period;
+    this.travel = t === null ? 0 : w.stride * c;
     // Each girdle swings toward the side whose leg is swinging, at the middle of that swing,
     // and rolls a quarter cycle later.
     const midSwing = (1 + w.duty) / 2;
@@ -177,10 +207,11 @@ export class DragonWalk {
     for (let i = 0; i < TAIL.length; i++) {
       turn(L[TAIL[i]!]!, k * w.tailSway * Math.sin(hipA - TAIL_LAG * (i + 1)), 0, 0, this.q);
     }
+    if (fl) fl.locals(L);
 
     // Forward kinematics for the body: every bone but the legs' (whose parents come first).
-    const R = this.R, P = this.P, rest = this.rest, par = this.parent;
-    for (let i = 0; i < BONE_COUNT; i++) {
+    const R = this.R, P = this.P, rest = this.rest, par = this.parent, n = this.boneCount;
+    for (let i = 0; i < n; i++) {
       if (i >= BONE.leg0 && i < BONE.wingL) continue;
       const p = par[i]!;
       if (p < 0) {
@@ -192,8 +223,18 @@ export class DragonWalk {
         P[i]!.subVectors(rest[i]!, rest[p]!).applyQuaternion(R[p]!).add(P[p]!);
       }
     }
-    for (let i = 0; i < this.legs.length; i++) this.solveLeg(this.legs[i]!, c, k);
-    for (let i = 0; i < BONE_COUNT; i++) {
+    const tuck = fl ? fl.tuck : 0;
+    for (let i = 0; i < this.legs.length; i++) this.solveLeg(this.legs[i]!, c, k, tuck);
+    if (fl) {
+      // The flight's rigid motion: every bone turned about the pivot, then lifted.
+      const q = fl.rootQ, o = fl.rootPivot;
+      for (let i = 0; i < n; i++) {
+        R[i]!.premultiply(q);
+        P[i]!.sub(o).applyQuaternion(q).add(o);
+        P[i]!.y += fl.rootLift;
+      }
+    }
+    for (let i = 0; i < n; i++) {
       const mw = this.bones[i]!.matrixWorld;
       mw.makeRotationFromQuaternion(R[i]!);
       this.v.copy(rest[i]!).applyQuaternion(R[i]!);
@@ -205,7 +246,7 @@ export class DragonWalk {
   }
 
   /** One leg: the foot's target this phase, then the two-bone IK from the hip joint to the ankle. */
-  private solveLeg(s: LegState, c: number, k: number): void {
+  private solveLeg(s: LegState, c: number, k: number, tuck: number): void {
     const w = this.params, R = this.R, P = this.P;
     const ph = c - s.phase;
     const phi = ph - Math.floor(ph);
@@ -221,8 +262,8 @@ export class DragonWalk {
     }
     // The foot keeps its rest orientation: the ankle sits where it does over the ball at rest.
     const T = this.t.copy(s.ankle);
-    T.x += k * dx;
-    T.y += k * lift;
+    T.x += k * dx - 0.5 * TUCK * tuck * this.drop;
+    T.y += k * lift + TUCK * tuck * this.drop;
     // The hip joint, carried by the body.
     const a = s.anchor;
     const H = P[s.thigh]!.subVectors(s.hip, this.rest[a]!).applyQuaternion(R[a]!).add(P[a]!);

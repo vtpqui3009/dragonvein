@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { GENES, Genome, breed, wild, type Element, type Phenotype } from '../src/core/genome';
 import { buildDragonArrays } from '../src/assets/dragon/arrays';
 import { fullGraph } from '../src/assets/dragon/graph';
-import { BONE_COUNT, buildRig } from '../src/assets/dragon/rig';
+import { boneCount, buildRig } from '../src/assets/dragon/rig';
 import { LATERAL_SEQUENCE, WALK_BOUNDS, walkParams, walkParamsOf, type WalkParams } from '../src/assets/dragon/walk';
 import { DragonWalk } from '../src/render/walk';
 
@@ -93,7 +93,7 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (_i, gm) => 
       for (let j = 0; j < 4; j++) {
         const w = a.skinWeight[4 * v + j]!;
         if (w < 0) negative++;
-        if (a.skinIndex[4 * v + j]! >= BONE_COUNT) outside++;
+        if (a.skinIndex[4 * v + j]! >= a.rig.parent.length) outside++;
         sum += w;
       }
       worst = Math.max(worst, Math.abs(sum - 1));
@@ -104,10 +104,11 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (_i, gm) => 
   });
   it('has a bone table from the graph: parents first, pivots on graph nodes', () => {
     const { rig } = a;
-    expect(rig.parent.length).toBe(BONE_COUNT);
+    // The body's 26, then each wing's forearm, hand and one bone per finger (M7c).
+    expect(rig.parent.length).toBe(boneCount(gm.phenotype));
     rig.parent.forEach((p, i) => expect(p).toBeLessThan(i));
     const nodes = a.graph.v.map(([x, y, z]) => [x, z, -y]);
-    for (let i = 0; i < BONE_COUNT; i++) {
+    for (let i = 0; i < rig.parent.length; i++) {
       const q = rig.pivot.slice(3 * i, 3 * i + 3);
       expect(nodes.some((n) => n.every((c, k) => c === q[k])), rig.names[i]).toBe(true);
     }

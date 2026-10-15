@@ -20,7 +20,15 @@
  *   thigh·L   leg node n1 (hip joint)   pelvis (hind) / spine2 (fore)   n1 → n2
  *   shin·L    n2 (knee)                 thigh    n2 → n3
  *   foot·L    n3 (ankle)                shin     n3 → n4 and the toes
- *   wingL/R   the wing's root node      spine2   arm, fingers (the wings ride the shoulder)
+ *   wingL/R   the wing's root node      spine2   the humerus: root → elbow
+ *   forearm·S elbow                     wingS    elbow → wrist
+ *   hand·S    wrist                     forearm  wrist → the leading tip (the leading digit)
+ *   finger·Sk wrist                     hand     wrist → finger k's mid → its tip
+ *
+ * The wing chain (M7c, STATE.md run 31) is read off the graph's own wing nodes, 4 + 2·wingFingers
+ * per wing (graph.ts `addWings`: root, elbow, wrist, leading tip, then a mid and a tip per
+ * finger). The body's 26 bones keep their numbers; each wing's forearm, hand and fingers
+ * follow from BODY_BONES on, the left wing's first. A wingless body has no chain.
  *
  * The rest pose is the mesh as built: every bone's skinning matrix is the identity, so a
  * skinned dragon at rest is the static one, vertex for vertex.
@@ -35,11 +43,27 @@
  * or toes below SOLE_FULL rides the foot alone, blending back to its chain weights by the
  * ankle's height (at least SOLE_BAND above): the contact patch is rigid, and the ankle bends
  * above it. Parts that are not tubes: eyes and glints ride the head; spikes take the
- * spine's weights at their base; membranes take the spine's weights at their own x (so the
- * inner membrane stays on the flank it grows from); the tail ornament rides the tail tip.
+ * spine's weights at their base; the tail ornament rides the tail tip.
+ *
+ * **Wings (M7c).** A membrane vertex is placed from its polygon's corners (./parts.ts
+ * `corners`), and the corners are bones: root and elbow the humerus, wrist the forearm, the
+ * leading tip the hand, each finger tip its finger, the flank anchors A1 and A2 the spine at
+ * the vertex's own x. Beyond the wrist each panel is a wedge from the wrist, and every bone
+ * there pivots at the wrist, so the wrist's share goes to the two ribs in proportion: a vertex
+ * on a rib rides that rib's bone exactly and the panel between two fingers fans with them. The
+ * inner panel (root, elbow, wrist, A2, A1) splits its arm share between humerus and forearm so
+ * the leading edge rides the humerus to the elbow and the forearm beyond it. Then the **junction
+ * falloff**: every wing vertex (membrane or wing tube) hands its wing-bone weight to the body
+ * (the spine at its x) as it nears the body's tubes (trunk and legs, not the crest), smoothly
+ * over WING_JUNCTION. A vertex
+ * on or inside the body rides the body, so the skin where the wing grows out stretches instead
+ * of plunging into the flank, and the root of the arm tube, which starts at the shoulder's
+ * centre, stays inside it. Any vertex left with more than 4 influences keeps its 4 heaviest.
  */
 import type { Phenotype } from '../../core/genome';
+import { TubeField } from './clearance';
 import type { Anchors, Graph, Vec3 } from './graph';
+import type { Weights } from './parts';
 import type { SkinMesh } from './skin';
 
 export const LEG_NAMES = ['LH', 'LF', 'RH', 'RF'] as const;
@@ -51,9 +75,15 @@ export const BONE = {
   tail0: 9, tail1: 10, tail2: 11,
   /** thigh, shin, foot of leg L (LEG_NAMES order) are LEG0 + 3L + 0, 1, 2. */
   leg0: 12,
+  /** Each wing's humerus (root → elbow); the rest of its chain is in `Rig.wings`. */
   wingL: 24, wingR: 25,
 } as const;
-export const BONE_COUNT = 26;
+/** Bones every dragon has: the body's and each wing's humerus. The wing chains follow. */
+export const BODY_BONES = 26;
+/** How many bones a dragon has: BODY_BONES, then each wing's forearm, hand and one per finger. */
+export function boneCount(p: Phenotype, winged = true): number {
+  return BODY_BONES + (winged ? 2 * (2 + p.wingFingers) : 0);
+}
 
 /** One leg's rest geometry in the mesh frame (three.js: x forward, y up, z to the right). */
 export interface RigLeg {
@@ -66,6 +96,18 @@ export interface RigLeg {
   hip: Vec3; knee: Vec3; ankle: Vec3; ball: Vec3; toe: Vec3;
 }
 
+/** One wing's chain and its rest geometry in the mesh frame (M7c). */
+export interface RigWing {
+  /** +1 the dragon's left (graph y > 0, mesh z < 0), −1 its right. */
+  side: 1 | -1;
+  humerus: number; forearm: number; hand: number;
+  /** One bone per finger, front of the fan first. */
+  fingers: number[];
+  /** Graph nodes: root, elbow, wrist, leading tip; each finger's mid and tip. */
+  nodes: { root: number; elbow: number; wrist: number; lead: number; mids: number[]; tips: number[] };
+  root: Vec3; elbow: Vec3; wrist: Vec3; lead: Vec3; mids: Vec3[]; tips: Vec3[];
+}
+
 /** The bone table: plain data, so it crosses from the worker by structured clone. */
 export interface Rig {
   names: string[];
@@ -73,6 +115,10 @@ export interface Rig {
   /** Rest pivots in the mesh frame, 3 per bone. */
   pivot: number[];
   legs: RigLeg[];
+  /** The two wing chains, left then right; empty for a wingless body. */
+  wings: RigWing[];
+  /** The first crown node (horns and crest, graph.ts `addCrown`): the graph's nodes from here on ride the head. */
+  crownFrom: number;
 }
 
 /** How far a joint's blend reaches into each segment, in joint radii (at most half the segment). */
@@ -145,10 +191,41 @@ export function buildRig(g: Graph, idx: Anchors, p: Phenotype): { rig: Rig; owne
   names.push('wingL', 'wingR');
   parent.push(BONE.spine2, BONE.spine2);
   pivotNode.push(L.wingBase[0] ?? idx.shoulder, L.wingBase[1] ?? idx.shoulder);
-  L.wingBase.forEach((b, s) => { for (let i = b; i < b + L.wingSize; i++) owner[i] = s === 0 ? BONE.wingL : BONE.wingR; });
+  const wings: RigWing[] = [];
+  const nf = p.wingFingers;
+  L.wingBase.forEach((b, w) => {
+    const S = w === 0 ? 'L' : 'R';
+    const humerus = w === 0 ? BONE.wingL : BONE.wingR;
+    const forearm = names.length, hand = forearm + 1;
+    names.push(`forearm${S}`, `hand${S}`);
+    parent.push(humerus, forearm);
+    pivotNode.push(b + 1, b + 2);
+    const fingers: number[] = [];
+    for (let k = 0; k < nf; k++) {
+      fingers.push(names.length);
+      names.push(`finger${S}${k}`);
+      parent.push(hand);
+      pivotNode.push(b + 2);
+    }
+    // Each node's owner is the bone of the segment that ends at it (the shoulder → root
+    // segment is the humerus's; the junction falloff keeps its inner end on the body).
+    owner[b] = humerus; owner[b + 1] = humerus; owner[b + 2] = forearm; owner[b + 3] = hand;
+    const mids: number[] = [], tips: number[] = [];
+    for (let k = 0; k < nf; k++) {
+      mids.push(b + 4 + 2 * k); tips.push(b + 5 + 2 * k);
+      owner[b + 4 + 2 * k] = fingers[k]!; owner[b + 5 + 2 * k] = fingers[k]!;
+      if (!g.e.some(([x, y]) => x === b + 2 && y === b + 4 + 2 * k)) throw new Error(`rig: finger ${k} of wing ${S} does not start at the wrist`);
+    }
+    const v = (i: number) => toMesh(g.v[i]!);
+    wings.push({
+      side: w === 0 ? 1 : -1, humerus, forearm, hand, fingers,
+      nodes: { root: b, elbow: b + 1, wrist: b + 2, lead: b + 3, mids, tips },
+      root: v(b), elbow: v(b + 1), wrist: v(b + 2), lead: v(b + 3), mids: mids.map(v), tips: tips.map(v),
+    });
+  });
   const pivot: number[] = [];
   for (const node of pivotNode) pivot.push(...toMesh(g.v[node]!));
-  return { rig: { names, parent, pivot, legs }, owner };
+  return { rig: { names, parent, pivot, legs, wings, crownFrom: L.crownFrom }, owner };
 }
 
 const smooth = (x: number) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
@@ -227,8 +304,62 @@ export function spineAtX(g: Graph, owner: Int16Array) {
   };
 }
 
-/** What each extra (non-tube) part rides. */
-export type Attach = { kind: 'bone'; bone: number } | { kind: 'spineAtX' } | { kind: 'spineAt'; x: number };
+/**
+ * The skin weights of a tube's stations (./skin.ts `tubeStations`): each station rides what
+ * its ring's vertices ride (the chain blend at its segment and parameter, before the sole), so
+ * a probe can carry the body's solid with the posed skeleton. Up to 3 (bone, weight) pairs each.
+ */
+export function stationWeights(
+  g: Graph, idx: Anchors, owner: Int16Array, tube: { ids: number[][]; r: number[]; stations: { k: number; u: number }[] },
+): { bone: number; w: number }[][] {
+  const c = chainOf(tube.ids, tube.r, (i) => g.v[tube.ids[i]![0]!]!, owner, depthFromHip(g, idx.hip));
+  const tmp: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
+  return tube.stations.map((s) => {
+    const m = chainWeights(c.own, c.rs, c.re, s.k, s.u, tmp);
+    const out: { bone: number; w: number }[] = [];
+    for (let j = 0; j < m; j++) out.push({ bone: tmp[2 * j]!, w: tmp[2 * j + 1]! });
+    return out;
+  });
+}
+
+/** What each extra (non-tube) part rides. A membrane rides its wing (`wing`: 0 left, 1 right), from its polygon corners. */
+export type Attach =
+  | { kind: 'bone'; bone: number } | { kind: 'spineAtX' } | { kind: 'spineAt'; x: number }
+  | { kind: 'membrane'; wing: number; poly: { v: Vec3[]; f: number[][] }; corners: Weights[] };
+
+/**
+ * Over this distance from the body's tubes (world units), a wing vertex hands its wing bones'
+ * weight over to the body: all of it on the body's surface, none of it this far out.
+ */
+export const WING_JUNCTION = 0.30;
+
+
+/**
+ * Each membrane polygon corner as weights over the basic corners: 0 root, 1 elbow, 2 wrist,
+ * 3 leading tip, 4 + k finger k's tip, then the flank anchors A1 and A2 (graph.ts
+ * `membranePolys`). The spread and segmented forms add three points per rib pair (scallops or
+ * a vane), each a blend of the wrist and the pair's two ribs; they are solved back to those
+ * three in the plane (their sag is straight down, so it does not enter). Throws if a point does
+ * not lie in its wedge, so a change to the polygon cannot go unnoticed.
+ */
+export function membraneBasis(poly: { v: Vec3[] }, nT: number): Weights[] {
+  const nBasic = 6 + nT;
+  const ribs = [3, ...Array.from({ length: nT }, (_, k) => 4 + k), 4 + nT];
+  const out: Weights[] = [];
+  for (let i = 0; i < poly.v.length; i++) {
+    if (i < nBasic) { out.push([[i, 1]]); continue; }
+    const r = Math.floor((i - nBasic) / 3);
+    const a = ribs[r], b = ribs[r + 1];
+    if (a === undefined || b === undefined) throw new Error(`rig: membrane point ${i} has no rib pair`);
+    const W = poly.v[2]!, A = poly.v[a]!, B = poly.v[b]!, P = poly.v[i]!;
+    const ax = A[0] - W[0], ay = A[1] - W[1], bx = B[0] - W[0], by = B[1] - W[1], px = P[0] - W[0], py = P[1] - W[1];
+    const det = ax * by - ay * bx;
+    const la = (px * by - py * bx) / det, lb = (ax * py - ay * px) / det, lw = 1 - la - lb;
+    if (!(Math.min(la, lb, lw) > -1e-6)) throw new Error(`rig: membrane point ${i} is outside its wedge (${lw}, ${la}, ${lb})`);
+    out.push([[2, lw], [a, la], [b, lb]]);
+  }
+  return out;
+}
 
 /**
  * Bake `skinIndex` / `skinWeight` (4 per vertex) for a merged dragon mesh: the skin's tubes
@@ -241,6 +372,7 @@ export function bakeSkin(
   extras: { from: number; to: number; attach: Attach }[], position: Float32Array,
 ): { skinIndex: Uint16Array; skinWeight: Float32Array } {
   const nv = position.length / 3;
+  const nBones = rig.parent.length;
   const skinIndex = new Uint16Array(nv * 4);
   const skinWeight = new Float32Array(nv * 4);
   const tmp: number[] = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -251,15 +383,79 @@ export function bakeSkin(
   const rings = skin.rings!, tubes = skin.tubes!;
   const chains = tubes.map((t) => chainOf(t.ids, t.r, (i) => g.v[t.ids[i]![0]!]!, owner, depth));
   const nSkin = skin.position.length / 3;
+  const spine = spineAtX(g, owner);
+
+  // The wings: which bones are theirs, which tubes, and the body's solid for the falloff.
+  const wingBone = new Uint8Array(nBones);
+  const wingNode = new Uint8Array(g.v.length);
+  for (const w of rig.wings) {
+    for (const b of [w.humerus, w.forearm, w.hand, ...w.fingers]) wingBone[b] = 1;
+    const n = w.nodes;
+    for (const i of [n.root, n.elbow, n.wrist, n.lead, ...n.mids, ...n.tips]) wingNode[i] = 1;
+  }
+  const isWingTube = tubes.map((t) => t.ids.some((ids) => ids.some((i) => wingNode[i] === 1)));
+  // The junction is where the wing grows from the body: the trunk and the legs, whose tubes all
+  // start at the hip or the shoulder beside the wing's root. A crest is not: a horn or frill near
+  // a wing is something the wing must clear in flight, not something it is attached to.
+  const isTrunk = tubes.map((t, i) => !isWingTube[i] && t.ids.every((ids) => ids.every((n) => n < rig.crownFrom)));
+  const stations = skin.stations!;
+  const body = rig.wings.length
+    ? new TubeField(stations.filter((_, i) => isTrunk[i]).map((st) => ({ c: st.map((s) => s.c), r: st.map((s) => s.r) })))
+    : null;
+
+  // A vertex's weights are gathered per bone, then the 4 heaviest are kept and renormalised.
+  const acc = new Float64Array(nBones);
+  const touched: number[] = [];
+  const add = (b: number, w: number) => { if (w <= 0) return; if (acc[b] === 0) touched.push(b); acc[b] = acc[b]! + w; };
+  const keep = new Int32Array(4);
+  const finish = (v: number) => {
+    let m = 0;
+    for (let j = 0; j < 4; j++) {
+      let best = -1;
+      for (const b of touched) if (acc[b]! > 0 && (best < 0 || acc[b]! > acc[best]!)) best = b;
+      if (best < 0) break;
+      keep[m++] = best;
+      tmp[2 * j] = best; tmp[2 * j + 1] = acc[best]!;
+      acc[best] = -acc[best]!; // taken
+    }
+    let sum = 0;
+    for (let j = 0; j < m; j++) sum += tmp[2 * j + 1]!;
+    for (let j = 0; j < m; j++) tmp[2 * j + 1] = tmp[2 * j + 1]! / sum;
+    for (const b of touched) acc[b] = 0;
+    touched.length = 0;
+    write(v, m);
+  };
+  /**
+   * The junction falloff, then finish: the wing bones' gathered weight is scaled by how far
+   * the vertex is from the body, and what it loses goes to the spine at the vertex's x.
+   */
+  const junction = (v: number) => {
+    const x = position[3 * v]!, y = position[3 * v + 1]!, z = position[3 * v + 2]!;
+    const c = body ? body.distance(x, y, z, WING_JUNCTION) : WING_JUNCTION;
+    const f = smooth(c / WING_JUNCTION);
+    let lost = 0;
+    if (f < 1) {
+      for (const b of touched) if (wingBone[b]) { lost += acc[b]! * (1 - f); acc[b] = acc[b]! * f; }
+      if (lost > 0) { const m = spine(x, tmp); for (let j = 0; j < m; j++) add(tmp[2 * j]!, tmp[2 * j + 1]! * lost); }
+    }
+    finish(v);
+  };
+
   // The sole: per bone, the foot it belongs to (shin and foot of each leg) and its top height.
-  const soleFoot = new Int16Array(BONE_COUNT).fill(-1);
-  const soleTop = new Float64Array(BONE_COUNT);
+  const soleFoot = new Int16Array(nBones).fill(-1);
+  const soleTop = new Float64Array(nBones);
   for (const leg of rig.legs) {
     for (const b of [leg.shin, leg.foot]) { soleFoot[b] = leg.foot; soleTop[b] = Math.max(leg.ankle[1], SOLE_FULL + SOLE_BAND); }
   }
   for (let v = 0; v < nSkin; v++) {
-    const c = chains[rings.path[v]!]!;
+    const path = rings.path[v]!;
+    const c = chains[path]!;
     let m = chainWeights(c.own, c.rs, c.re, rings.k[v]!, rings.u[v]!, tmp);
+    if (isWingTube[path]) {
+      for (let j = 0; j < m; j++) add(tmp[2 * j]!, tmp[2 * j + 1]!);
+      junction(v);
+      continue;
+    }
     const z = position[3 * v + 2]!;
     let foot = -1, top = 0;
     for (let j = 0; j < m; j++) if (soleFoot[tmp[2 * j]!]! >= 0) { foot = soleFoot[tmp[2 * j]!]!; top = soleTop[tmp[2 * j]!]!; }
@@ -274,7 +470,6 @@ export function bakeSkin(
     }
     write(v, m);
   }
-  const spine = spineAtX(g, owner);
   for (const e of extras) {
     const a = e.attach;
     if (a.kind === 'spineAt') {
@@ -282,10 +477,53 @@ export function bakeSkin(
       for (let v = e.from; v < e.to; v++) write(v, m);
     } else if (a.kind === 'spineAtX') {
       for (let v = e.from; v < e.to; v++) write(v, spine(position[3 * v]!, tmp));
+    } else if (a.kind === 'membrane') {
+      const w = rig.wings[a.wing];
+      if (!w) throw new Error(`rig: a membrane for wing ${a.wing}, which this body does not have`);
+      const nT = w.fingers.length;
+      const basis = membraneBasis(a.poly, nT);
+      const lam = new Float64Array(6 + nT);
+      for (let v = e.from; v < e.to; v++) {
+        lam.fill(0);
+        for (const [corner, k] of a.corners[v - e.from]!) for (const [basic, l] of basis[corner]!) lam[basic] = lam[basic]! + k * l;
+        membraneWeights(lam, w, nT, add);
+        const flank = lam[4 + nT]! + lam[5 + nT]!;
+        if (flank > 0) { const m = spine(position[3 * v]!, tmp); for (let j = 0; j < m; j++) add(tmp[2 * j]!, tmp[2 * j + 1]! * flank); }
+        junction(v);
+      }
     } else {
       tmp[0] = a.bone; tmp[1] = 1;
       for (let v = e.from; v < e.to; v++) write(v, 1);
     }
   }
   return { skinIndex, skinWeight };
+}
+
+/**
+ * A membrane vertex's wing-bone weights from its weights `lam` over the basic corners (see
+ * `membraneBasis`); the flank anchors' share (A1, A2) is the caller's, on the spine.
+ * - Inner panel (it touches the root, the elbow or A2): the arm share (root, elbow, wrist) splits
+ *   into humerus and forearm by f = T / (T + λroot), T = 1 − λroot − λelbow: 0 along the
+ *   root–elbow edge, 1 along the elbow–wrist edge and wherever the panel reaches the wrist.
+ * - A hand wedge (wrist and two ribs: the leading tip, finger tips, A1): the wrist's share goes
+ *   to the rib bones in proportion to their own, since they all pivot at the wrist, except the
+ *   share in proportion to A1 (the body), which stays on the forearm that carries the wrist.
+ */
+function membraneWeights(lam: Float64Array, w: RigWing, nT: number, add: (b: number, w: number) => void): void {
+  const l0 = lam[0]!, l1 = lam[1]!, lw = lam[2]!, a1 = lam[4 + nT]!, a2 = lam[5 + nT]!;
+  if (l0 > 1e-12 || l1 > 1e-12 || a2 > 1e-12) {
+    const arm = l0 + l1 + lw;
+    const T = 1 - l0 - l1;
+    const f = T + l0 > 1e-12 ? T / (T + l0) : 0;
+    add(w.humerus, arm * (1 - f));
+    add(w.forearm, arm * f);
+    return;
+  }
+  let S = lam[3]! + a1;
+  for (let k = 0; k < nT; k++) S += lam[4 + k]!;
+  if (S <= 1e-12) { add(w.forearm, lw); return; }
+  const share = lw / S;
+  add(w.hand, lam[3]! * (1 + share));
+  for (let k = 0; k < nT; k++) add(w.fingers[k]!, lam[4 + k]! * (1 + share));
+  add(w.forearm, a1 * share);
 }

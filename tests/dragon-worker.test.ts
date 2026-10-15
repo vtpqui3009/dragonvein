@@ -5,7 +5,9 @@
  * - the three-free arrays equal what `buildDragon` puts in its geometry, byte for byte;
  * - a genome survives `toJSON` → `fromJSON` unchanged;
  * - the worker's reply equals the direct build and transfers eight distinct buffers (M7a added the idle's two
- *   weights, M7b the skin's index and weight).
+ *   weights, M7b the skin's index and weight);
+ * - the bone table crosses by structured clone with both wing chains (M7c): forearm, hand and one
+ *   bone per finger, each wing's chain after the body's 26 bones.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -14,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { Genome, GENE_NAMES, breed, wild, type Element } from '../src/core/genome';
 import { buildDragonArrays } from '../src/assets/dragon/arrays';
 import { buildDragon } from '../src/assets/dragon/builder';
+import { BODY_BONES, boneCount } from '../src/assets/dragon/rig';
 import { handle } from '../src/assets/dragon/worker';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -59,6 +62,15 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (_i, gm) => 
     }
     expect(new Set(transfer).size).toBe(8);
     expect(reply.arrays.rig).toEqual(direct.rig);
+    // The rig is plain data: what a Worker posts is a structured clone of it, wing chains and all.
+    const cloned = structuredClone(reply.arrays.rig);
+    expect(cloned).toEqual(direct.rig);
+    expect(cloned.wings.length).toBe(2);
+    for (const w of cloned.wings) {
+      expect(w.fingers.length).toBe(gm.phenotype.wingFingers);
+      expect(Math.min(w.forearm, w.hand, ...w.fingers)).toBeGreaterThanOrEqual(BODY_BONES);
+    }
+    expect(cloned.parent.length).toBe(boneCount(gm.phenotype));
     for (const k of ['position', 'normal', 'color', 'index', 'idleBreathSway', 'idleBlink', 'skinIndex', 'skinWeight'] as const) {
       expect(transfer, k).toContain(reply.arrays[k].buffer);
     }
