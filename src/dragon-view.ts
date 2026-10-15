@@ -85,7 +85,7 @@ import { walkParams, type WalkParams } from './assets/dragon/walk';
 import { BONE, LEG_NAMES } from './assets/dragon/rig';
 import { DragonWalk, bindSkinned } from './render/walk';
 import { flightParams, type FlightParams } from './assets/dragon/flight';
-import { DragonFlight, strokeTimes } from './render/flight';
+import { DragonFlight, FLIGHT_RAMP_S, strokeTimes } from './render/flight';
 import { flightSamples, probeFlight, type FlightProbe } from './render/flight-probe';
 
 /**
@@ -348,8 +348,13 @@ if (cam.length === 6 && cam.every(Number.isFinite)) {
  * sets the same six numbers relative to the dragon's travel, for close-ups of a joint.
  */
 const WALK_CAM_ELEVATION_DEG = 14;
-/** The flight view looks down a little more, onto the spread wings. */
-const FLIGHT_CAM_ELEVATION_DEG = 20;
+/**
+ * The flight view looks down from high and three-quarter front, so both spread wings read
+ * face-on, not edge-on (M7c cycle 1, art A9 and gameplay D8). It frames everything the dragon
+ * reaches on the ground and in the air, and does not rise with it, so a take-off is seen to lift.
+ */
+const FLIGHT_CAM_ELEVATION_DEG = 30;
+const FLIGHT_CAM_AZIMUTH_DEG = 50;
 const WALK_CAM_AZIMUTH_DEG = 25;
 /** The walk view's ground is a checker of this many world units a square, so a planted foot can be seen to stay put. */
 const WALK_TILE = 0.5;
@@ -373,7 +378,7 @@ if (followView && placed[0]) {
   const len = box.max.x - box.min.x, tall = box.max.y;
   // 30° vertical field of view: frame about 1.25 × the length across and 1.4 × the height up.
   const half = Math.tan((15 * Math.PI) / 180);
-  const az = (WALK_CAM_AZIMUTH_DEG * Math.PI) / 180;
+  let az = (WALK_CAM_AZIMUTH_DEG * Math.PI) / 180;
   let dist: number, elev: number;
   if (flightView && placed[0].flight) {
     // The flight view frames everything the dragon reaches in a beat and a glide (wings up and
@@ -385,6 +390,7 @@ if (followView && placed[0]) {
     for (let i = 0; i < 8; i++) pts.push(new THREE.Vector3((i & 1 ? box.max.x : box.min.x) + ox, i & 2 ? box.max.y : box.min.y, i & 4 ? box.max.z : box.min.z));
     for (let i = 0; i < fl.reachPoints.length; i += 3) pts.push(new THREE.Vector3(fl.reachPoints[i]! + ox, fl.reachPoints[i + 1]!, fl.reachPoints[i + 2]!));
     elev = (FLIGHT_CAM_ELEVATION_DEG * Math.PI) / 180;
+    az = (FLIGHT_CAM_AZIMUTH_DEG * Math.PI) / 180;
     const d = new THREE.Vector3(Math.cos(elev) * Math.sin(az), Math.sin(elev), Math.cos(elev) * Math.cos(az));
     const r = new THREE.Vector3(0, 1, 0).cross(d).normalize(), u = d.clone().cross(r);
     // Centre: the middle of the points' extent across and up the view, and in depth.
@@ -397,8 +403,8 @@ if (followView && placed[0]) {
       const c = q.clone().sub(centre);
       dist = Math.max(dist, c.dot(d) + Math.abs(c.dot(r)) / tanH, c.dot(d) + Math.abs(c.dot(u)) / tanV);
     }
-    // The tracked point is that centre at zero altitude; the altitude is added as it flies.
-    walkCam.look.set(centre.x, centre.y - fl.hover, centre.z);
+    // The tracked point is that centre: the camera follows the dragon over the ground, not up.
+    walkCam.look.copy(centre);
   } else {
     dist = Math.max((0.62 * len) / (half * aspect), (0.7 * tall) / half, 7);
     elev = (WALK_CAM_ELEVATION_DEG * Math.PI) / 180;
@@ -471,18 +477,19 @@ if (sweep) scene.add(sweepHolder);
 Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext, near: 1, far: 80 });
 sun.shadow.camera.updateProjectionMatrix();
 
+/** A touch-first device: no keyboard and no wheel to name in the caption (M7c cycle 1, gameplay D1). */
+const coarse = matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 document.getElementById('note')!.textContent = mask ? '' :
   `runtime dragons, built in a worker · ${shown.length} in ${buildMs.toFixed(0)} ms after a ${startupMs.toFixed(0)} ms warm-up · ${tris} tris` +
-  (flightView ? ' · drag to turn · wheel to zoom · F flap · G glide · L land' : '');
+  (flightView ? (coarse ? ' · drag to turn · pinch to zoom' : ' · drag to turn · wheel to zoom · F flap · G glide · L land') : '');
 
 const labelAt = new THREE.Vector3();
 /** The walk view's tracked point in the world: `walkCam.look` carried by the dragon's travel and its holder's turn. */
 function trackedPoint(p: Placed, out: THREE.Vector3): THREE.Vector3 {
   const holder = p.mesh.parent!;
   holder.updateMatrixWorld();
-  // In the air the point rises with the dragon's altitude (not its heave or soar, which the camera leaves on screen).
-  const alt = p.flight ? p.flight.altitude : 0;
-  return out.copy(walkCam.look).setX(walkCam.look.x + p.mesh.position.x - p.baseX).setY(walkCam.look.y + alt).applyMatrix4(holder.matrixWorld);
+  // The flight view frames the air already: the point does not rise, so a take-off is seen to lift.
+  return out.copy(walkCam.look).setX(walkCam.look.x + p.mesh.position.x - p.baseX).applyMatrix4(holder.matrixWorld);
 }
 function frame(): void {
   if (followView && placed[0]) {
@@ -750,7 +757,6 @@ let gaitT = 0, walkW = 0, walkGoal = 0, lastNow = -1;
  * sum to at most 1.
  */
 let flightClock: number | null | 'run' = null;
-const FLIGHT_RAMP_S = 0.8;
 window.__dragonView.flightRampS = FLIGHT_RAMP_S;
 let flightT = 0, flapL = 0, glideL = 0, flapGoal = 0, glideGoal = 0, flapW = 0, glideW = 0;
 /** flapPhaseAt: each dragon at this phase of its own beat instead of at flightT. */
@@ -964,13 +970,33 @@ window.__dragonView.idlePlay();
 if (walkView || params.get('walk') === '1') window.__dragonView.walkPlay();
 if (flightView || params.get('flap') === '1') window.__dragonView.flapPlay();
 if (flightView) {
-  // F flap, G glide, L land.
+  // F flap, G glide, L land: bare keys only, so Ctrl+F still finds and Cmd+L still goes to the
+  // address bar (M7c cycle 1, gameplay D9).
   addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     const k = e.key.toLowerCase();
     if (k === 'f') window.__dragonView!.flapPlay();
     else if (k === 'g') window.__dragonView!.glidePlay();
     else if (k === 'l') window.__dragonView!.land();
   });
+  // The same three as buttons, for touch and mouse alike (gameplay D1). Plain DOM over the
+  // canvas: no draw call, and nothing per frame.
+  const bar = document.getElementById('flight')!;
+  for (const [id, text, act] of [
+    ['flap', 'Flap', () => window.__dragonView!.flapPlay()],
+    ['glide', 'Glide', () => window.__dragonView!.glidePlay()],
+    ['land', 'Land', () => window.__dragonView!.land()],
+  ] as const) {
+    const b = document.createElement('button');
+    b.id = `flight-${id}`;
+    b.type = 'button';
+    b.textContent = text;
+    // A tap or a click; the press stops at the button, so it never starts a drag or a pinch.
+    b.addEventListener('pointerdown', (e) => e.stopPropagation());
+    b.addEventListener('click', act);
+    bar.appendChild(b);
+  }
+  bar.hidden = false;
 }
 // Drag to turn the dragons (mouse or touch), so a person can inspect them by hand.
 let yaw = turn ? 0 : -0.55;

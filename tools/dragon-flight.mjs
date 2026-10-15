@@ -26,6 +26,11 @@
  *   tips about the wrist changes from rest, at any sample;
  * - **the flap does not show**: a wingtip's height range over the beat is under TIP_MIN of the
  *   half-span;
+ * - **it does not leave the ground**: in full flap or glide a foot comes within FOOT_MIN of the
+ *   ground, or a leg is not tucked (its hip-to-ankle distance over TUCK_MAX of its rest length);
+ * - **touch cannot fly it**: in a `hasTouch` context at 390×700, tapping the Flap, Glide and Land
+ *   buttons on `?view=flight` does not reach full flap, full glide and the ground in turn
+ *   (`flightState()`), the caption names keys or overflows the page, or Ctrl+F flaps on a desktop;
  * - **the rest pose changed**: the sheet skinned and at rest differs from the same sheet built from
  *   plain meshes (`?static=1`) in more than REST_TOLERANCE pixels;
  * - **a draw was added**: draw calls per frame differ between the plain sheet at rest and the
@@ -47,6 +52,9 @@ import { startPreview } from './preview-server.mjs';
 const SHEET_VIEW = { width: 1800, height: 760 };
 const FLIGHT_VIEW = { width: 960, height: 720 };
 const TIP_MIN = 0.30;
+const FOOT_MIN = 0.3;
+const TUCK_MAX = 0.95;
+const TOUCH_VIEW = { width: 390, height: 700 };
 const REST_TOLERANCE = 8;
 const REST_THRESHOLD = 8;
 const CPU_BUDGET_MS = 3.5;
@@ -166,17 +174,22 @@ try {
       midplaneGap: r.midplaneGap,
       fingers: r.fingers,
       wingtips: r.tips.map((t, i) => ({ wing: i === 0 ? 'left' : 'right', travel: t.travel, halfSpan: t.halfSpan, travelPct: 100 * t.ratio })),
+      airborne: { hover: r.hover, lowestFootInFlight: r.airborne.footMin, lowestFootAtRest: r.airborne.footRest,
+        legSpanPct: { leastTucked: 100 * r.airborne.legSpanMax, mostTucked: 100 * r.airborne.legSpanMin } },
       bodyClearancePerSample: r.body.perSample,
     };
     dragons.push(d);
     console.log(`  ${d.label.padEnd(22)} ${d.wingForm.padEnd(9)} span ${d.wingSpan.toFixed(2)} fingers ${d.wingFingers}  body ${f3(d.bodyClearance.min)} / ${f3(d.bodyClearance.rest)}; free ${f3(r.free.min)}  ` +
       `wings ${f3(d.wingToWing.min)} / ${f3(d.midplaneGap.min)}  fingers ${d.fingers.minGapDeg.toFixed(1)}° (${d.fingers.crossings} crossings)  ` +
-      `tips ${d.wingtips.map((t) => `${t.travelPct.toFixed(0)} %`).join(' ')}  (${d.samples} samples)`);
+      `tips ${d.wingtips.map((t) => `${t.travelPct.toFixed(0)} %`).join(' ')}  hover ${r.hover.toFixed(2)} feet ≥ ${r.airborne.footMin.toFixed(2)} ` +
+      `legs ${(100 * r.airborne.legSpanMin).toFixed(0)}–${(100 * r.airborne.legSpanMax).toFixed(0)} %  (${d.samples} samples)`);
     const at = (s) => `${s.kind} t ${s.t.toFixed(3)} flap ${s.flap} glide ${s.glide}`;
     if (!(d.bodyClearance.min > 0)) fails.push(`${d.label}: a wing vertex ${f3(d.bodyClearance.min)} from the body (${at(d.bodyClearance.at)}, vertex ${d.bodyClearance.vertex})`);
     if (!(d.wingToWing.min > 0)) fails.push(`${d.label}: the wings ${f3(d.wingToWing.min)} apart (${at(d.wingToWing.at)})`);
     if (d.fingers.crossings > 0) fails.push(`${d.label}: ${d.fingers.crossings} finger crossings (least gap ${d.fingers.minGapDeg.toFixed(2)}° at ${at(d.fingers.at)})`);
     for (const t of d.wingtips) if (!(t.travelPct >= 100 * TIP_MIN)) fails.push(`${d.label} ${t.wing}: wingtip travel ${t.travelPct.toFixed(1)} % of the half-span, under ${100 * TIP_MIN} %`);
+    if (!(r.airborne.footMin >= FOOT_MIN)) fails.push(`${d.label}: a foot ${f3(r.airborne.footMin)} above the ground in full flight, under ${FOOT_MIN}`);
+    if (!(r.airborne.legSpanMax <= TUCK_MAX)) fails.push(`${d.label}: a leg at ${(100 * r.airborne.legSpanMax).toFixed(0)} % of its rest length in flight, not tucked (≤ ${100 * TUCK_MAX} %)`);
   }
   const min = (f) => Math.min(...dragons.map(f));
   out.flight = {
@@ -188,6 +201,9 @@ try {
     minWingToWing: min((d) => d.wingToWing.min), minMidplaneGap: min((d) => d.midplaneGap.min),
     minFingerGapDeg: min((d) => d.fingers.minGapDeg), fingerCrossings: dragons.reduce((a, d) => a + d.fingers.crossings, 0),
     minWingtipTravelPct: min((d) => Math.min(...d.wingtips.map((t) => t.travelPct))),
+    footMin: FOOT_MIN, tuckMaxPct: 100 * TUCK_MAX,
+    minHover: min((d) => d.airborne.hover), minFootInFlight: min((d) => d.airborne.lowestFootInFlight),
+    maxLegSpanInFlightPct: Math.max(...dragons.map((d) => d.airborne.legSpanPct.leastTucked)),
     dragons,
   };
   await sheet.close();
@@ -299,9 +315,66 @@ try {
   out.seen = { ...seen,
     clip: { file: 'artifacts/turntables/dragon-flight.webm', slot: FLIGHT_CLIP_SLOT, label, viewport: FLIGHT_VIEW, fps: FPS, frames, seconds: frames / FPS,
       timeline: { restUntil: HOLD_S, flapFrom: HOLD_S, fullFlapAt: tFlap, crossfadeAt: tCross, fullGlideAt: tGlide, landAt: tLand, restAt: tDown, end: tEnd },
+      note: 'each change is the page\'s own command ramp (F, G, then L), eased as its clock eases it; the camera frames the ground and the air and does not rise',
       flapCycles: FLAP_CLIP_CYCLES, rampS: ramp } };
   console.log(`seen: dragon-flap-a.png, dragon-flap-b.png, dragon-glide.png (the sheet); dragon-flight.webm — sheet slot ${FLIGHT_CLIP_SLOT} (${label}), ` +
     `${frames} frames at ${FPS} fps: rest → flap ${FLAP_CLIP_CYCLES} beats → glide ${GLIDE_CLIP_S} s → rest`);
+
+  // 5. Touch and keys: the buttons in a hasTouch context, the caption, and the modifier guard.
+  const touchCtx = await browser.newContext({ viewport: TOUCH_VIEW, hasTouch: true, isMobile: true });
+  const tp = await touchCtx.newPage();
+  tp.on('pageerror', (e) => errors.push(String(e)));
+  await tp.goto(`${preview.url}dragon.html?view=flight&i=5`, { waitUntil: 'load', timeout: 30_000 });
+  await tp.waitForFunction(() => window.__dragonView?.ready === true, null, { timeout: 60_000 });
+  const state = () => tp.evaluate(() => window.__dragonView.flightState());
+  // The page's clock steps at most 0.1 s a frame, and SwiftShader frames are slow, so each state
+  // is waited for (up to SETTLE_MS) rather than timed: what is checked is where a tap ends up.
+  const SETTLE_MS = 20_000;
+  const reach = (pg, f, g) => pg.waitForFunction(([a, b]) => { const s = window.__dragonView.flightState(); return s.flap === a && s.glide === b; },
+    [f, g], { timeout: SETTLE_MS, polling: 50 }).then(() => true, () => false);
+  const touch = { viewport: TOUCH_VIEW, rampS: ramp, steps: [] };
+  await reach(tp, 1, 0);
+  touch.steps.push({ after: 'load (flaps on its own)', ...(await state()) });
+  for (const [btn, want] of [['glide', [0, 1]], ['land', [0, 0]], ['flap', [1, 0]]]) {
+    const t0 = Date.now();
+    await tp.tap(`#flight-${btn}`);
+    const ok = await reach(tp, want[0], want[1]);
+    const s = await state();
+    touch.steps.push({ after: `tap ${btn}`, reached: ok, wallMs: Date.now() - t0, ...s });
+    if (!ok) fails.push(`touch: tap ${btn} left flap ${s.flap}, glide ${s.glide} after ${SETTLE_MS} ms`);
+    if (btn === 'land' && s.altitude !== 0) fails.push(`touch: tap land left the dragon at altitude ${s.altitude}`);
+    if (btn === 'glide') await tp.screenshot({ path: 'artifacts/variants/dragon-flight-touch.png' });
+  }
+  // The onset, on the page's own clock: the eased weight 100 ms into a command (the clip's ease).
+  touch.onsetWeightAt100ms = ease(0.1 / ramp);
+  const note = await tp.evaluate(() => {
+    const n = document.getElementById('note');
+    const r = n.getBoundingClientRect();
+    return { text: n.textContent, overflowX: n.scrollWidth > n.clientWidth, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight };
+  });
+  touch.caption = note;
+  if (/F flap|wheel/.test(note.text)) fails.push(`touch: the caption names keys or the wheel: "${note.text}"`);
+  if (note.overflowX || !note.inside) fails.push(`touch: the caption overflows the ${TOUCH_VIEW.width} px page`);
+  await touchCtx.close();
+  const desk = await open(`?view=flight&i=5`, FLIGHT_VIEW);
+  await reach(desk, 1, 0);
+  await desk.keyboard.press('Control+g');
+  await desk.keyboard.press('Meta+g');
+  await desk.keyboard.press('Alt+g');
+  await desk.waitForTimeout(1500);
+  const guarded = await desk.evaluate(() => window.__dragonView.flightState());
+  await desk.keyboard.press('g');
+  await reach(desk, 0, 1);
+  const glided = await desk.evaluate(() => window.__dragonView.flightState());
+  await desk.close();
+  touch.keys = { afterCtrlG: guarded, afterG: glided };
+  if (guarded.glide !== 0 || guarded.flap !== 1) fails.push(`keys: Ctrl, Cmd or Alt + G changed the flight (flap ${guarded.flap}, glide ${guarded.glide})`);
+  if (glided.glide !== 1) fails.push(`keys: G did not glide (glide ${glided.glide})`);
+  out.touch = touch;
+  out.seen.touch = { file: 'artifacts/variants/dragon-flight-touch.png', what: '?view=flight at 390×700 with touch, after tapping Glide' };
+  console.log(`touch (${TOUCH_VIEW.width}×${TOUCH_VIEW.height}): ` + touch.steps.map((s) => `${s.after} → flap ${s.flap.toFixed(2)} glide ${s.glide.toFixed(2)} alt ${s.altitude.toFixed(2)}` +
+    (s.wallMs !== undefined ? ` (${s.wallMs} ms wall)` : '')).join('; ') + `; onset weight at 100 ms on the page clock ${touch.onsetWeightAt100ms.toFixed(3)}`);
+  console.log(`caption on touch: "${note.text}" (overflow ${note.overflowX}, inside ${note.inside}); Ctrl/Cmd/Alt+G → glide ${guarded.glide}, G → glide ${glided.glide}`);
 } catch (e) {
   errors.push(String(e?.stack ?? e));
 } finally {

@@ -70,6 +70,12 @@ export interface FlightProbe {
   fingers: { minGapDeg: number; crossings: number; at: FlightSample };
   /** Per wing (left, right): the leading tip's height range over the flap samples, the half-span, and their ratio. */
   tips: { travel: number; halfSpan: number; ratio: number }[];
+  /**
+   * Off the ground, over the full-weight flap and glide samples: the lowest foot (each leg's ball
+   * node) above the ground (y = 0), against the lowest at rest; and the tuck, each leg's hip to
+   * ankle distance as a share of its rest length (the largest, the least tucked).
+   */
+  airborne: { footMin: number; footRest: number; legSpanMax: number; legSpanMin: number };
 }
 
 /** The dragon a probe measures: its mesh arrays (mesh frame), the graph it was built from, and its genes. */
@@ -185,6 +191,9 @@ export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: Fligh
     return gap;
   };
   for (const wing of wings) order(wing); // fixes each wing's rest direction (at rest, pose above)
+  const legs = rig.legs.map((l) => ({ l, hip: V(l.hip), ankle: V(l.ankle), ball: V(l.ball), len: V(l.hip).distanceTo(V(l.ankle)) }));
+  const footRest = Math.min(...legs.map((g) => g.ball.y));
+  const air = { footMin: Infinity, footRest, legSpanMax: -Infinity, legSpanMin: Infinity };
 
   let free = { min: Infinity, restMin: freeRest, at: samples[0]! };
   let body = { min: Infinity, at: samples[0]!, vertex: -1 }, pair = { min: Infinity, at: samples[0]! }, mid = { min: Infinity, at: samples[0]! };
@@ -220,13 +229,22 @@ export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: Fligh
       }
     }
     if (dmin < pair.min) pair = { min: dmin, at: s };
+    if ((s.kind === 'flap' && s.flap === 1) || (s.kind === 'glide' && s.glide === 1)) {
+      for (const g of legs) {
+        air.footMin = Math.min(air.footMin, p3.copy(g.ball).applyMatrix4(bones[g.l.foot]!.matrixWorld).y);
+        const span = p3.copy(g.ankle).applyMatrix4(bones[g.l.foot]!.matrixWorld)
+          .distanceTo(q3.copy(g.hip).applyMatrix4(bones[g.l.thigh]!.matrixWorld)) / g.len;
+        air.legSpanMax = Math.max(air.legSpanMax, span);
+        air.legSpanMin = Math.min(air.legSpanMin, span);
+      }
+    }
     for (const wing of wings) {
       const g = order(wing);
       if (g <= 0) fing.crossings++;
       const deg = (g * 180) / Math.PI;
       if (deg < fing.minGapDeg) fing = { ...fing, minGapDeg: deg, at: s };
       if (s.kind === 'flap') {
-        const y = q3.copy(wing.lead).applyMatrix4(bones[wing.w.hand]!.matrixWorld).y;
+        const y = p3.copy(wing.lead).applyMatrix4(bones[wing.w.hand]!.matrixWorld).y;
         wing.tipLo = Math.min(wing.tipLo, y);
         wing.tipHi = Math.max(wing.tipHi, y);
       }
@@ -234,6 +252,7 @@ export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: Fligh
   }
   flight.pose(0, 0, 0);
   return {
+    airborne: air,
     samples: samples.length, wingVerts: verts.length, junctionVerts: isFree.filter((f) => !f).length, restClearance, free,
     body: { ...body, rest: [0, 1, 2].map((c) => d.position[3 * body.vertex + c]!), perSample },
     wingToWing: { ...pair, exactBelow: WING_PAIR_RANGE },
