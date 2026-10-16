@@ -12,13 +12,17 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { Genome } from '../src/core/genome';
 import { RNG_VERSION, Rng, isRngState, type RngState } from '../src/core/rng';
-import { MAIN_KEY, backupKey, memoryStore, type SaveStore, type StoredSave } from '../src/core/save';
 import {
-  CHAIN, MIGRATIONS, Refused, assertChain, decodeSave, encodeSave, type Chain, type Migration,
+  MAIN_KEY, backupKey, memoryJournal, memoryStore, type SaveStore, type StoredSave,
+} from '../src/core/save';
+import {
+  CHAIN, MIGRATIONS, Refused, assertChain, decodeSave, encodeSave, salvageGenomes, type Chain, type Migration,
 } from '../src/sim/migrate';
 import { SaveSession, openGameWorld, openWorld } from '../src/sim/persist';
 import { addBred, addWild } from '../src/sim/roster';
-import { SCHEMA_VERSION, TICK_HZ, createWorld, drawU32, step, type World } from '../src/sim/world';
+import {
+  SCHEMA_VERSION, TICK_HZ, adoptGenomes, createWorld, drawU32, step, type World,
+} from '../src/sim/world';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FIXTURE_V1 = readFileSync(path.join(ROOT, 'tests/fixtures/save-v1.json'), 'utf8');
@@ -335,8 +339,8 @@ describe('a record this build cannot read is refused and never written over', ()
     await session.save(createWorld(1), 1);
     expect(store.data.get(MAIN_KEY)).toBe('garbage');
     // And the store itself refuses to replace it, whatever gen a writer claims.
-    for (const expectGen of [0, 1, -1]) {
-      expect(await store.write({ text: 'x', savedAt: 0, expectGen })).toEqual({ ok: false, gen: -1 });
+    for (const base of [0, 1, -1]) {
+      expect(await store.write({ text: 'x', savedAt: 0, base, baseWriter: '', baseSeq: 0, writer: 'w', seq: 1 })).toEqual({ ok: false, gen: -1 });
     }
     expect(store.data.get(MAIN_KEY)).toBe('garbage');
   });
@@ -344,7 +348,7 @@ describe('a record this build cannot read is refused and never written over', ()
 
 describe('storage that is missing or failing', () => {
   it('no store: a fresh world, "unavailable", and saving is a no-op', async () => {
-    const { world, session, report } = await openGameWorld(null, 3, 'IndexedDB refused to open');
+    const { world, session, report } = await openGameWorld(null, 3, { unavailable: 'IndexedDB refused to open' });
     expect(world).toEqual(createWorld(3));
     expect(session.state).toBe('unavailable');
     expect(session.detail).toBe('IndexedDB refused to open');
@@ -358,7 +362,8 @@ describe('storage that is missing or failing', () => {
     const store: SaveStore = {
       kind: 'memory',
       get: () => Promise.reject(new Error('read failed')),
-      write: () => { writes++; return Promise.resolve({ ok: true, gen: 1 }); },
+      write: () => { writes++; return Promise.resolve({ ok: true, gen: 1, skipped: false, putMs: 0 }); },
+      setAside: () => { writes++; return Promise.resolve('refused.1'); },
       close: () => {},
     };
     const { world, session } = await openGameWorld(store, 3);
@@ -452,26 +457,265 @@ describe('two tabs on one store', () => {
   });
 });
 
-describe('saves never overlap', () => {
-  it('saves requested while one is in flight coalesce into one write of the newest world', async () => {
+describe('every save is issued at once (cycle 2: no write waits in a queue for the one before)', () => {
+  // Cycle 1 coalesced: a save requested while one was in flight waited in memory for it,
+  // so an unload in between lost the newest world (FINDINGS M8a cycle 1, D1). Now each save
+  // is its own write, issued immediately; the store keeps them in order.
+  it('three saves without waiting: three writes, landing in order, the newest last', async () => {
     const store = memoryStore();
     const { world, session } = await openGameWorld(store, 10);
+    store.hold();
     const p1 = session.save(world, 1);
     addWild(world);
     const p2 = session.save(world, 2);
     addWild(world);
     const p3 = session.save(world, 3);
+    expect(session.inflight).toBe(3);
+    store.release();
     await Promise.all([p1, p2, p3]);
     expect(session.state).toBe('saved');
-    expect(session.writes).toBe(2);
+    expect(session.writes).toBe(3);
+    expect(session.inflight).toBe(0);
     expect(session.lastSavedAt).toBe(3);
     const main = store.data.get(MAIN_KEY) as StoredSave;
-    expect(main.gen).toBe(2);
+    expect(main.gen).toBe(3);
     expect(main.text).toBe(encodeSave(world));
   });
 
-  it('a session without a store is never writable', () => {
-    const s = new SaveSession(null, { state: 'unavailable', detail: '', gen: 0 });
-    expect(s.writable).toBe(false);
+  it('a write older than one already stored from the same session is skipped, not applied', async () => {
+    const store = memoryStore();
+    await store.write({ text: 'new', savedAt: 2, base: 0, baseWriter: '', baseSeq: 0, writer: 'w', seq: 5 });
+    const r = await store.write({ text: 'old', savedAt: 1, base: 0, baseWriter: '', baseSeq: 0, writer: 'w', seq: 4 });
+    expect(r).toMatchObject({ ok: true, skipped: true });
+    expect((store.data.get(MAIN_KEY) as StoredSave).text).toBe('new');
   });
+
+  it('pipelined writes keep the two-tab guard: whoever lands first keeps the slot', async () => {
+    for (const bFirst of [false, true]) {
+      const store = memoryStore();
+      const a = await openGameWorld(store, 1);
+      const b = await openGameWorld(store, 2);
+      addWild(a.world);
+      addWild(b.world);
+      store.hold();
+      const ps = bFirst
+        ? [b.session.save(b.world, 1), a.session.save(a.world, 2), a.session.save(a.world, 3)]
+        : [a.session.save(a.world, 1), a.session.save(a.world, 2), b.session.save(b.world, 3)];
+      store.release();
+      await Promise.all(ps);
+      const [live, dead] = bFirst ? [b, a] : [a, b];
+      expect(live.session.state).toBe('saved');
+      expect(dead.session.state).toBe('conflict');
+      expect((store.data.get(MAIN_KEY) as StoredSave).text).toBe(encodeSave(live.world));
+    }
+  });
+});
+
+describe('an unload with writes in flight loses nothing (cycle 2, D1)', () => {
+  it('the critic\'s case: store busy, save then roster change, unload — the roster comes back', async () => {
+    const store = memoryStore();
+    const journal = memoryJournal();
+    const first = await openGameWorld(store, 7, { journal, writer: 'page1' });
+    await first.session.save(first.world, 1);            // the boot save
+    expect(journal.entries.size).toBe(0);                // landed, so the journal is cleared
+
+    store.hold();                                        // another tab holds the store
+    void first.session.save(first.world, 2);             // __dragonveinSave.save()
+    addWild(first.world);                                 // seedRoster()
+    addWild(first.world);
+    addBred(first.world, 1, 2);
+    void first.session.save(first.world, 3);
+    expect(store.unload()).toBe(2);                      // reload: both writes die unstarted
+
+    const second = await openGameWorld(store, 8, { journal, writer: 'page2' });
+    expect(second.report.source).toBe('journal');
+    expect(second.world).toEqual(first.world);
+    expect(second.world.roster).toHaveLength(3);
+    await second.session.save(second.world, 4);
+    expect(second.session.state).toBe('saved');
+    expect(journal.entries.size).toBe(0);                // promoted, then swept
+    const third = await openGameWorld(store, 9, { journal, writer: 'page3' });
+    expect(third.report.source).toBe('loaded');
+    expect(third.world.roster).toHaveLength(3);
+  });
+
+  it('a journal written over a record another tab has since replaced is not promoted, and is swept', async () => {
+    const store = memoryStore();
+    const journal = memoryJournal();
+    const a = await openGameWorld(store, 1, { journal, writer: 'A' });
+    const b = await openGameWorld(store, 2, { journal, writer: 'B' });
+    store.hold();
+    addWild(a.world);
+    void a.session.save(a.world, 1);                     // journalled, never lands
+    store.unload();
+    addWild(b.world);
+    addWild(b.world);
+    await b.session.save(b.world, 2);                    // B lands gen 1
+    const c = await openGameWorld(store, 3, { journal, writer: 'C' });
+    expect(c.report.source).toBe('loaded');
+    expect(c.world).toEqual(b.world);
+    await c.session.save(c.world, 3);
+    expect(journal.entries.size).toBe(0);
+  });
+
+  it('a journal entry older than what its own session already stored is not promoted', async () => {
+    const store = memoryStore();
+    const journal = memoryJournal();
+    const a = await openGameWorld(store, 1, { journal, writer: 'A' });
+    addWild(a.world);
+    await a.session.save(a.world, 1);
+    const landed = structuredClone(a.world);
+    journal.write({ writer: 'A', base: 0, baseWriter: '', baseSeq: 0, seq: 1, savedAt: 1, text: encodeSave(createWorld(1)) });
+    const b = await openGameWorld(store, 2, { journal, writer: 'B' });
+    expect(b.report.source).toBe('loaded');
+    expect(b.world).toEqual(landed);
+  });
+
+  it('of two promotable entries the later wins; an unreadable one is passed over', async () => {
+    const store = memoryStore();
+    const journal = memoryJournal();
+    const w1 = createWorld(1);
+    addWild(w1);
+    const w2 = createWorld(2);
+    addWild(w2);
+    addWild(w2);
+    journal.write({ writer: 'X', base: 0, baseWriter: '', baseSeq: 0, seq: 1, savedAt: 10, text: encodeSave(w1) });
+    journal.write({ writer: 'Y', base: 0, baseWriter: '', baseSeq: 0, seq: 1, savedAt: 20, text: encodeSave(w2) });
+    journal.write({ writer: 'Z', base: 0, baseWriter: '', baseSeq: 0, seq: 1, savedAt: 30, text: '{"broken' });
+    const r = await openGameWorld(store, 3, { journal });
+    expect(r.report.source).toBe('journal');
+    expect(r.world).toEqual(w2);
+  });
+
+  it('an old journal does not match a new record that reuses its gen after a set-aside', async () => {
+    const store = memoryStore();
+    const journal = memoryJournal();
+    const old = createWorld(1);
+    addWild(old);
+    // Written by a session that had loaded gen 1 from writer X, long ago.
+    journal.write({ writer: 'Q', base: 1, baseWriter: 'X', baseSeq: 3, seq: 9, savedAt: 1, text: encodeSave(old) });
+    // The slot now holds a different gen 1, written by Y after a set-aside.
+    const now = createWorld(2);
+    store.data.set(MAIN_KEY, { gen: 1, savedAt: 5, text: encodeSave(now), writer: 'Y', seq: 1 } satisfies StoredSave);
+    const r = await openGameWorld(store, 3, { journal });
+    expect(r.report.source).toBe('loaded');
+    expect(r.world).toEqual(now);
+    // And a stale writer holding that old reference is refused by the store too.
+    expect(await store.write({ text: 'x', savedAt: 9, base: 1, baseWriter: 'X', baseSeq: 3, writer: 'Q', seq: 10 }))
+      .toEqual({ ok: false, gen: 1 });
+  });
+
+  it('a refused record ignores the journal and leaves it where it is', async () => {
+    const store = memoryStore();
+    const journal = memoryJournal();
+    store.data.set(MAIN_KEY, { gen: 4, savedAt: 1, text: 'not json' } satisfies StoredSave);
+    journal.write({ writer: 'X', base: 4, baseWriter: '', baseSeq: 0, seq: 1, savedAt: 10, text: encodeSave(createWorld(1)) });
+    const r = await openGameWorld(store, 3, { journal });
+    expect(r.session.state).toBe('corrupt');
+    expect(journal.entries.size).toBe(1);
+  });
+
+  it('times each save with the clock it is given', async () => {
+    let t = 0;
+    const store = memoryStore();
+    const { world, session } = await openGameWorld(store, 1, { journal: memoryJournal(), clock: () => (t += 1) });
+    await session.save(world, 1);
+    expect(session.lastTiming).toMatchObject({ serialiseMs: 1, journalMs: 1, putMs: 0, bytes: encodeSave(world).length });
+    expect(session.lastTiming?.roundTripMs).toBeGreaterThan(0);
+  });
+});
+
+describe('a refused record has a way out that destroys nothing (cycle 2, D2)', () => {
+  const REFUSED: [string, unknown][] = [
+    ['newer', { gen: 6, savedAt: 1, text: editedFixture((p) => { p.world.schema = SCHEMA_VERSION + 1; }) }],
+    ['corrupt', { gen: 6, savedAt: 1, text: '{"rngVersion": 1, "world": ' }],
+    ['incomplete', { gen: 6, savedAt: 1, text: editedFixture((p) => { delete p.world.roster; }) }],
+    ['corrupt', 'not an envelope at all'],
+  ];
+
+  it.each(REFUSED)('%s: set aside byte-identical, then the new world saves, and the old one stays', async (reason, raw) => {
+    const store = memoryStore();
+    store.data.set(MAIN_KEY, structuredClone(raw));
+    store.data.set(backupKey(1), { gen: 2, savedAt: 0, text: FIXTURE_V1 });
+    const { world, session } = await openGameWorld(store, 5);
+    expect(session.state).toBe(reason);
+    expect(session.refused?.raw).toEqual(raw);
+
+    const key = await session.setAside();
+    expect(key).toBe('refused.1');
+    expect(store.data.get('refused.1')).toEqual(raw);
+    expect(JSON.stringify(store.data.get('refused.1'))).toBe(JSON.stringify(raw));
+    expect(store.data.has(MAIN_KEY)).toBe(false);
+    expect(session.writable).toBe(true);
+    addWild(world);
+    await session.save(world, 1);
+    expect(session.state).toBe('saved');
+    expect((store.data.get(MAIN_KEY) as StoredSave).gen).toBe(1);
+
+    const again = await openGameWorld(store, 6);
+    expect(again.report.source).toBe('loaded');
+    expect(again.world).toEqual(world);
+    expect(store.data.get('refused.1')).toEqual(raw);
+    expect(store.data.get(backupKey(1))).toEqual({ gen: 2, savedAt: 0, text: FIXTURE_V1 });
+  });
+
+  it('a second refusal goes to refused.2; the first is never overwritten', async () => {
+    const store = memoryStore();
+    store.data.set(MAIN_KEY, 'first');
+    await (await openGameWorld(store, 1)).session.setAside();
+    store.data.set(MAIN_KEY, 'second');
+    const key = await (await openGameWorld(store, 1)).session.setAside();
+    expect(key).toBe('refused.2');
+    expect(store.data.get('refused.1')).toBe('first');
+    expect(store.data.get('refused.2')).toBe('second');
+  });
+
+  it('one tampered dragon among four: the other three are salvaged, with their gids', async () => {
+    const text = editedFixture((p) => {
+      ((p.world.roster as Roster)[1]!.genome.g.wingSpan as [[number, boolean], [number, boolean]])[0][0] = 1.234;
+    });
+    const store = memoryStore();
+    store.data.set(MAIN_KEY, { gen: 3, savedAt: 1, text } satisfies StoredSave);
+    const { world, session } = await openGameWorld(store, 5);
+    expect(session.state).toBe('corrupt');
+    expect(session.refused?.salvage.map((g) => g.gid)).toEqual(['2bf296d8d9', 'd0699f21cf', '4acfb32ece']);
+    expect(salvageGenomes(text)).toHaveLength(3);
+    await session.setAside();
+    adoptGenomes(world, session.asideKey ? salvageGenomes(text) : []);
+    await session.save(world, 1);
+    const back = await openGameWorld(store, 6);
+    expect(back.report.source).toBe('loaded');
+    expect(back.world.roster.map((r) => r.genome.gid)).toEqual(['2bf296d8d9', 'd0699f21cf', '4acfb32ece']);
+    expect(back.world.roster.map((r) => r.id)).toEqual([1, 2, 3]);
+    expect((store.data.get('refused.1') as StoredSave).text).toBe(text);
+  });
+
+  it('salvages nothing it cannot interpret: newer schema, not JSON, not text', () => {
+    expect(salvageGenomes(editedFixture((p) => { p.world.schema = SCHEMA_VERSION + 1; }))).toEqual([]);
+    expect(salvageGenomes('{"rngVersion"')).toEqual([]);
+    expect(salvageGenomes(42)).toEqual([]);
+    expect(salvageGenomes(FIXTURE_V1)).toHaveLength(4);
+  });
+
+  it('does not move a record that changed after it was refused, and a crash moves nothing', async () => {
+    const store = memoryStore();
+    store.data.set(MAIN_KEY, { gen: 3, savedAt: 1, text: 'x' } satisfies StoredSave);
+    const { session } = await openGameWorld(store, 5);
+    store.data.set(MAIN_KEY, { gen: 4, savedAt: 2, text: FIXTURE_V1 } satisfies StoredSave);
+    expect(await session.setAside()).toBeNull();
+    expect(session.writable).toBe(false);
+    expect([...store.data.keys()]).toEqual([MAIN_KEY]);
+
+    const crashing = memoryStore({ beforeCommit: () => { throw new Error('tab closed'); } });
+    crashing.data.set(MAIN_KEY, 'junk');
+    const c = await openGameWorld(crashing, 5);
+    expect(await c.session.setAside()).toBeNull();
+    expect(c.session.state).toBe('corrupt');
+    expect([...crashing.data]).toEqual([[MAIN_KEY, 'junk']]);
+  });
+});
+
+it('a session without a store is never writable', () => {
+  const s = new SaveSession(null, { state: 'unavailable', detail: '', base: 0, writer: 'w' });
+  expect(s.writable).toBe(false);
 });

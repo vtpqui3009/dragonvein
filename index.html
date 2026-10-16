@@ -52,6 +52,14 @@
          row does not shuffle every ten seconds. Orange when the game is not saving. */
       #hud #hud-save{min-width:13ch;text-align:left}
       #hud #hud-save.off{color:#ff9044}
+      /* Recovery actions: the only part of the HUD that takes input. Accent border on the
+         panel colour, the panel's own font. */
+      #hud .a{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;pointer-events:auto}
+      #hud .a button{font:inherit;font-size:12px;letter-spacing:.06em;color:#ffd479;cursor:pointer;
+        background:rgba(11,36,48,0.95);border:1px solid rgba(255,212,121,.6);border-radius:6px;
+        padding:5px 9px;text-align:left;white-space:normal}
+      #hud .a button:hover{background:rgba(255,212,121,.12)}
+      #hud .a button:focus-visible{outline:2px solid #ffd479;outline-offset:1px}
       #hud [hidden]{display:none}
     </style>
   </head>
@@ -70,6 +78,13 @@
       <span class="g"><span class="k">dragons</span><span class="v" id="hud-roster">—</span></span>
       <span class="g"><span class="v" id="hud-save">loading</span></span>
       <span class="w" id="hud-save-note" hidden></span>
+      <!-- The way out of a save the game will not write (M8a cycle 2). Nothing here deletes
+           anything: "start fresh" moves the old record aside, export downloads it. -->
+      <span class="a" id="hud-save-actions" hidden>
+        <button type="button" id="hud-save-fresh" hidden></button>
+        <button type="button" id="hud-save-export" hidden>export the old save</button>
+        <button type="button" id="hud-save-reload" hidden>reload</button>
+      </span>
       <!-- Hidden until the GPU context is lost. The readouts above go to em dashes at the
            same moment, because `renderer.info` freezes at its last good values and
            printing them over a dead canvas is the opposite of a diagnostic. -->

@@ -87,3 +87,18 @@ export function drawU32(world: World): number {
   scratch.writeState(world.rng);
   return v;
 }
+
+/**
+ * Add already-validated genomes to the roster under new ids: the dragons salvaged from a
+ * refused save join the world the player starts fresh in. Returns the new entries.
+ */
+export function adoptGenomes(world: World, genomes: readonly GenomeJson[]): RosterEntry[] {
+  const added: RosterEntry[] = [];
+  for (const genome of genomes) {
+    const entry: RosterEntry = { id: world.nextId, genome: structuredClone(genome) };
+    world.nextId++;
+    world.roster.push(entry);
+    added.push(entry);
+  }
+  return added;
+}

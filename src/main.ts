@@ -3,8 +3,9 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Rng } from './core/rng';
 import { FloraBatch, batchable } from './render/flora';
 import { bakeWindBend, setWindTime, withWind } from './render/wind';
-import { TICK_HZ, TICK_MS, createWorld, step, type World } from './sim/world';
-import type { LoadReport, SaveSession, SaveState } from './sim/persist';
+import { TICK_HZ, TICK_MS, adoptGenomes, createWorld, step, type World } from './sim/world';
+import type { LoadReport, SaveSession, SaveState, SaveTiming } from './sim/persist';
+import type { SaveStore } from './core/save';
 
 /**
  * M0 spine: prove the whole chain works end to end — build, deploy, render, measure.
@@ -2010,11 +2011,15 @@ if (hud.build) hud.build.textContent = __BUILD_VERSION__;
  * - **Saves:** once at load (so "saved" on screen means a write has landed, and a store
  *   that opens but cannot write is caught at once), every AUTOSAVE_MS, on
  *   `visibilitychange` to hidden and on `pagehide`. A roster change saves at once — a bred
- *   dragon must not wait 10 s to exist on disk (rubric G4).
- * - **Two tabs:** a write only replaces the record its tab last saw (`gen`, checked inside
- *   the write's own transaction), so a stale tab is refused rather than overwriting a
- *   roster it never saw, and stops saving. A tab whose write lands also says so on a
- *   BroadcastChannel, so other tabs stop at once instead of at their next autosave.
+ *   dragon must not wait 10 s to exist on disk (rubric G4). Each save is journalled
+ *   synchronously and its write issued at once, so an unload cannot strand it in a queue.
+ * - **Two tabs:** a write only replaces what its tab loaded or wrote since, so a stale tab is
+ *   refused rather than overwriting a roster it never saw. A tab whose write lands says so
+ *   on a BroadcastChannel, so other tabs stop at once. A stale tab is **paused**: its world
+ *   no longer ticks or changes, and the HUD offers a reload — no play is silently dropped.
+ * - **A refused save is never a dead end.** The HUD offers to export it as a file and to
+ *   start fresh with it kept aside (`refused.<n>`, never deleted), bringing along every
+ *   dragon in it that still validates.
  * - **Nothing per frame.** Serialising happens only inside a save. The HUD is repainted on
  *   the 250 ms timer, and its strings are rebuilt only when what they show changes.
  */
@@ -2024,10 +2029,14 @@ const MAX_CATCH_UP_MS = 250;
 
 let world: World | null = null;
 let save: SaveSession | null = null;
+/** The store under `save`, kept only so the `?test` hook can close it (cycle 2, D3 drill). */
+let saveStore: SaveStore | null = null;
 let loadReport: LoadReport | null = null;
 /** `performance.now()` when the world was ready: compare with `bootMs` (first frame). */
 let worldReadyMs = 0;
 let simAccMs = 0;
+/** Save cost, gathered as saves resolve (never per frame); read by gate:perf and gate:smoke. */
+const saveStats = { count: 0, maxMainThreadMs: 0, maxRoundTripMs: 0, last: null as SaveTiming | null };
 const saveChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('dragonvein-save') : null;
 
 const hudWorld = {
@@ -2035,18 +2044,32 @@ const hudWorld = {
   roster: document.getElementById('hud-roster'),
   save: document.getElementById('hud-save'),
   note: document.getElementById('hud-save-note'),
+  actions: document.getElementById('hud-save-actions'),
+  fresh: document.getElementById('hud-save-fresh') as HTMLButtonElement | null,
+  exportBtn: document.getElementById('hud-save-export') as HTMLButtonElement | null,
+  reload: document.getElementById('hud-save-reload') as HTMLButtonElement | null,
 };
+
+/** A random id per page load: the `writer` on every record this session writes. */
+function sessionId(): string {
+  const b = crypto.getRandomValues(new Uint32Array(2));
+  return `${(b[0] ?? 0).toString(36)}${(b[1] ?? 0).toString(36)}`;
+}
 
 const worldReady: Promise<void> = (async () => {
   const seed = crypto.getRandomValues(new Uint32Array(1))[0] ?? 1;
   try {
-    const [{ openGameWorld }, { openIdbStore }] = await Promise.all([
+    const [{ openGameWorld }, { openIdbStore, localJournal }] = await Promise.all([
       import('./sim/persist'), import('./core/save'),
     ]);
     const opened = await openIdbStore();
-    const r = await openGameWorld(opened.ok ? opened.store : null, seed, opened.ok ? undefined : opened.why);
+    const r = await openGameWorld(opened.ok ? opened.store : null, seed, {
+      writer: sessionId(), journal: localJournal(), clock: () => performance.now(),
+      ...(opened.ok ? {} : { unavailable: opened.why }),
+    });
     world = r.world;
     save = r.session;
+    saveStore = opened.ok ? opened.store : null;
     loadReport = r.report;
     if (!r.session.writable) console.warn(`DRAGONVEIN: progress is not saved (${r.session.state}: ${r.session.detail})`);
   } catch (e) {
@@ -2065,7 +2088,14 @@ function saveWorld(): Promise<void> {
   if (!world || !s || !s.writable) return Promise.resolve();
   const before = s.gen;
   return s.save(world, Date.now()).then(() => {
-    if (s.gen !== before) saveChannel?.postMessage(s.gen);
+    const t = s.lastTiming;
+    if (t) {
+      saveStats.count++;
+      saveStats.last = t;
+      saveStats.maxMainThreadMs = Math.max(saveStats.maxMainThreadMs, t.serialiseMs + t.journalMs + t.putMs);
+      saveStats.maxRoundTripMs = Math.max(saveStats.maxRoundTripMs, t.roundTripMs);
+    }
+    if (s.gen > before) saveChannel?.postMessage(s.gen);
     paintWorldHud();
   });
 }
@@ -2078,22 +2108,71 @@ document.addEventListener('visibilitychange', () => {
 });
 addEventListener('pagehide', () => { void saveWorld(); });
 
+/** A tab that lost the save to another tab is paused: nothing it did could be kept. */
+function worldPaused(): boolean {
+  return save !== null && save.state === 'conflict';
+}
+
+/** Recovery from a refused save: set it aside (never deleted), keep its readable dragons. */
+async function startFresh(): Promise<string | null> {
+  const s = save;
+  const w = world;
+  if (!s || !w || !s.refused) return null;
+  const salvage = s.refused.salvage;
+  const key = await s.setAside();
+  if (key) {
+    adoptGenomes(w, salvage);
+    await saveWorld();
+  }
+  shownKind = -1;
+  paintWorldHud();
+  return key;
+}
+
+/** The refused record, exactly as stored, as a download. Offline: a Blob, no request. */
+function exportRefused(): string | null {
+  const r = save?.refused;
+  if (!r) return null;
+  let text: string;
+  try {
+    text = JSON.stringify(r.raw, null, 1) ?? String(r.raw);
+  } catch {
+    text = String(r.raw);
+  }
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `dragonvein-save-${r.gen > 0 ? `gen${r.gen}` : 'unreadable'}.json`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return text;
+}
+hudWorld.fresh?.addEventListener('click', () => { void startFresh(); });
+hudWorld.exportBtn?.addEventListener('click', () => { exportRefused(); });
+hudWorld.reload?.addEventListener('click', () => { location.reload(); });
+
 /** What the HUD's save readout says in each state, and the warning line under it. */
 const SAVE_TEXT: Record<SaveState | 'loading', readonly [string, string]> = {
   loading: ['loading', ''],
   pending: ['saving', ''],
   saved: ['saved', ''],
-  error: ['not saved', 'the last save failed — retrying'],
+  error: ['not saved', 'the last save failed — retrying every 10 s'],
   unavailable: ['not saved', 'storage unavailable — progress is not kept'],
-  conflict: ['not saved', 'another tab is saving — reload to play here'],
-  newer: ['not saved', 'save from a newer version kept, not overwritten'],
-  corrupt: ['not saved', 'unreadable save kept, not overwritten'],
-  incomplete: ['not saved', 'incomplete save kept, not overwritten'],
+  conflict: ['paused', 'another tab took over saving — this tab is paused; reload to play here'],
+  newer: ['not saved', 'this save was made by a newer version of the game — kept, not overwritten'],
+  corrupt: ['not saved', 'this save cannot be read — kept, not overwritten'],
+  incomplete: ['not saved', 'this save is incomplete — kept, not overwritten'],
 };
+const ERROR_CLOSED = 'storage was closed and could not be reopened — retrying every 10 s';
+const ERROR_NEWER_DB = 'a newer version of the game upgraded the save — reload to update';
 let shownSec = -2;
 let shownRoster = -2;
 let shownState = '';
 let shownAgo = -2;
+/** Which variant of the note is shown, so a change of detail repaints without a string compare. */
+let shownKind = -1;
 
 function paintWorldHud(): void {
   const sec = world ? Math.floor(world.tick / TICK_HZ) : -1;
@@ -2109,21 +2188,39 @@ function paintWorldHud(): void {
     shownRoster = roster;
     hudWorld.roster.textContent = roster < 0 ? '—' : String(roster);
   }
-  const state: SaveState | 'loading' = save ? save.state : world ? 'unavailable' : 'loading';
-  const ago = state === 'saved' && save?.lastSavedAt != null
-    ? Math.max(0, Math.floor((Date.now() - save.lastSavedAt) / 1000)) : -1;
-  if (state === shownState && ago === shownAgo) return;
+  const s = save;
+  const state: SaveState | 'loading' = s ? s.state : world ? 'unavailable' : 'loading';
+  const ago = state === 'saved' && s?.lastSavedAt != null
+    ? Math.max(0, Math.floor((Date.now() - s.lastSavedAt) / 1000)) : -1;
+  const kind = state === 'error' && s
+    ? (s.detail.startsWith('StoreClosedError') ? (s.detail.includes('newer version') ? 2 : 1) : 0)
+    : state === 'saved' && s?.asideKey ? 3 : 0;
+  if (state === shownState && ago === shownAgo && kind === shownKind) return;
   shownState = state;
   shownAgo = ago;
-  const [value, note] = SAVE_TEXT[state];
+  shownKind = kind;
+  const [value, base] = SAVE_TEXT[state];
+  const note = kind === 1 ? ERROR_CLOSED : kind === 2 ? ERROR_NEWER_DB
+    : kind === 3 ? `the old save is kept aside, untouched (${s?.asideKey ?? ''})` : base;
   if (hudWorld.save) {
     hudWorld.save.textContent = ago < 0 ? value : `${value} ${ago < 60 ? `${ago}s` : `${Math.floor(ago / 60)}m`} ago`;
-    hudWorld.save.classList.toggle('off', value === 'not saved');
+    hudWorld.save.classList.toggle('off', value !== 'saved' && value !== 'saving' && value !== 'loading');
   }
   if (hudWorld.note) {
     hudWorld.note.textContent = note;
     hudWorld.note.hidden = note === '';
   }
+  const refused = s?.refused ? s.refused : null;
+  if (hudWorld.actions) hudWorld.actions.hidden = !refused && state !== 'conflict' && kind !== 2;
+  if (hudWorld.fresh) {
+    hudWorld.fresh.hidden = !refused;
+    const n = refused?.salvage.length ?? 0;
+    hudWorld.fresh.textContent = n > 0
+      ? `start fresh with the ${n} readable dragon${n === 1 ? '' : 's'}, keep the old save aside`
+      : 'start fresh, keep the old save aside';
+  }
+  if (hudWorld.exportBtn) hudWorld.exportBtn.hidden = !refused;
+  if (hudWorld.reload) hudWorld.reload.hidden = state !== 'conflict' && state !== 'newer' && kind !== 2;
 }
 
 /** The `?test` hook's view of the world: a deep copy, never the live object. */
@@ -2136,6 +2233,10 @@ function readSave() {
     writes: save?.writes ?? 0,
     lastSavedAt: save?.lastSavedAt ?? null,
     report: loadReport,
+    refused: save?.refused ? { gen: save.refused.gen, salvage: save.refused.salvage.length } : null,
+    asideKey: save?.asideKey ?? null,
+    paused: worldPaused(),
+    saveStats: { ...saveStats },
     worldReadyMs,
     bootMs,
     hud: {
@@ -2143,6 +2244,9 @@ function readSave() {
       roster: hudWorld.roster?.textContent ?? '',
       save: hudWorld.save?.textContent ?? '',
       note: hudWorld.note && !hudWorld.note.hidden ? hudWorld.note.textContent ?? '' : '',
+      actions: hudWorld.actions && !hudWorld.actions.hidden
+        ? [...hudWorld.actions.querySelectorAll('button')].filter((b) => !b.hidden).map((b) => b.textContent ?? '')
+        : [],
     },
   };
 }
@@ -2155,14 +2259,19 @@ if (TEST_HOOKS) {
       const w = world;
       if (!w) throw new Error('no world');
       const { addWild, addBred } = await import('./sim/roster');
+      // A paused tab refuses world changes: nothing it did could be saved.
+      if (worldPaused()) return { ...readSave(), changed: false };
       const a = addWild(w);
       const b = addWild(w);
       addBred(w, a.id, b.id);
       paintWorldHud();
       await saveWorld();
-      return readSave();
+      return { ...readSave(), changed: true };
     },
     save: async () => { await worldReady; await saveWorld(); return readSave(); },
+    startFresh: async () => { await worldReady; const key = await startFresh(); return { ...readSave(), key }; },
+    exportText: () => exportRefused(),
+    closeStore: () => { saveStore?.close(); },
   };
 }
 
@@ -2455,7 +2564,8 @@ function frame(now: number): void {
 
   // The fixed 20 Hz sim, before the context check: the world's clock does not stop for a
   // GPU reset. Allocation-free — `step` mutates the world in place.
-  if (world !== null) {
+  // A paused tab (another tab took over saving) stops its world: see `worldPaused`.
+  if (world !== null && (save === null || save.state !== 'conflict')) {
     simAccMs += frameMs < MAX_CATCH_UP_MS ? frameMs : MAX_CATCH_UP_MS;
     while (simAccMs >= TICK_MS) {
       step(world);
@@ -2585,6 +2695,8 @@ interface FrameCostReport {
   framesRendered: number;
   /** `performance.now()` at the end of the first rendered frame: boot to first frame. */
   bootMs: number;
+  /** M8a: saves so far and what they cost (`SaveTiming` per save; max is the worst seen). */
+  save: { count: number; maxMainThreadMs: number; maxRoundTripMs: number; last: SaveTiming | null };
   viewport: {
     cssWidth: number; cssHeight: number; devicePixelRatio: number;
     drawingBufferWidth: number; drawingBufferHeight: number; pixelRatio: number;
@@ -2652,9 +2764,15 @@ declare global {
   var __dragonveinSave: {
     ready: () => Promise<ReturnType<typeof readSave>>;
     read: () => ReturnType<typeof readSave>;
-    /** Two wild dragons and their child, then an immediate save. */
-    seedRoster: () => Promise<ReturnType<typeof readSave>>;
+    /** Two wild dragons and their child, then an immediate save. Refused while paused. */
+    seedRoster: () => Promise<ReturnType<typeof readSave> & { changed: boolean }>;
     save: () => Promise<ReturnType<typeof readSave>>;
+    /** The HUD's "start fresh, keep the old save aside". */
+    startFresh: () => Promise<ReturnType<typeof readSave> & { key: string | null }>;
+    /** The HUD's "export old save": also triggers the download. */
+    exportText: () => string | null;
+    /** Close the IndexedDB handle under the game, as the browser may; the next save reopens it. */
+    closeStore: () => void;
   } | undefined;
   var __dragonveinPerf: {
     reset: () => void;
@@ -2793,6 +2911,7 @@ globalThis.__dragonveinPerf = {
     presentIntervalMs: presentIntervalMs.toArray(),
     framesRendered,
     bootMs,
+    save: { ...saveStats },
     viewport: {
       cssWidth: canvas.clientWidth,
       cssHeight: canvas.clientHeight,

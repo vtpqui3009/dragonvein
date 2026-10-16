@@ -803,6 +803,10 @@ try {
         'so they are neither served nor counted.',
     },
     bootMs: round(paced.probe.bootMs),
+    // M8a: the autosaves that ran during the paced pass (every 10 s) and their cost. The
+    // synchronous part — serialise, journal, the structured clone in `put` — is main-thread
+    // time that lands in some frame; reported, not budgeted.
+    save: paced.probe.save ?? null,
     bootBudgetMs: BUDGET.bootMs,
     framesRendered: paced.probe.framesRendered,
     drawCalls: paced.stats?.drawCalls ?? null,
@@ -962,6 +966,12 @@ try {
     `${report.bundle.assets.count} asset file(s), ${(report.bundle.assets.gzipBytes / 1000).toFixed(2)} kB ` +
     'gzipped, reported separately per CLAUDE.md §2.6)');
   console.log(`boot to first frame: ${report.bootMs}ms vs budget ${BUDGET.bootMs}ms`);
+  if (report.save) {
+    const l = report.save.last;
+    console.log(`saves during the pass: ${report.save.count}, worst main-thread ${report.save.maxMainThreadMs.toFixed(2)}ms, ` +
+      `worst round trip ${report.save.maxRoundTripMs.toFixed(1)}ms` + (l ? `; last ${l.bytes} B: serialise ` +
+      `${l.serialiseMs.toFixed(2)} + journal ${l.journalMs.toFixed(2)} + put ${l.putMs.toFixed(2)} ms` : ''));
+  }
   console.log(`draw calls: ${report.drawCalls}   triangles: ${report.triangles}   ` +
     `wind instances: ${report.windInstances}`);
   console.log(`potato tier (P6): ${report.potato.viewport.drawingBufferWidth}x` +

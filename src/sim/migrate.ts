@@ -19,7 +19,7 @@
  * unknown field is refused rather than dropped because dropping it and saving would destroy
  * data this build does not understand.
  */
-import { ELEMENTS, GENE_NAMES, Genome } from '../core/genome';
+import { ELEMENTS, GENE_NAMES, Genome, type GenomeJson } from '../core/genome';
 import { RNG_VERSION, isRngState } from '../core/rng';
 import { SCHEMA_VERSION, type World } from './world';
 
@@ -140,6 +140,37 @@ export function validateV1(w: Obj): World {
 
 export const CHAIN: Chain<World> = { migrations: MIGRATIONS, target: SCHEMA_VERSION, validate: validateV1 };
 assertChain(CHAIN);
+
+/**
+ * The genomes that still validate in a refused payload of this build's schema: a record
+ * refused for one tampered dragon, say, still holds the others. Each one passes the same
+ * check `decodeSave` applies, gid included, and is returned as a copy. A payload that is not
+ * JSON, or from another schema or RNG version, salvages nothing — this build cannot say what
+ * its genomes mean. The record itself is never touched; the caller keeps it whole.
+ */
+export function salvageGenomes(text: unknown): GenomeJson[] {
+  try {
+    const p: unknown = typeof text === 'string' ? JSON.parse(text) : null;
+    if (!isObj(p) || p.rngVersion !== RNG_VERSION || !isObj(p.world)) return [];
+    const w = p.world;
+    if (w.schema !== SCHEMA_VERSION || !Array.isArray(w.roster)) return [];
+    const out: GenomeJson[] = [];
+    const seen = new Set<string>();
+    w.roster.forEach((d: unknown, i: number) => {
+      if (!isObj(d)) return;
+      try {
+        checkGenome(d.genome, `roster[${i}].genome`);
+      } catch {
+        return;
+      }
+      const g = structuredClone(d.genome) as GenomeJson;
+      if (!seen.has(g.gid)) { seen.add(g.gid); out.push(g); }
+    });
+    return out;
+  } catch {
+    return [];
+  }
+}
 
 /** Parse, run the chain from the payload's schema up to `chain.target`, validate. Never throws. */
 export function decodeSave<W = World>(text: unknown, chain: Chain<W> = CHAIN as unknown as Chain<W>): Decoded<W> {

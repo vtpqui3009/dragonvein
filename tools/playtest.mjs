@@ -36,6 +36,8 @@
  *    09-save-before.png        the HUD's world clock and "saved Ns ago" just before a reload
  *    10-save-after-reload.png  the same world after it, read back from IndexedDB
  *    13-save-not-saved.png     a boot with IndexedDB blocked: the game runs and says "not saved"
+ *    14-save-refused.png       a save refused for one tampered dragon: the way out on the HUD
+ *    15-save-started-fresh.png after "start fresh": the readable dragons kept, the old save aside
  *
  *  And one motion artefact, `artifacts/turntables/m0-island.webm`: rubric A5 asks whether
  *  anything pops in a scene whose whole definition of done is that it *rotates*, and
@@ -703,6 +705,9 @@ try {
       pg.on('console', (m) => { if (m.type() === 'error') saveErrors.push(`${tag}: ${m.text()}`); });
     };
     const url = `${preview.url}?test`;
+    // A same-origin page that is not the game, for holding the store from "another tab".
+    const blank = new URL('__blank.html', preview.url).href;
+    await ctx.route(blank, (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>blank</title>' }));
     const drawn = (pg) => pg.waitForFunction(
       () => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0, undefined, { timeout: 30_000 });
     const ready = (pg) => pg.evaluate(() => globalThis.__dragonveinSave?.ready() ?? null);
@@ -766,10 +771,82 @@ try {
         `${before.world.tick} -> ${after.world.tick}`}`);
       say(`shot: ${SHOTS}/10-save-after-reload.png  (M8a criterion 5)`);
       if (broke.length) errors.push(`save: the world did not survive a reload: ${broke.join('; ')}`);
-      if (after?.report?.source !== 'loaded') errors.push(`save: the reload did not load the save: ${JSON.stringify(after?.report)}`);
+      // 'journal' is the normal case on a reload: the pagehide save is journalled, and its
+      // IndexedDB write dies with the page (Chromium aborts it), so the next load promotes it.
+      if (!['loaded', 'journal'].includes(after?.report?.source)) {
+        errors.push(`save: the reload did not load the save: ${JSON.stringify(after?.report)}`);
+      }
+      // And IndexedDB itself holds the world once the boot save has landed: read it directly.
+      {
+        const stored = await p.evaluate(() => new Promise((resolve) => {
+          const q = indexedDB.open('dragonvein');
+          q.onsuccess = () => {
+            const g = q.result.transaction('save', 'readonly').objectStore('save').get('main');
+            g.onsuccess = () => { q.result.close(); resolve(g.result ?? null); };
+          };
+        }));
+        const w = stored ? JSON.parse(stored.text).world : null;
+        const same = w && JSON.stringify(w.roster) === JSON.stringify(before.world.roster) && w.seed === before.world.seed;
+        say(`save: IndexedDB 'main' read directly after the reload — gen ${stored?.gen}, writer ${stored?.writer}, ` +
+          `${w?.roster.length} dragons, ${same ? 'roster and seed equal to the saved world' : 'DIFFERENT from the saved world'}`);
+        if (!same) errors.push('save: IndexedDB does not hold the saved world after the reload');
+      }
+
+      // Timing (perf-critic, cycle 1): what a save costs, and how much of it is main thread.
+      {
+        const st = (await p.evaluate(() => globalThis.__dragonveinSave.read())).saveStats;
+        const l = st.last;
+        say(`save: saveMs — ${st.count} save(s) on this page; last ${l?.bytes} B: serialise ${l?.serialiseMs.toFixed(2)} ` +
+          `+ journal ${l?.journalMs.toFixed(2)} + put ${l?.putMs.toFixed(2)} ms on the main thread, ` +
+          `${l?.roundTripMs.toFixed(1)} ms to complete; worst main-thread ${st.maxMainThreadMs.toFixed(2)} ms`);
+      }
+
+      // Cycle 2, D1: the gameplay critic's repro. Another tab holds a readwrite transaction
+      // on the store for 2.5 s; the game asks for a save and seeds the roster (which saves),
+      // and the page reloads 300 ms later — before either write can start. Chromium aborts a
+      // transaction still waiting when its page goes, so only the journal can carry them.
+      let last = after.world;
+      {
+        const holder = await ctx.newPage();
+        watch(holder, 'lock holder');
+        await holder.goto(blank, { waitUntil: 'load' });
+        await holder.evaluate(() => new Promise((started) => {
+          const q = indexedDB.open('dragonvein');
+          q.onsuccess = () => {
+            const db = q.result;
+            const tx = db.transaction('save', 'readwrite');
+            const os = tx.objectStore('save');
+            const end = performance.now() + 2500;
+            const spin = () => { if (performance.now() < end) os.get('main').onsuccess = spin; };
+            spin();
+            tx.oncomplete = () => db.close();
+            started(true);
+          };
+        }));
+        const rosterBefore = last.roster.length;
+        await p.evaluate(() => {
+          void globalThis.__dragonveinSave.save();
+          void globalThis.__dragonveinSave.seedRoster();
+        });
+        await p.waitForTimeout(300);
+        const mid = await p.evaluate(() => globalThis.__dragonveinSave.read());
+        await p.reload({ waitUntil: 'load', timeout: 30_000 });
+        const r = await ready(p);
+        await drawn(p);
+        await savedState(p);
+        await holder.close();
+        const n = r?.world?.roster.length ?? 0;
+        const bredNow = r?.world?.roster.filter((d) => d.genome.generation > 0).length ?? 0;
+        say(`save: reload with the store held by another tab — before the reload ${mid.world.roster.length} dragons, ` +
+          `${mid.writes} write(s) landed, state ${mid.state}; after it ${n} dragons (${bredNow} bred), loaded from ` +
+          `${r?.report?.source} (${r?.report?.detail})`);
+        if (n !== rosterBefore + 3 || JSON.stringify(r?.world?.roster) !== JSON.stringify(mid.world.roster)) {
+          errors.push(`save: a reload behind a held store lost the roster: ${rosterBefore} + 3 seeded, ${n} after reload`);
+        }
+        last = r?.world ?? last;
+      }
 
       // Reloads mid-save: ask for a save and reload without waiting for it.
-      let last = after.world;
       const rapid = [];
       for (let i = 0; i < RAPID_RELOADS; i++) {
         await p.evaluate(() => { void globalThis.__dragonveinSave.save(); });
@@ -780,7 +857,7 @@ try {
         await drawn(p);
         const bad = diff(last, r?.world);
         rapid.push(`${r?.report?.source}@gen${r?.report?.gen}/tick${r?.world?.tick}${bad.length ? ` BROKE(${bad.join('; ')})` : ''}`);
-        if (bad.length || r?.report?.source !== 'loaded') {
+        if (bad.length || !['loaded', 'journal'].includes(r?.report?.source)) {
           errors.push(`save: reload ${i + 1} mid-save lost state: ${bad.join('; ')} ${JSON.stringify(r?.report)}`);
         }
         last = r?.world ?? last;
@@ -816,6 +893,16 @@ try {
         say(`save: two tabs — tab 2 loaded ${t2?.report?.source} gen ${t2?.report?.gen}; ${split.liveName} keeps ` +
           `the slot (${liveR.state}, gen ${liveR.gen}); the other is ${deadR.state} (${deadR.detail}), HUD ${hudLine(deadR)}`);
         if (liveR.state !== 'saved') errors.push(`save: the live tab could not save: ${liveR.state} ${liveR.detail}`);
+        // Cycle 2, D4: the stale tab is paused — its clock stops and it refuses world changes.
+        const tickA = (await stateOf(split.dead)).world.tick;
+        await split.dead.waitForTimeout(1000);
+        const tried = await split.dead.evaluate(() => globalThis.__dragonveinSave.seedRoster());
+        say(`save: the stale tab is paused — tick ${tickA} -> ${tried.world.tick} over 1 s, a roster change ` +
+          `${tried.changed ? 'ACCEPTED' : 'refused'} (${tried.world.roster.length} dragons), HUD ${hudLine(tried)} ` +
+          `[${tried.hud.actions.join(' | ')}]`);
+        if (tried.world.tick !== tickA || tried.changed || !tried.paused || !tried.hud.actions.includes('reload')) {
+          errors.push(`save: the stale tab is not paused: tick ${tickA} -> ${tried.world.tick}, changed ${tried.changed}`);
+        }
         // The stale tab goes away (its pagehide save must be refused), then the live tab's
         // record must still be there: a reload of the live tab reads its own gen back.
         await split.dead.close({ runBeforeUnload: true });
@@ -834,6 +921,142 @@ try {
     }
     say(`save: ${saveErrors.length} page error(s) across the drill`);
     errors.push(...saveErrors);
+  }
+  await flush();
+
+  // --- a refused save has a way out (cycle 2, D2) and a closed store reopens (D3) --------
+  /*
+   * A save whose first dragon has a tampered allele (its gid no longer matches) is written
+   * as if by another writer, so the running page cannot save over it, and the page reloads.
+   * The game must refuse it, offer to export it and to start fresh with the readable
+   * dragons, move it byte-identical to `refused.1` when asked, and save the new world.
+   */
+  {
+    const ctx = await browser.newContext({ viewport: VIEW, acceptDownloads: true });
+    const d2Errors = [];
+    const p = await ctx.newPage();
+    p.on('pageerror', (e) => d2Errors.push(String(e)));
+    p.on('console', (m) => { if (m.type() === 'error') d2Errors.push(m.text()); });
+    const blank = new URL('__blank.html', preview.url).href;
+    await ctx.route(blank, (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>blank</title>' }));
+    const idb = (pg, op, arg) => pg.evaluate(([o, a]) => new Promise((resolve, reject) => {
+      const q = indexedDB.open('dragonvein');
+      q.onerror = () => reject(q.error);
+      q.onsuccess = () => {
+        const db = q.result;
+        const tx = db.transaction('save', o === 'tamper' ? 'readwrite' : 'readonly');
+        const os = tx.objectStore('save');
+        const g = os.get(o === 'tamper' ? 'main' : a);
+        let out = null;
+        g.onsuccess = () => {
+          if (o === 'tamper') {
+            const cur = g.result;
+            const payload = JSON.parse(cur.text);
+            // The stored gid no longer matches the alleles. (Nudging an allele is not enough:
+            // a recessive one does not change the phenotype the gid hashes.)
+            const g0 = payload.world.roster[0].genome;
+            g0.gid = g0.gid.split('').reverse().join('');
+            // As another writer would: a newer gen and no writer of this page's.
+            const next = { gen: cur.gen + 1, savedAt: cur.savedAt, text: JSON.stringify(payload) };
+            os.put(next, 'main');
+            out = JSON.stringify(next);
+          } else {
+            out = g.result === undefined ? null : JSON.stringify(g.result);
+          }
+        };
+        tx.oncomplete = () => { db.close(); resolve(out); };
+      };
+    }), [op, arg]);
+    try {
+      await p.goto(`${preview.url}?test`, { waitUntil: 'load', timeout: 30_000 });
+      await p.evaluate(() => globalThis.__dragonveinSave.ready());
+      await p.evaluate(() => globalThis.__dragonveinSave.seedRoster());
+      // Reload only once the scene's assets are in: an aborted GLB fetch logs its own error.
+      await p.waitForFunction(
+        () => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0, undefined, { timeout: 30_000 });
+      const tampered = await idb(p, 'tamper');
+      await p.reload({ waitUntil: 'load', timeout: 30_000 });
+      const refused = await p.evaluate(() => globalThis.__dragonveinSave.ready());
+      await p.waitForFunction(
+        () => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0, undefined, { timeout: 30_000 });
+      await p.waitForTimeout(400);
+      const fit = await p.evaluate(measureHud);
+      const shown = await p.evaluate(() => globalThis.__dragonveinSave.read());
+      await p.screenshot({ path: `${SHOTS}/14-save-refused.png` });
+      say(`save: refused record — state ${shown.state} (${shown.detail}); salvageable ${shown.refused?.salvage}; ` +
+        `HUD "${shown.hud.save} | ${shown.hud.note}" [${shown.hud.actions.join(' | ')}]; hud ${JSON.stringify(fit)}`);
+      say(`shot: ${SHOTS}/14-save-refused.png  (M8a cycle 2, D2)`);
+      if (refused.state !== 'corrupt' || shown.refused?.salvage !== 2 || shown.hud.actions.length !== 2) {
+        throw new Error(`the tampered save was not refused with 2 salvageable dragons and two actions: ` +
+          `${refused.state} ${JSON.stringify(shown.refused)} [${shown.hud.actions}]`);
+      }
+      if (!fit || fit.clipped.length || fit.overflow) errors.push(`save: refused-state HUD is clipped: ${JSON.stringify(fit)}`);
+
+      // Export: a real click, a real download, the stored record exactly.
+      const [download] = await Promise.all([
+        p.waitForEvent('download', { timeout: 10_000 }),
+        p.click('#hud-save-export', { timeout: 10_000 }),
+      ]);
+      const file = await download.path();
+      const { readFile } = await import('node:fs/promises');
+      const exported = JSON.parse(await readFile(file, 'utf8'));
+      const same = JSON.stringify(exported) === tampered;
+      say(`save: export — downloaded ${download.suggestedFilename()}, ${same ? 'identical to' : 'DIFFERENT from'} the stored record`);
+      if (!same) errors.push('save: the exported file is not the stored record');
+
+      // Start fresh: a real click. The record moves aside untouched; the readable dragons come along.
+      await p.click('#hud-save-fresh');
+      await p.waitForFunction(() => globalThis.__dragonveinSave.read().state === 'saved', undefined, { timeout: 15_000 });
+      await p.waitForTimeout(400);
+      const fresh = await p.evaluate(() => globalThis.__dragonveinSave.read());
+      const aside = await idb(p, 'get', fresh.asideKey);
+      await p.screenshot({ path: `${SHOTS}/15-save-started-fresh.png` });
+      await p.reload({ waitUntil: 'load', timeout: 30_000 });
+      await p.waitForFunction(
+        () => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0, undefined, { timeout: 30_000 });
+      const back = await p.evaluate(() => globalThis.__dragonveinSave.ready());
+      const asideLater = await idb(p, 'get', fresh.asideKey);
+      say(`save: start fresh — old record moved to ${fresh.asideKey} ${aside === tampered ? 'byte-identical' : 'CHANGED'}; ` +
+        `new world ${fresh.world.roster.length} dragons (${fresh.world.roster.map((d) => d.genome.gid).join(', ')}), ` +
+        `${fresh.state}; HUD "${fresh.hud.save} | ${fresh.hud.note}"; after a reload ${back.report.source} with ` +
+        `${back.world.roster.length} dragons, ${fresh.asideKey} still ${asideLater === tampered ? 'identical' : 'CHANGED'}`);
+      say(`shot: ${SHOTS}/15-save-started-fresh.png  (M8a cycle 2, D2)`);
+      if (aside !== tampered || asideLater !== tampered || fresh.world.roster.length !== 2
+        || !['loaded', 'journal'].includes(back.report.source) || back.world.roster.length !== 2) {
+        errors.push('save: start fresh lost the old record or the readable dragons');
+      }
+
+      // D3: a handle closed under the game is reopened by the next save.
+      await p.evaluate(() => globalThis.__dragonveinSave.closeStore());
+      const reopened = await p.evaluate(() => globalThis.__dragonveinSave.save());
+      say(`save: store handle closed under the game, next save ${reopened.state} (gen ${reopened.gen})`);
+      if (reopened.state !== 'saved') errors.push(`save: a closed store was not reopened: ${reopened.state} ${reopened.detail}`);
+
+      // D3: a newer build upgrades the database. This page lets go; its next save cannot
+      // reopen at the old version, and the HUD must say so rather than promise a retry.
+      const newer = await ctx.newPage();
+      await newer.goto(blank);
+      await newer.evaluate(() => new Promise((resolve) => {
+        const q = indexedDB.open('dragonvein', 2);
+        q.onsuccess = () => { q.result.close(); resolve(true); };
+        q.onerror = () => resolve(false);
+      }));
+      await newer.close();
+      const afterUpgrade = await p.evaluate(() => globalThis.__dragonveinSave.save());
+      await p.waitForTimeout(400);
+      const hud = await p.evaluate(() => globalThis.__dragonveinSave.read());
+      say(`save: database upgraded by a newer build — next save ${afterUpgrade.state} (${afterUpgrade.detail}); ` +
+        `HUD "${hud.hud.save} | ${hud.hud.note}" [${hud.hud.actions.join(' | ')}]`);
+      if (afterUpgrade.state !== 'error' || !hud.hud.note.includes('newer version')) {
+        errors.push(`save: after a newer build's upgrade the HUD does not say so: ${hud.hud.note}`);
+      }
+    } catch (e) {
+      errors.push(`refused-save drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
+    }
+    say(`save: ${d2Errors.length} page error(s) across the refused-save drill`);
+    errors.push(...d2Errors.map((e) => `refused save: ${e}`));
   }
   await flush();
 
