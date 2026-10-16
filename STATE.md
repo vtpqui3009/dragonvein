@@ -167,6 +167,92 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-16 · run 32 · M8a — IndexedDB save and load; a world survives reload; migrations in place
+
+**Step**: `M8a`, the first step in reading order that is not `DONE`. M7 and M5 wait only on the
+owner's look. The marker commit precedes this one.
+
+**What exists today.** There is no `src/sim/` yet. `src/core/` holds `rng`, `genome`, `py` and
+`sha1`. The game page (`src/main.ts`) has no world state of its own beyond the island seed.
+M8a therefore lays down the persistence spine that M8b–M9 will fill. It does not add gameplay.
+
+**The design, decided before code** (docs/ARCHITECTURE.md §Save: "IndexedDB, one store … sim
+state, the RNG version and a schema version; migrations in `src/sim/migrate.ts`, only ever added"):
+
+- **`src/sim/world.ts`, the world state.** It is plain JSON-able data:
+  - `schema`;
+  - `seed`;
+  - `tick`, the fixed 20 Hz sim clock;
+  - the `Rng` state;
+  - `roster`, a list of dragons with an id and a `GenomeJson`;
+  - `eggs`, empty until M9.
+
+  The module has pure `createWorld(seed)` and `step(world)`, and no DOM, wall clock or
+  `Math.random` (`check:determinism`).
+- **`src/core/rng.ts`.** Add a state export and a restore, so a world can be saved and resumed
+  mid-stream. Whether the stream continues identically is tested, and it must still match
+  `assetgen/genome.py`.
+- **`src/sim/migrate.ts`, the migration chain.** It runs a record from its `schema` up to
+  `SCHEMA_VERSION`. Migrations are only ever appended. A record from a newer schema, or a
+  corrupt one, is **never overwritten**: the game starts a fresh world without saving over it,
+  and says so on screen. The previous record is kept as a backup before any migration writes.
+- **`src/core/save.ts`, the IndexedDB adapter.** One database and one store. When IndexedDB is
+  unavailable (private mode, or blocked), the game still runs and the HUD says that progress is
+  not saved.
+- **`src/main.ts`, the wiring.** Load at boot, then autosave every 10 s, on `visibilitychange`
+  to hidden and on `pagehide`. The HUD shows the world clock and the save state. Nothing new may
+  allocate per frame: serialisation happens only on save, and the HUD string is rebuilt only
+  when it changes.
+
+**Ownership**: `src/core/`, the new `src/sim/`, `src/main.ts`, `tools/` and `tests/`. That is
+cross-directory, so there is one sequential owner, the integrator. `check:layers` must accept
+`src/sim/` importing only `core`.
+
+### Acceptance criteria
+
+1. **Determinism across a save.** `tests/save.test.ts` covers two cases:
+   - A world stepped 1 000 ticks equals a world stepped 400 ticks, serialised to JSON, parsed,
+     restored and stepped 600 more. They match on deep equality of the state and on the next
+     100 `Rng` draws.
+   - `Rng` state export and restore continues the stream draw for draw. The existing
+     Python-vector test still passes.
+2. **Migrations in place.**
+   - `migrate()` is a tested, append-only chain. A synthetic two-step chain in the test proves
+     the ordering.
+   - A frozen fixture `tests/fixtures/save-v1.json`, a world with a roster of ≥ 3 genomes of
+     which one is bred, is committed now. A test loads it and asserts the round trip. Every
+     future schema must keep loading that file, and the test says so.
+   - A newer-schema record, a corrupt record and a record missing fields are each refused
+     without being overwritten, and the backup survives. All three are tested.
+3. **A world survives reload, in a real browser.** `gate:smoke` (`tools/playtest.mjs`) runs the
+   round trip in Chromium against real IndexedDB:
+   - boot, let the world advance, and seed a roster of ≥ 3 genomes (one of them bred) through a
+     test-only hook;
+   - save, reload the page, and read the world back;
+   - assert that seed, roster and Rng state are deep-equal and that the tick is ≥ the saved tick;
+   - the round trip is logged in `playtest.log`.
+
+   It also runs one boot with IndexedDB blocked: the game runs, the HUD says "not saved", and
+   there are 0 page errors.
+4. **Budgets.**
+   - The game page stays ≤ 40 960 B per frame of heap churn (now 38 687, a noisy figure), with
+     no rise past noise attributable to this step.
+   - `cpuFrameMs` p95 stays under 3.5 ms.
+   - No new draw call.
+   - The bundle grows by no more than a few kB, and no new runtime dependency.
+   - Boot to first frame does not regress past noise: load must not block first frame, or must
+     be measured if it does.
+   - `npm run gates` exits 0.
+5. **Seen.** Shots `artifacts/shots/` `09-save-before.png` and `10-save-after-reload.png` show the
+   HUD's world clock and save state on either side of a reload. A third shot shows the "not
+   saved" state.
+6. **No blocking defect.** G4 ("state survives reload", blocking if a bred dragon is lost) and G5
+   go live at M8a in the rubric. The gameplay critic must find no way to lose the roster, for
+   example through rapid reloads, a reload mid-save, or two tabs, and no blocking or major art
+   defect in the HUD.
+
+---
+
 ## 2026-10-15 · run 31 · M7c DONE — wing flap and glide, no interpenetration at any wing span
 
 **Step**: `M7c`, the first step in reading order that is not `DONE`. The marker commit
@@ -772,4 +858,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-16T02:21Z
