@@ -62,6 +62,19 @@
       #hud .a button:hover{background:rgba(255,212,121,.12)}
       #hud .a button:focus-visible{outline:2px solid #ffd479;outline-offset:1px}
       #hud [hidden]{display:none}
+      /* M8b: the wild dragon's calm, a small meter beside the world readouts. It supplements
+         the dragon's own tells (head, stance, tail); it never names its state. */
+      #hud .m{display:inline-block;vertical-align:-1px;width:58px;height:10px;box-sizing:border-box;
+        border:1px solid rgba(255,212,121,.7);border-radius:5px;overflow:hidden}
+      #hud .m span{display:block;height:100%;width:0;background:#ffd479;transition:width .25s}
+      /* How to move, until the player has: bottom centre, the HUD's panel and type. */
+      #hint{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);pointer-events:none;
+        max-width:calc(100vw - 28px);box-sizing:border-box;padding:8px 14px;border-radius:10px;
+        background:rgba(11,36,48,0.82);border:1px solid rgba(255,212,121,.38);color:#eef7fd;
+        font:600 13px/1.3 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.05em;
+        text-align:center;transition:opacity .6s}
+      #hint b{color:#ffd479;font-weight:600}
+      #hint.done{opacity:0}
     </style>
   </head>
   <body>
@@ -77,6 +90,7 @@
            state. When the game will not save, the line under it says why. -->
       <span class="g"><span class="k">world</span><span class="v" id="hud-clock">—</span></span>
       <span class="g"><span class="k">dragons</span><span class="v" id="hud-roster">—</span></span>
+      <span class="g" id="hud-wild" hidden><span class="k">calm</span><span class="v"><span class="m"><span id="hud-calm"></span></span></span></span>
       <span class="g"><span class="v" id="hud-save">loading</span></span>
       <span class="w" id="hud-save-note" hidden></span>
       <!-- The way out of a save the game will not write (M8a cycle 2). Nothing here deletes
@@ -91,6 +105,8 @@
            printing them over a dead canvas is the opposite of a diagnostic. -->
       <span class="w" id="hud-status" hidden></span>
     </div>
+    <!-- M8b: the one control the island has. Fades once the keeper has walked somewhere. -->
+    <div id="hint"><b>tap</b> the island to walk there · <b>double-tap</b> to run</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

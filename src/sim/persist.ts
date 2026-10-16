@@ -29,6 +29,7 @@ import {
   type BaseRef, type Journal, type SaveStore, type StoredSave,
 } from '../core/save';
 import { CHAIN, decodeSave, encodeSave, salvageGenomes, type Chain, type Refusal } from './migrate';
+import type { Deck } from './wild';
 import { createWorld, type World } from './world';
 
 export type SaveState =
@@ -359,9 +360,13 @@ export async function openWorld<W = World>(
   };
 }
 
-/** `openWorld` for this build's schema, a fresh world seeded with `seed` when needed. */
+/**
+ * `openWorld` for this build's schema, a fresh world seeded with `seed` when needed, its
+ * wild dragon and keeper placed on `deck` (./wild.ts; the open deck when omitted).
+ */
 export function openGameWorld(
-  store: SaveStore | null, seed: number, opts: Omit<OpenOptions<World>, 'chain'> = {},
+  store: SaveStore | null, seed: number, opts: Omit<OpenOptions<World>, 'chain'> & { deck?: Deck } = {},
 ) {
-  return openWorld<World>(store, () => createWorld(seed), opts);
+  const { deck, ...rest } = opts;
+  return openWorld<World>(store, () => createWorld(seed, deck), rest);
 }

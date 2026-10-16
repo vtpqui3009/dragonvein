@@ -19,8 +19,9 @@
  * unknown field is refused rather than dropped because dropping it and saving would destroy
  * data this build does not understand.
  */
-import { ELEMENTS, GENE_NAMES, Genome, type GenomeJson } from '../core/genome';
-import { RNG_VERSION, isRngState } from '../core/rng';
+import { ELEMENTS, GENE_NAMES, Genome, wild, type GenomeJson } from '../core/genome';
+import { RNG_VERSION, Rng, isRngState } from '../core/rng';
+import { WILD_STATES } from './wild';
 import { SCHEMA_VERSION, type World } from './world';
 
 export type Refusal = 'newer' | 'incomplete' | 'corrupt';
@@ -37,8 +38,40 @@ export interface Migration {
   up: (world: Obj) => Obj;
 }
 
+/**
+ * 1 → 2 (M8b): the hero island gains its wild dragon and the keeper. The schema-1 record is
+ * validated first, so a bad one is refused for its own reason, as before this migration
+ * existed. Then, like a new world: one uint32 from the world's own stream seeds `wild()`,
+ * the dragon takes the next id, and both stand at fixed spots — the open deck's home and
+ * gate (./wild.ts OPEN_DECK), written out here as literals so this migration never changes
+ * when those do. The first tick moves either off any obstacle on the page's deck.
+ *
+ * FROZEN once shipped: tests/fixtures/save-v1.json migrates through this to exactly the
+ * world tests/save.test.ts names, dragon genome and all.
+ */
+const V1_TO_V2: Migration = {
+  from: 1,
+  up: (w) => {
+    validateV1(w);
+    const rng = Rng.fromState(w.rng as number[]);
+    const seed = Math.floor(rng.next() * 4294967296) >>> 0;
+    const id = w.nextId as number;
+    return {
+      ...w,
+      schema: 2,
+      rng: rng.state(),
+      nextId: id + 1,
+      wild: {
+        id, genome: wild(seed).toJSON(), pos: [1.2, 1.8], heading: 0, state: 'graze', calm: 0,
+        t: 0, dur: 60, goal: [1.2, 1.8], from: [1.2, 1.8],
+      },
+      keeper: { pos: [-4.2, -2.4], goal: [-4.2, -2.4], pace: 0, v: 0 },
+    };
+  },
+};
+
 /** Schema 1 is the first. Append here, never anywhere else; see the header. */
-export const MIGRATIONS: readonly Migration[] = [];
+export const MIGRATIONS: readonly Migration[] = [V1_TO_V2];
 
 export interface Chain<W> {
   migrations: readonly Migration[];
@@ -113,10 +146,9 @@ function checkGenome(g: unknown, where: string): void {
   }
 }
 
-/** Schema 1, field by field. */
-export function validateV1(w: Obj): World {
-  keys(w, ['schema', 'seed', 'tick', 'rng', 'nextId', 'roster', 'eggs'], 'world');
-  bad(w.schema !== 1, `world.schema: ${String(w.schema)}`);
+/** The fields every schema so far shares, checked against `schema`. */
+function checkBase(w: Obj, schema: number): void {
+  bad(w.schema !== schema, `world.schema: ${String(w.schema)}`);
   bad(!isUint32(w.seed), `world.seed: ${String(w.seed)}`);
   bad(!isCount(w.tick, 0), `world.tick: ${String(w.tick)}`);
   bad(!isRngState(w.rng), `world.rng: ${JSON.stringify(w.rng)}`);
@@ -135,25 +167,63 @@ export function validateV1(w: Obj): World {
     ids.add(id as number);
     checkGenome((d as Obj).genome, `${where}.genome`);
   });
+}
+
+const V1_KEYS = ['schema', 'seed', 'tick', 'rng', 'nextId', 'roster', 'eggs'] as const;
+
+/** Schema 1, field by field. Returns nothing: a schema-1 world is only ever migrated. */
+export function validateV1(w: Obj): void {
+  keys(w, V1_KEYS, 'world');
+  checkBase(w, 1);
+}
+
+const isFinitePair = (v: unknown) => Array.isArray(v) && v.length === 2
+  && v.every((x) => typeof x === 'number' && Number.isFinite(x) && Math.abs(x) < 1e4);
+const isFiniteNum = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+
+/** Schema 2 (M8b): schema 1's fields, the wild dragon and the keeper. */
+export function validateV2(w: Obj): World {
+  keys(w, [...V1_KEYS, 'wild', 'keeper'], 'world');
+  checkBase(w, 2);
+  bad(!isObj(w.wild), 'world.wild: not an object');
+  const d = w.wild as Obj;
+  keys(d, ['id', 'genome', 'pos', 'heading', 'state', 'calm', 't', 'dur', 'goal', 'from'], 'world.wild');
+  bad(!isCount(d.id, 1) || (d.id as number) >= (w.nextId as number), `world.wild.id: ${String(d.id)}`);
+  bad((w.roster as Obj[]).some((r) => r.id === d.id), `world.wild.id: ${String(d.id)} is also on the roster`);
+  checkGenome(d.genome, 'world.wild.genome');
+  bad(!isFinitePair(d.pos) || !isFinitePair(d.goal) || !isFinitePair(d.from), 'world.wild: pos, goal and from must be two finite numbers');
+  bad(!isFiniteNum(d.heading) || Math.abs(d.heading as number) > 4, `world.wild.heading: ${String(d.heading)}`);
+  bad(!(WILD_STATES as readonly unknown[]).includes(d.state), `world.wild.state: ${String(d.state)}`);
+  bad(!isFiniteNum(d.calm) || (d.calm as number) < 0 || (d.calm as number) > 1, `world.wild.calm: ${String(d.calm)}`);
+  bad(!isCount(d.t, 0) || !isCount(d.dur, 0), `world.wild: t ${String(d.t)}, dur ${String(d.dur)}`);
+  bad(!isObj(w.keeper), 'world.keeper: not an object');
+  const k = w.keeper as Obj;
+  keys(k, ['pos', 'goal', 'pace', 'v'], 'world.keeper');
+  bad(!isFinitePair(k.pos) || !isFinitePair(k.goal), 'world.keeper: pos and goal must be two finite numbers');
+  bad(!isFiniteNum(k.pace) || (k.pace as number) < 0 || (k.pace as number) > 10, `world.keeper.pace: ${String(k.pace)}`);
+  bad(!isFiniteNum(k.v) || (k.v as number) < 0 || (k.v as number) > 10, `world.keeper.v: ${String(k.v)}`);
   return w as unknown as World;
 }
 
-export const CHAIN: Chain<World> = { migrations: MIGRATIONS, target: SCHEMA_VERSION, validate: validateV1 };
+export const CHAIN: Chain<World> = { migrations: MIGRATIONS, target: SCHEMA_VERSION, validate: validateV2 };
 assertChain(CHAIN);
 
 /**
- * The genomes that still validate in a refused payload of this build's schema: a record
- * refused for one tampered dragon, say, still holds the others. Each one passes the same
- * check `decodeSave` applies, gid included, and is returned as a copy. A payload that is not
- * JSON, or from another schema or RNG version, salvages nothing — this build cannot say what
- * its genomes mean. The record itself is never touched; the caller keeps it whole.
+ * The genomes that still validate in a refused payload of a schema this build knows (1 up to
+ * its own; the roster's shape has not changed across them): a record refused for one
+ * tampered dragon, say, still holds the others. Each one passes the same check `decodeSave`
+ * applies, gid included, and is returned as a copy. A payload that is not JSON, or from a
+ * newer schema or another RNG version, salvages nothing — this build cannot say what its
+ * genomes mean. The record itself is never touched; the caller keeps it whole. A future
+ * schema that changes the roster's shape must teach this function both shapes.
  */
 export function salvageGenomes(text: unknown): GenomeJson[] {
   try {
     const p: unknown = typeof text === 'string' ? JSON.parse(text) : null;
     if (!isObj(p) || p.rngVersion !== RNG_VERSION || !isObj(p.world)) return [];
     const w = p.world;
-    if (w.schema !== SCHEMA_VERSION || !Array.isArray(w.roster)) return [];
+    if (!Number.isSafeInteger(w.schema) || (w.schema as number) < 1 || (w.schema as number) > SCHEMA_VERSION
+      || !Array.isArray(w.roster)) return [];
     const out: GenomeJson[] = [];
     const seen = new Set<string>();
     w.roster.forEach((d: unknown, i: number) => {

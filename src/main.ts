@@ -3,7 +3,13 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Rng } from './core/rng';
 import { FloraBatch, batchable } from './render/flora';
 import { bakeWindBend, setWindTime, withWind } from './render/wind';
+import { setIdleTime } from './render/idle';
+import { DeckHeights, KEEPER_UNIFORMS, keeperGeometry, withKeeper } from './render/wild';
+import type { WildDragonView } from './render/wild-dragon';
 import { TICK_HZ, TICK_MS, adoptGenomes, createWorld, step, type World } from './sim/world';
+import {
+  DRAGON_SCALE, LAND_S, TAKEOFF_S, WILD_DT, blankTemperament, keeperTo, temperament, type Deck, type Temperament,
+} from './sim/wild';
 import type { LoadReport, SaveSession, SaveState, SaveTiming } from './sim/persist';
 import type { SaveStore } from './core/save';
 
@@ -222,16 +228,43 @@ function pointerSpan(): number {
   return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
 }
 
+/*
+ * A tap walks the keeper (M8b); a drag still orbits and a pinch still zooms. One pointer
+ * that lifts within TAP_MS having moved no more than TAP_SLOP_PX from where it went down is
+ * a tap; anything else is a drag, and the orbit does not move until the press has left the
+ * slop, so a tap never nudges the camera. A second finger makes the gesture a pinch, never
+ * a tap. Two taps within DOUBLE_TAP_MS and DOUBLE_TAP_PX of each other are a double tap,
+ * which runs: the first tap has already set off at a walk, so the answer to either is
+ * immediate. Mouse, pen and touch take the same path.
+ */
+const TAP_SLOP_PX = 8;
+const TAP_MS = 450;
+const DOUBLE_TAP_MS = 380;
+const DOUBLE_TAP_PX = 36;
+const gesture = { tap: false, x0: 0, y0: 0, t0: 0 };
+const lastTap = { t: -1e9, x: 0, y: 0 };
+
 canvas.addEventListener('pointerdown', (e) => {
   if (pointers.size >= 2) return;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   canvas.setPointerCapture(e.pointerId);
   pinchSpan = pointerSpan();
+  if (pointers.size === 1 && e.button === 0) {
+    gesture.tap = true;
+    gesture.x0 = e.clientX;
+    gesture.y0 = e.clientY;
+    gesture.t0 = e.timeStamp;
+  } else gesture.tap = false;
 });
 
 canvas.addEventListener('pointermove', (e) => {
   const p = pointers.get(e.pointerId);
   if (!p) return;
+  if (pointers.size === 1 && gesture.tap) {
+    // Still a tap until the press leaves the slop; then the drag orbits by all of its travel.
+    if (Math.hypot(e.clientX - gesture.x0, e.clientY - gesture.y0) <= TAP_SLOP_PX) return;
+    gesture.tap = false;
+  }
   const dx = e.clientX - p.x;
   const dy = e.clientY - p.y;
   p.x = e.clientX;
@@ -253,8 +286,18 @@ canvas.addEventListener('pointermove', (e) => {
 });
 
 function endPointer(e: PointerEvent): void {
+  const wasTap = gesture.tap && e.type === 'pointerup' && pointers.size === 1 && pointers.has(e.pointerId)
+    && e.timeStamp - gesture.t0 <= TAP_MS;
+  gesture.tap = false;
   pointers.delete(e.pointerId);
   pinchSpan = pointerSpan();
+  if (!wasTap) return;
+  const double = e.timeStamp - lastTap.t <= DOUBLE_TAP_MS
+    && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) <= DOUBLE_TAP_PX;
+  lastTap.t = double ? -1e9 : e.timeStamp;
+  lastTap.x = e.clientX;
+  lastTap.y = e.clientY;
+  tapDeck(e.clientX, e.clientY, double);
 }
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
@@ -1286,6 +1329,60 @@ function heroSpot(
   });
 }
 
+// --- the walkable deck, the keeper and the wild dragon's place (M8b) -------------------
+/*
+ * The sim (src/sim/wild.ts) moves the keeper and the wild dragon over the deck in 2D and
+ * never sees this file's meshes, so the island's layout reaches it as a `Deck`: the deck's
+ * radius, and a circle for everything a body may not walk through — every trunk, rock,
+ * crystal, bush and flowering shrub, at the footprint the scatter already reserved for it.
+ * Ground cover (grass, ferns, moss, lichen, leaves) and the path stones are walked over, as
+ * they would be. It is derived from the seeded layout, so it is the same in every session,
+ * and it is configuration, not saved state: a save from an older layout is moved off any new
+ * obstacle by the sim's first tick.
+ *
+ * The dragon starts in the glade, the island's open ground. The keeper starts across the deck
+ * by the rim, out of the dragon's notice: the player walks in to meet it.
+ */
+const deck: Deck = (() => {
+  const o: number[] = [];
+  for (const t of heroTrees) o.push(t.x, t.z, t.r);
+  for (const r of heroRocks) o.push(r.x, r.z, r.r);
+  // A crystal shard stands up to 1.6 tall, as high as a dragon's spread wing: the whole of the
+  // footprint its cluster reserved, as the scatter does.
+  for (const c of crystalShards) o.push(c.x, c.z, Math.max(c.sx, c.sz) * 1.45);
+  for (const s of heroSpots) {
+    // The radii `pickNear` reserved for them, from the same expressions.
+    if (s.kind === 'bush') o.push(s.x, s.z, 0.2 + s.s * 0.35);
+    else if (s.kind === 'flowershrub') o.push(s.x, s.z, 0.16 + s.s * 0.3);
+  }
+  // The keeper starts across the deck from the glade, by the rim: well outside any dragon's notice.
+  const away = 4.9 / Math.hypot(CLEARING.x, CLEARING.z);
+  return { radius: DECK_R, obstacles: o, home: [CLEARING.x, CLEARING.z], gate: [-CLEARING.x * away, -CLEARING.z * away] };
+})();
+
+/**
+ * The deck's height under any point, sampled once from the island body — after the first
+ * frame, when the world has loaded — and read by bilinear lookup: no per-frame raycast.
+ */
+const deckHeights = new DeckHeights(islandBody, TOP_RADIUS, 17, TOP_Y);
+let deckHeightsMs = 0;
+
+/**
+ * The keeper: one draw (and its shadow), a cloaked figure with a lantern that glows by
+ * emission only — no light is added — and the tap ring, which the vertex shader carries to
+ * wherever the keeper is walking (src/render/wild.ts). Both its materials are its own, so no
+ * pooled program flips for it.
+ */
+const keeper = new THREE.Mesh(keeperGeometry(), withKeeper(withRim(new THREE.MeshStandardMaterial({
+  vertexColors: true, roughness: 0.82, metalness: 0,
+}))));
+keeper.name = 'keeper';
+keeper.castShadow = true;
+keeper.receiveShadow = true;
+keeper.customDepthMaterial = withKeeper(new THREE.MeshDepthMaterial());
+keeper.visible = false;          // until the world has loaded
+island.add(keeper);
+
 // --- the world around the island (rubric A6, A1, A9) -----------------------------------
 /**
  * The art-critic measured the island at 18.6% of the frame and the other 81.4% as "a
@@ -2048,6 +2145,8 @@ const saveStats = { count: 0, maxMainThreadMs: 0, maxRoundTripMs: 0, last: null 
 const saveChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('dragonvein-save') : null;
 
 const hudWorld = {
+  wild: document.getElementById('hud-wild'),
+  calm: document.getElementById('hud-calm'),
   clock: document.getElementById('hud-clock'),
   roster: document.getElementById('hud-roster'),
   save: document.getElementById('hud-save'),
@@ -2064,15 +2163,30 @@ function sessionId(): string {
   return `${(b[0] ?? 0).toString(36)}${(b[1] ?? 0).toString(36)}`;
 }
 
+// The sim's moving parts, for drawing between ticks (M8b): see `updateWild` below.
+/** [dragon x, z, heading, keeper x, z] at the last two ticks. */
+const simPrev = new Float64Array(5);
+const simNow = new Float64Array(5);
+/** `?test` only: the world exactly as loaded, before its first tick (the reload drill compares it). */
+let loadedWorld: string | null = null;
+/** `?test` only: hold the sim still, so a save cannot race the world it describes. */
+let simHeld = false;
+/** `?test` only: pin the island's spin at this angle (radians), so a drill can aim at the deck. */
+let spinPinned: number | null = null;
+
+/** `?test&seed=N` fixes a fresh world's seed, so gate:smoke meets the same wild dragon every run. */
+const TEST_SEED = TEST_HOOKS ? Number(new URLSearchParams(location.search).get('seed') ?? Number.NaN) : Number.NaN;
+
 const worldReady: Promise<void> = (async () => {
-  const seed = crypto.getRandomValues(new Uint32Array(1))[0] ?? 1;
+  const seed = Number.isInteger(TEST_SEED) && TEST_SEED >= 0 && TEST_SEED <= 0xffffffff
+    ? TEST_SEED : crypto.getRandomValues(new Uint32Array(1))[0] ?? 1;
   try {
     const [{ openGameWorld }, { openIdbStore, localJournal }] = await Promise.all([
       import('./sim/persist'), import('./core/save'),
     ]);
     const opened = await openIdbStore();
     const r = await openGameWorld(opened.ok ? opened.store : null, seed, {
-      writer: sessionId(), journal: localJournal(), clock: () => performance.now(),
+      writer: sessionId(), journal: localJournal(), clock: () => performance.now(), deck,
       // gate:smoke shortens the load-read timeout to drill it; play keeps the 10 s default.
       ...(TEST_READ_TIMEOUT_MS > 0 ? { readTimeoutMs: TEST_READ_TIMEOUT_MS } : {}),
       ...(opened.ok ? {} : { unavailable: opened.why }),
@@ -2084,11 +2198,18 @@ const worldReady: Promise<void> = (async () => {
     if (!r.session.writable) console.warn(`DRAGONVEIN: progress is not saved (${r.session.state}: ${r.session.detail})`);
   } catch (e) {
     // The save code itself failed to load. Play on, unsaved, and say so.
-    world = createWorld(seed);
+    world = createWorld(seed, deck);
     save = null;
     console.warn(`DRAGONVEIN: progress is not saved (${e instanceof Error ? e.message : String(e)})`);
   }
   worldReadyMs = performance.now();
+  if (world) {
+    if (TEST_HOOKS) loadedWorld = JSON.stringify(world);
+    deckHeightsMs = deckHeights.build();
+    noteSimState(world);
+    keeper.visible = true;
+    void spawnWildDragon(world);
+  }
   paintWorldHud();
   await saveWorld();
 })();
@@ -2189,6 +2310,8 @@ const LOADING_SLOW_MS = 1000;
 let exportedName: string | null = null;
 let shownSec = -2;
 let shownRoster = -2;
+/** The calm meter in 5 % steps, so it repaints only when it moves a step. */
+let shownCalm = -2;
 let shownState = '';
 let shownAgo = -2;
 /** Which variant of the note is shown, so a change of detail repaints without a string compare. */
@@ -2226,6 +2349,12 @@ function paintWorldHud(): void {
     const ss = sec % 60;
     hudWorld.clock.textContent = sec < 0 ? '—'
       : `${Math.floor(sec / 3600)}:${m < 10 ? '0' : ''}${m}:${ss < 10 ? '0' : ''}${ss}`;
+  }
+  const calm = world ? Math.round(world.wild.calm * 20) : -1;
+  if (calm !== shownCalm) {
+    shownCalm = calm;
+    if (hudWorld.wild) hudWorld.wild.hidden = calm < 0;
+    if (hudWorld.calm) hudWorld.calm.style.width = `${Math.max(0, calm) * 5}%`;
   }
   const roster = world ? world.roster.length : -1;
   if (roster !== shownRoster && hudWorld.roster) {
@@ -2323,9 +2452,332 @@ if (TEST_HOOKS) {
       return { ...readSave(), changed: true };
     },
     save: async () => { await worldReady; await saveWorld(); return readSave(); },
+    replay: (w: World, tick: number) => {
+      const c = structuredClone(w);
+      while (c.tick < tick) step(c, deck);
+      return c;
+    },
     startFresh: async () => { await worldReady; const key = await startFresh(); return { ...readSave(), key }; },
     exportText: () => exportRefused(),
     closeStore: () => { saveStore?.close(); },
+  };
+}
+
+// --- the wild dragon and the keeper on screen (M8b) -------------------------------------
+/*
+ * The sim moves both bodies at 20 Hz; the frame draws them between ticks. Each tick, before
+ * it steps, the frame loop copies what moves (`simNow`, written after every step) into
+ * `simPrev`; a frame then draws at `alpha` = the fraction of a tick its accumulator holds.
+ * Two fixed Float64Arrays, copied in place: nothing is allocated per frame or per tick.
+ *
+ * The dragon itself is built once the world is ready, by a lazily loaded module
+ * (src/render/wild-dragon.ts) through the mesh worker, and compiled off the frame where the
+ * driver allows. Until then the island is drawn without it; the first frame never waits.
+ */
+
+function noteSimState(w: World): void {
+  simNow[0] = w.wild.pos[0];
+  simNow[1] = w.wild.pos[1];
+  simNow[2] = w.wild.heading;
+  simNow[3] = w.keeper.pos[0];
+  simNow[4] = w.keeper.pos[1];
+  if (simPrev[0] === 0 && simPrev[1] === 0 && simPrev[3] === 0) simPrev.set(simNow);
+}
+
+let wildView: WildDragonView | null = null;
+/** Why the dragon is not drawn, when its build failed (the game plays on without it). */
+let wildError = '';
+/** The keeper's facing (render only: it turns to where it walks, and to the dragon when standing). */
+let keeperYaw = 0;
+let keeperStride = 0;
+let ringScale = 0;
+/** The temperament of the dragon on the island, for the `?test` readout. */
+const wildTemper: Temperament = blankTemperament();
+let wildTemperGid = '';
+/** Taps that reached the deck: how many, when the last landed, and where it sent the keeper. */
+const taps = { count: 0, run: 0, lastAt: 0, lastGoal: [0, 0] as [number, number], lastRun: false, offDeck: 0 };
+
+async function spawnWildDragon(w: World): Promise<void> {
+  try {
+    const { WildDragonView } = await import('./render/wild-dragon');
+    const view = await WildDragonView.build(w.wild.genome, DRAGON_SCALE, withRim);
+    await renderer.compileAsync(view.holder, camera, scene);
+    island.add(view.holder);
+    wildView = view;
+  } catch (e) {
+    wildError = e instanceof Error ? e.message : String(e);
+    console.error('wild dragon: it could not be built, so the island is drawn without it:', e);
+  }
+}
+
+const tapRay = new THREE.Raycaster();
+const tapNdc = new THREE.Vector2();
+const tapPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -TOP_Y);
+const tapHit = new THREE.Vector3();
+
+/**
+ * A tap at (clientX, clientY): where it meets the deck, in the island's frame, becomes the
+ * keeper's goal (`keeperTo`); a double tap runs. Off the island it does nothing. A paused tab
+ * (another tab took over saving) refuses it, as it refuses every world change.
+ */
+function tapDeck(clientX: number, clientY: number, run: boolean): void {
+  const w = world;
+  if (!w || worldPaused()) return;
+  const rect = canvas.getBoundingClientRect();
+  tapNdc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+  tapRay.setFromCamera(tapNdc, camera);
+  island.updateMatrixWorld();
+  tapPlane.constant = -(island.position.y + TOP_Y);
+  if (!tapRay.ray.intersectPlane(tapPlane, tapHit)) return;
+  island.worldToLocal(tapHit);
+  if (Math.hypot(tapHit.x, tapHit.z) > TOP_RADIUS) { taps.offDeck++; return; }
+  keeperTo(w, deck, tapHit.x, tapHit.z, run);
+  taps.count++;
+  if (run) taps.run++;
+  taps.lastAt = performance.now();
+  taps.lastGoal[0] = w.keeper.goal[0];
+  taps.lastGoal[1] = w.keeper.goal[1];
+  taps.lastRun = run;
+  hintSeen();
+}
+
+/** Shortest-arc interpolation between two headings. */
+function lerpAngle(a: number, b: number, t: number): number {
+  let d = b - a;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  return a + d * t;
+}
+
+/**
+ * Per frame, before the render: place and pose the keeper and the dragon at `alpha` between
+ * the last two ticks. Allocation-free.
+ */
+function updateWild(nowMs: number, dt: number, alpha: number): void {
+  setIdleTime(nowMs / 1000);
+  const w = world;
+  if (!w) return;
+  const a = alpha;
+  const kx = simPrev[3]! + (simNow[3]! - simPrev[3]!) * a;
+  const kz = simPrev[4]! + (simNow[4]! - simPrev[4]!) * a;
+  const kvx = (simNow[3]! - simPrev[3]!) / WILD_DT, kvz = (simNow[4]! - simPrev[4]!) / WILD_DT;
+  const speed = Math.sqrt(kvx * kvx + kvz * kvz);
+  const x = simPrev[0]! + (simNow[0]! - simPrev[0]!) * a;
+  const z = simPrev[1]! + (simNow[1]! - simPrev[1]!) * a;
+  const h = lerpAngle(simPrev[2]!, simNow[2]!, a);
+
+  // The keeper faces where it walks; standing near the dragon, it turns to watch it.
+  let want = keeperYaw;
+  if (speed > 0.05) want = Math.atan2(kvz, kvx);
+  else if (Math.hypot(x - kx, z - kz) < 6) want = Math.atan2(z - kz, x - kx);
+  keeperYaw = lerpAngle(keeperYaw, want, 1 - Math.exp(-8 * dt));
+  keeperStride += speed * dt * 9;
+  const bob = 0.012 * Math.min(1, speed) * Math.abs(Math.sin(keeperStride));
+  keeper.position.set(kx, deckHeights.at(kx, kz) + bob, kz);
+  keeper.rotation.y = -keeperYaw;
+  // The tap ring marks the goal while the keeper walks, and shrinks away on arrival.
+  const k = w.keeper;
+  const walking = Math.hypot(k.goal[0] - k.pos[0], k.goal[1] - k.pos[1]) > 0.03;
+  ringScale += ((walking ? 1 : 0) - ringScale) * (1 - Math.exp(-12 * dt));
+  const gx = k.goal[0] - kx, gz = k.goal[1] - kz;
+  const c = Math.cos(keeperYaw), s = Math.sin(keeperYaw);
+  KEEPER_UNIFORMS.uMark.value.set(gx * c + gz * s, -gx * s + gz * c,
+    ringScale < 0.01 ? 0 : ringScale * (1 + 0.08 * Math.sin(nowMs * 0.008)));
+
+  const view = wildView;
+  if (!view) return;
+  const d = w.wild;
+  // The keeper's bearing off the snout, in the dragon's own frame (+ to its left).
+  const ch = Math.cos(h), sh = Math.sin(h);
+  const lx = (kx - x) * ch + (kz - z) * sh, lz = -(kx - x) * sh + (kz - z) * ch;
+  const flee = d.state === 'flee';
+  const hop = Math.hypot(d.goal[0] - d.from[0], d.goal[1] - d.from[1]);
+  view.update(x, z, deckHeights.at(x, z), h, d.state, Math.atan2(-lz, lx),
+    flee ? Math.max(0, d.t - 1 + a) * WILD_DT : 0, d.dur * WILD_DT, TAKEOFF_S, LAND_S,
+    Math.min(3.0, 1.2 + 0.35 * hop), dt);
+}
+
+/** The hint under the HUD fades once the player has walked somewhere. */
+const hint = document.getElementById('hint');
+function hintSeen(): void {
+  if (hint && !hint.classList.contains('done')) hint.classList.add('done');
+}
+
+/** The `?test` hook's view of the island's two bodies: copies, never the live objects. */
+function readWild() {
+  const w = world;
+  const v = wildView;
+  if (w && w.wild.genome.gid !== wildTemperGid) {
+    temperament(w.wild.genome, wildTemper);
+    wildTemperGid = w.wild.genome.gid;
+  }
+  const kd = w ? Math.hypot(w.keeper.pos[0] - w.wild.pos[0], w.keeper.pos[1] - w.wild.pos[1]) : null;
+  return {
+    tick: w?.tick ?? null,
+    held: simHeld,
+    deckHeightsMs,
+    wild: w ? { ...structuredClone(w.wild), genome: undefined, gid: w.wild.genome.gid, element: w.wild.genome.element } : null,
+    keeper: w ? structuredClone(w.keeper) : null,
+    keeperDistance: kd,
+    temperament: w ? { ...wildTemper } : null,
+    dragon: v ? {
+      ready: true, gid: v.gid, triangles: v.triangles, buildMs: v.buildMs,
+      holder: v.holder.position.toArray(), yaw: v.holder.rotation.y, scale: v.holder.scale.x,
+      walkWeight: v.walkW, flap: v.fleeNow.flap, glide: v.fleeNow.glide, altitude: v.fleeNow.altitude,
+      attitude: { look: v.attitude.look, neck: v.attitude.neck, head: v.attitude.head, lower: v.attitude.lower, tail: v.attitude.tail },
+    } : { ready: false, error: wildError },
+    keeperView: { pos: keeper.position.toArray(), yaw: keeper.rotation.y, ring: KEEPER_UNIFORMS.uMark.value.toArray(), visible: keeper.visible },
+    taps: { ...taps, lastGoal: [...taps.lastGoal] },
+    hint: hint ? !hint.classList.contains('done') : false,
+    calmMeter: hudWorld.calm?.style.width ?? '',
+    spin: island.rotation.y,
+  };
+}
+
+declare global {
+  /** `?test` only (M8b, gate:smoke): the wild dragon and the keeper. Not used in play. */
+  var __dragonveinWild: {
+    /** Resolves once the world is loaded and the dragon built (or failed). */
+    ready: () => Promise<ReturnType<typeof readWild>>;
+    read: () => ReturnType<typeof readWild>;
+    /** What a tap does, without the pointer: walk (or run) the keeper to (x, z) on the deck. */
+    walkTo: (x: number, z: number, run: boolean) => ReturnType<typeof readWild>;
+    /** Stand the keeper at (x, z) at once: a drill's setup, never play. */
+    place: (x: number, z: number) => ReturnType<typeof readWild>;
+    /**
+     * Stand the keeper `dist` from the dragon where a straight walk to it is clear of every
+     * obstacle (the most open bearing of 72), and return that spot — or null if none is.
+     */
+    stage: (dist: number) => [number, number] | null;
+    /** A deck point (island frame) in CSS pixels on the page, at the island's current spin. */
+    project: (x: number, z: number) => [number, number];
+    /** Pin the island's spin (radians), or let it turn again (null). */
+    pinSpin: (rad: number | null) => void;
+    /** Pin the spin so the dragon stands on the camera's side of the island; returns the angle. */
+    faceCamera: () => number;
+    /**
+     * Pin the spin so the line from the dragon to deck point (x, z) runs across the screen,
+     * left to right: the dragon seen side on, facing whoever comes from there. Returns the angle.
+     */
+    frameAcross: (x: number, z: number) => number;
+    /**
+     * A close camera from the orbit's side, `elevDeg` up, on the midpoint of the dragon and the
+     * keeper (or the dragon alone, `withKeeper` false), at least `dist` away and far enough to
+     * hold both. The orbit takes over again on the next input or `__dragonveinShot.release()`.
+     */
+    closeUp: (dist: number, elevDeg: number, withKeeper?: boolean) => void;
+    /** Set the orbit (degrees, world units), clamped as input is. */
+    orbit: (azimuthDeg: number, pitchDeg: number, distance: number) => void;
+    /** Hold the sim still (true) or let it run. */
+    hold: (on: boolean) => void;
+    /** The world exactly as it was loaded, before its first tick. */
+    loaded: () => World | null;
+  } | undefined;
+}
+
+if (TEST_HOOKS) {
+  const projected = new THREE.Vector3();
+  globalThis.__dragonveinWild = {
+    ready: async () => {
+      await worldReady;
+      const t0 = performance.now();
+      while (!wildView && !wildError && performance.now() - t0 < 30_000) await new Promise((r) => setTimeout(r, 50));
+      return readWild();
+    },
+    read: readWild,
+    walkTo: (x, z, run) => {
+      if (world && !worldPaused()) keeperTo(world, deck, x, z, run);
+      return readWild();
+    },
+    place: (x, z) => {
+      const w = world;
+      if (w) {
+        w.keeper.pos[0] = x; w.keeper.pos[1] = z;
+        w.keeper.goal[0] = x; w.keeper.goal[1] = z;
+        w.keeper.v = 0; w.keeper.pace = 0;
+        noteSimState(w);
+        simPrev[3] = simNow[3]!; simPrev[4] = simNow[4]!;
+      }
+      return readWild();
+    },
+    stage: (dist) => {
+      const w = world;
+      if (!w) return null;
+      const [dx, dz] = w.wild.pos;
+      const o = deck.obstacles;
+      let best: [number, number] | null = null, bestScore = -Infinity;
+      for (let i = 0; i < 72; i++) {
+        const a = (2 * Math.PI * i) / 72;
+        const x = dx + Math.cos(a) * dist, z = dz + Math.sin(a) * dist;
+        if (Math.hypot(x, z) > deck.radius - 0.3) continue;
+        // The keeper's corridor to the dragon: its closest approach to every obstacle.
+        let clearance = Infinity;
+        for (let j = 0; j < o.length; j += 3) {
+          const px = o[j]! - x, pz = o[j + 1]! - z, sx = dx - x, sz = dz - z;
+          const t = Math.max(0, Math.min(0.8, (px * sx + pz * sz) / (sx * sx + sz * sz)));
+          clearance = Math.min(clearance, Math.hypot(px - sx * t, pz - sz * t) - o[j + 2]!);
+        }
+        if (clearance > 0.25 && clearance > bestScore) { bestScore = clearance; best = [x, z]; }
+      }
+      if (best) globalThis.__dragonveinWild?.place(best[0], best[1]);
+      return best;
+    },
+    project: (x, z) => {
+      island.updateMatrixWorld();
+      projected.set(x, deckHeights.at(x, z), z);
+      island.localToWorld(projected).project(camera);
+      const rect = canvas.getBoundingClientRect();
+      return [rect.left + ((projected.x + 1) / 2) * rect.width, rect.top + ((1 - projected.y) / 2) * rect.height];
+    },
+    pinSpin: (rad) => { spinPinned = rad; },
+    faceCamera: () => {
+      const w = world;
+      if (!w) return 0;
+      // The island turns about y; a local point at angle φ (atan2(z, x)) lands at φ − spin.
+      const phi = Math.atan2(w.wild.pos[1], w.wild.pos[0]);
+      const target = Math.atan2(camera.position.z, camera.position.x);
+      spinPinned = phi - target;
+      return spinPinned;
+    },
+    frameAcross: (x, z) => {
+      const w = world;
+      if (!w) return 0;
+      // Screen-right at orbit azimuth `az` is world angle −az (atan2(z, x)); a local angle φ
+      // lands at φ − spin. Of the two spins that lay the line across the screen (keeper to
+      // the right, or to the left), take the one that brings the pair to the island's near side.
+      const phi = Math.atan2(z - w.wild.pos[1], x - w.wild.pos[0]);
+      const mx = (x + w.wild.pos[0]) / 2, mz = (z + w.wild.pos[1]) / 2;
+      const toward = (spin: number) => {
+        // The midpoint in the world (rotation about y by `spin`), along the camera's azimuth.
+        const wx = mx * Math.cos(spin) + mz * Math.sin(spin), wz = -mx * Math.sin(spin) + mz * Math.cos(spin);
+        return wx * Math.sin(orbit.azimuth) + wz * Math.cos(orbit.azimuth);
+      };
+      const a = phi + orbit.azimuth, b = a + Math.PI;
+      spinPinned = toward(a) >= toward(b) ? a : b;
+      return spinPinned;
+    },
+    closeUp: (dist, elevDeg, withKeeper = true) => {
+      const w = world;
+      if (!w) return;
+      island.updateMatrixWorld();
+      const dx = w.wild.pos[0], dz = w.wild.pos[1];
+      const kx = withKeeper ? w.keeper.pos[0] : dx, kz = withKeeper ? w.keeper.pos[1] : dz;
+      const mx = (dx + kx) / 2, mz = (dz + kz) / 2;
+      const at = new THREE.Vector3(mx, deckHeights.at(mx, mz) + 0.4, mz);
+      island.localToWorld(at);
+      const span = Math.hypot(kx - dx, kz - dz) + 2.6;
+      const d = Math.max(dist, span / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect) * 1.25);
+      const az = orbit.azimuth;
+      const el = THREE.MathUtils.degToRad(elevDeg);
+      camera.position.set(at.x + Math.sin(az) * Math.cos(el) * d, at.y + Math.sin(el) * d, at.z + Math.cos(az) * Math.cos(el) * d);
+      camera.lookAt(at);
+      camera.updateMatrixWorld();
+    },
+    orbit: (azimuthDeg, pitchDeg, distance) => {
+      setOrbit(THREE.MathUtils.degToRad(azimuthDeg), THREE.MathUtils.degToRad(pitchDeg), distance);
+    },
+    hold: (on) => { simHeld = on; },
+    loaded: () => (loadedWorld ? JSON.parse(loadedWorld) as World : null),
   };
 }
 
@@ -2626,7 +3078,11 @@ function frame(now: number): void {
   if (world !== null && (save === null || save.state !== 'conflict')) {
     simAccMs += frameMs < MAX_CATCH_UP_MS ? frameMs : MAX_CATCH_UP_MS;
     while (simAccMs >= TICK_MS) {
-      step(world);
+      if (!simHeld) {
+        simPrev.set(simNow);
+        step(world, deck);
+        noteSimState(world);
+      }
       simAccMs -= TICK_MS;
     }
   }
@@ -2650,7 +3106,7 @@ function frame(now: number): void {
   resize();
   applyOrbit();
   const sceneNow = sceneFrozenAt ?? now;
-  island.rotation.y = sceneNow * 0.00012;
+  island.rotation.y = spinPinned ?? sceneNow * 0.00012;
   updateFarMotion(sceneNow);
   // One number into the uniform every wind-patched program shares. Allocation-free.
   setWindTime(windFrozenSec ?? now / 1000);
@@ -2659,6 +3115,11 @@ function frame(now: number): void {
   updateRimDirection();
 
   if (renderingEnabled) {
+    // The keeper and the wild dragon, between the last two ticks (M8b). Inside the rendered
+    // path, so whatever their pose costs is charged to the frame, never to gate:perf's idle
+    // baseline.
+    updateWild(now, frameMs < MAX_CATCH_UP_MS ? frameMs / 1000 : MAX_CATCH_UP_MS / 1000,
+      simAccMs / TICK_MS < 1 ? simAccMs / TICK_MS : 1);
     collectGpuTimings();
     const timed = gpuTimer && idleQueries.length > 0 ? idleQueries.pop() ?? null : null;
     if (gl2 && gpuTimer && timed) gl2.beginQuery(gpuTimer.TIME_ELAPSED_EXT, timed);
@@ -2801,6 +3262,8 @@ declare global {
     windInstances: number;
     /** Instances per hero-island kind (M5f). Empty until the GLBs have loaded. */
     flora: Readonly<Record<string, number>>;
+    /** M8b: the wild dragon (built through the worker, after the world loads) and the keeper. */
+    wild: { dragon: boolean; keeper: boolean };
   }) | undefined;
   /** Test hook for gate:smoke's close shot (M5f): a camera pose the orbit clamps would
    *  refuse, with the scene clock pinned at `sceneMs` so the island's spin — and so the
@@ -2824,6 +3287,11 @@ declare global {
     /** Two wild dragons and their child, then an immediate save. Refused while paused. */
     seedRoster: () => Promise<ReturnType<typeof readSave> & { changed: boolean }>;
     save: () => Promise<ReturnType<typeof readSave>>;
+    /**
+     * `w` stepped on, as this page steps its own world, to `tick`: what a saved world must
+     * have become by the time a later read sees it (the sim is deterministic). A copy.
+     */
+    replay: (w: World, tick: number) => World;
     /** The HUD's "start fresh, keep the old save aside". */
     startFresh: () => Promise<ReturnType<typeof readSave> & { key: string | null }>;
     /** The HUD's "export old save": also triggers the download. */
@@ -2868,7 +3336,7 @@ declare global {
  */
 globalThis.__dragonveinStats = () => (framesSinceRestore === 0 && !contextLost ? {
   drawCalls: null, triangles: null, frameMs: null, cpuFrameMs: null, contextLost, windInstances,
-  flora: floraCounts,
+  flora: floraCounts, wild: { dragon: wildView !== null, keeper: keeper.visible },
 } : {
   drawCalls: contextLost ? null : renderer.info.render.calls,
   triangles: contextLost ? null : renderer.info.render.triangles,
@@ -2880,6 +3348,8 @@ globalThis.__dragonveinStats = () => (framesSinceRestore === 0 && !contextLost ?
   contextLost,
   windInstances,
   flora: floraCounts,
+  /** M8b: whether the wild dragon and the keeper are in the scene (drawn from the next frame). */
+  wild: { dragon: wildView !== null, keeper: keeper.visible },
 });
 
 globalThis.__dragonveinWind = {

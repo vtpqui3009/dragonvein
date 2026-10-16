@@ -59,6 +59,18 @@ const TAIL = [BONE.tail0, BONE.tail1, BONE.tail2] as const;
 const Y = new THREE.Vector3(0, 1, 0);
 const Z = new THREE.Vector3(0, 0, 1);
 
+/**
+ * How the dragon holds itself, on top of the walk and any flight (M8b, ./wild.ts
+ * `DragonAttitude`): turns of the neck, head and tail, and a lowered stance. The legs' IK
+ * keeps the feet where they are, so lowering the body bends the knees.
+ */
+export interface AttitudeLayer {
+  /** Multiply its local turns into the body's bones (after the walk's and the flight's). */
+  locals(local: THREE.Quaternion[]): void;
+  /** How far the body sinks, as a share of the shortest leg's drop, 0..1. */
+  readonly lower: number;
+}
+
 /** A pose added on top of the walk (src/render/flight.ts `DragonFlight`). */
 export interface FlightLayer {
   /** Whether it moves anything: false at weight 0, and then the walk poses alone. */
@@ -109,6 +121,8 @@ export class DragonWalk {
   weight = 0;
   /** The flight riding on this walk, if any (src/render/flight.ts). */
   flight: FlightLayer | null = null;
+  /** The stance and gaze riding on this walk, if any (./wild.ts). */
+  attitude: AttitudeLayer | null = null;
   /** How many bones: the body's, then the wing chains. */
   readonly boneCount: number;
   private readonly parent: number[];
@@ -184,7 +198,8 @@ export class DragonWalk {
    */
   pose(t: number | null, weight = 1): void {
     const fl = this.flight !== null && this.flight.active ? this.flight : null;
-    if (t === null && fl === null) {
+    const att = this.attitude;
+    if (t === null && fl === null && att === null) {
       for (let i = 0; i < this.bones.length; i++) this.bones[i]!.matrixWorld.identity();
       for (let i = 0; i < this.legs.length; i++) { this.legs[i]!.planted = true; this.legs[i]!.stretched = false; }
       this.travel = 0;
@@ -206,7 +221,7 @@ export class DragonWalk {
     const shoulderRoll = k * ROLL * w.flex * Math.sin(shoulderA);
     const twice = Math.cos(2 * TWO_PI * c); // 1 at each hind footfall
     const pitch = k * w.pitch * twice;
-    const lower = k * (w.crouch * this.drop + w.bob * (0.5 + 0.5 * twice));
+    const lower = k * (w.crouch * this.drop + w.bob * (0.5 + 0.5 * twice)) + (att ? att.lower * this.drop : 0);
 
     const L = this.local;
     for (let i = 0; i < L.length; i++) L[i]!.identity();
@@ -218,6 +233,7 @@ export class DragonWalk {
       turn(L[TAIL[i]!]!, k * w.tailSway * Math.sin(hipA - TAIL_LAG * (i + 1)), 0, 0, this.q);
     }
     if (fl) fl.locals(L);
+    if (att) att.locals(L);
 
     // Forward kinematics for the body: every bone but the legs' (whose parents come first).
     const R = this.R, P = this.P, rest = this.rest, par = this.parent, n = this.boneCount;

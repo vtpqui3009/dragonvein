@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { Genome } from '../src/core/genome';
+import { Genome, wild } from '../src/core/genome';
 import { RNG_VERSION, Rng, isRngState, type RngState } from '../src/core/rng';
 import {
   MAIN_KEY, backupKey, memoryJournal, memoryStore, type Journal, type SaveStore, type StoredSave,
@@ -77,14 +77,18 @@ describe('Rng state export and restore', () => {
   });
 });
 
-/** A scripted run: roster changes at fixed ticks, each drawing seeds from `world.rng`. */
+/**
+ * A scripted run: roster changes at fixed ticks, each drawing seeds from `world.rng`. Parents
+ * are named by roster position: since schema 2 the island's wild dragon holds id 1 (M8b).
+ */
+const rosterId = (w: World, i: number) => w.roster[i]!.id;
 const SCRIPT: Record<number, (w: World) => void> = {
   100: (w) => { addWild(w); },
   250: (w) => { addWild(w); },
-  380: (w) => { addBred(w, 1, 2); },
+  380: (w) => { addBred(w, rosterId(w, 0), rosterId(w, 1)); },
   650: (w) => { addWild(w); },
   777: (w) => { drawU32(w); drawU32(w); },
-  900: (w) => { addBred(w, 3, 4); },
+  900: (w) => { addBred(w, rosterId(w, 2), rosterId(w, 3)); },
 };
 function run(w: World, until: number): World {
   while (w.tick < until) {
@@ -157,8 +161,17 @@ describe('the frozen schema-1 fixture', () => {
     if (!a.ok) throw new Error(a.detail);
     const b = decodeSave(encodeSave(a.world));
     if (!b.ok) throw new Error(b.detail);
+    expect(b.from).toBe(SCHEMA_VERSION);
     expect(b.world).toEqual(a.world);
-    expect(JSON.parse(encodeSave(b.world))).toEqual(JSON.parse(FIXTURE_V1));
+    // Everything schema 1 held is carried over unchanged, except what the 1 → 2 migration
+    // (M8b) takes: one draw from the stream for the wild dragon's seed, and the next id.
+    const v1 = (JSON.parse(FIXTURE_V1) as { world: Record<string, unknown> }).world;
+    const { wild: w2, keeper, ...rest } = JSON.parse(encodeSave(b.world)).world as Record<string, unknown>;
+    const r = Rng.fromState(v1.rng as number[]);
+    const seed = Math.floor(r.next() * 4294967296) >>> 0;
+    expect(rest).toEqual({ ...v1, schema: 2, rng: r.state(), nextId: (v1.nextId as number) + 1 });
+    expect(w2).toMatchObject({ id: v1.nextId, genome: wild(seed).toJSON(), state: 'graze', calm: 0 });
+    expect(keeper).toMatchObject({ pace: 0, v: 0 });
   });
 
   it('loads through a store, and its first save writes the next gen', async () => {
@@ -170,7 +183,9 @@ describe('the frozen schema-1 fixture', () => {
     await session.save(world, 2);
     expect(session.state).toBe('saved');
     expect((store.data.get(MAIN_KEY) as StoredSave).gen).toBe(8);
-    expect(store.data.has(backupKey(1))).toBe(false);   // same schema: nothing to back up
+    // Migrated from schema 1 (M8b): the record as it was is kept beside the new one.
+    expect(store.data.get(backupKey(1))).toEqual({ gen: 7, savedAt: 1, text: FIXTURE_V1 });
+    expect(world.wild.id).toBe(5);
   });
 });
 
@@ -413,7 +428,7 @@ describe('two tabs on one store', () => {
     expect(b.session.writable).toBe(false);
 
     addWild(a.world);
-    addBred(a.world, 1, 2);
+    addBred(a.world, rosterId(a.world, 0), rosterId(a.world, 1));
     await a.session.save(a.world, 3);
     await b.session.save(b.world, 4);
     expect(a.session.state).toBe('saved');
@@ -435,7 +450,7 @@ describe('two tabs on one store', () => {
     const a = await openGameWorld(store, 0);
     const b = await openGameWorld(store, 0);
     expect(a.session.gen).toBe(b.session.gen);
-    addBred(b.world, 1, 2);
+    addBred(b.world, rosterId(b.world, 0), rosterId(b.world, 1));
     await b.session.save(b.world, 2);   // B breeds and saves first
     await a.session.save(a.world, 3);   // A, which never saw the child, tries to save
     expect(a.session.state).toBe('conflict');
@@ -523,7 +538,7 @@ describe('an unload with writes in flight loses nothing (cycle 2, D1)', () => {
     void first.session.save(first.world, 2);             // __dragonveinSave.save()
     addWild(first.world);                                 // seedRoster()
     addWild(first.world);
-    addBred(first.world, 1, 2);
+    addBred(first.world, rosterId(first.world, 0), rosterId(first.world, 1));
     void first.session.save(first.world, 3);
     expect(store.unload()).toBe(2);                      // reload: both writes die unstarted
 
@@ -686,7 +701,9 @@ describe('a refused record has a way out that destroys nothing (cycle 2, D2)', (
     const back = await openGameWorld(store, 6);
     expect(back.report.source).toBe('loaded');
     expect(back.world.roster.map((r) => r.genome.gid)).toEqual(['2bf296d8d9', 'd0699f21cf', '4acfb32ece']);
-    expect(back.world.roster.map((r) => r.id)).toEqual([1, 2, 3]);
+    // New ids in the fresh world, after its wild dragon's (id 1, schema 2).
+    expect(back.world.wild.id).toBe(1);
+    expect(back.world.roster.map((r) => r.id)).toEqual([2, 3, 4]);
     expect((store.data.get('refused.1') as StoredSave).text).toBe(text);
   });
 

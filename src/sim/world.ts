@@ -15,11 +15,12 @@
  *      after a reload is the draw that would have been made without one.
  *
  * `step` mutates the world it is given and allocates nothing: it runs from the frame loop
- * (src/main.ts), where a per-tick allocation is a per-frame one. M8a's world only keeps
- * time; the systems M8b onward add hang off `step` and draw only from `world.rng`.
+ * (src/main.ts), where a per-tick allocation is a per-frame one. From M8b it steps the
+ * hero island's wild dragon and the keeper (./wild.ts), drawing only from `world.rng`.
  */
 import { Rng, type RngState } from '../core/rng';
-import type { GenomeJson } from '../core/genome';
+import { wild, type GenomeJson } from '../core/genome';
+import { OPEN_DECK, newKeeper, newWild, stepWild, type Deck, type Keeper, type WildDragon } from './wild';
 
 /** The fixed simulation rate. Wall-clock dt is turned into ticks in src/main.ts, never here. */
 export const TICK_HZ = 20;
@@ -29,7 +30,7 @@ export const TICK_MS = 1000 / TICK_HZ;
  * The schema this build writes. Bump it only together with a new entry appended to
  * `MIGRATIONS` in ./migrate.ts — a record of any older schema must still load.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** A dragon the player owns. `id` is unique within a world and never reused. */
 export interface RosterEntry {
@@ -37,7 +38,10 @@ export interface RosterEntry {
   genome: GenomeJson;
 }
 
-/** Schema 1. Eggs arrive with breeding (M9a); until then the list is always empty. */
+/**
+ * Schema 2 (M8b): schema 1's fields, plus the hero island's wild dragon and the keeper the
+ * player walks (./wild.ts). Eggs arrive with breeding (M9a); until then the list is empty.
+ */
 export interface World {
   schema: typeof SCHEMA_VERSION;
   /** The world's own seed, uint32. Fixed at creation. */
@@ -50,6 +54,9 @@ export interface World {
   nextId: number;
   roster: RosterEntry[];
   eggs: never[];
+  /** The wild dragon on the hero island. Its id is reserved from `nextId`. */
+  wild: WildDragon;
+  keeper: Keeper;
 }
 
 /**
@@ -57,11 +64,11 @@ export interface World {
  * are not the same numbers as `wild(seed)`'s — a world seed that happens to equal a dragon
  * seed must not make the two correlate.
  */
-export function createWorld(seed: number): World {
+export function createWorld(seed: number, deck: Deck = OPEN_DECK): World {
   if (!Number.isInteger(seed) || seed < 0 || seed > 0xffffffff) {
     throw new RangeError(`world seed must be a uint32, got ${seed}`);
   }
-  return {
+  const w = {
     schema: SCHEMA_VERSION,
     seed,
     tick: 0,
@@ -69,12 +76,20 @@ export function createWorld(seed: number): World {
     nextId: 1,
     roster: [],
     eggs: [],
-  };
+  } as Omit<World, 'wild' | 'keeper'> as World;
+  // The wild dragon draws its genome seed first, then takes id 1.
+  w.wild = newWild(w, deck, wild);
+  w.keeper = newKeeper(deck);
+  return w;
 }
 
-/** Advance one fixed tick. Touches nothing but `world`, and allocates nothing. */
-export function step(world: World): void {
+/**
+ * Advance one fixed tick on `deck` (the island's walkable layout; ./wild.ts). Touches
+ * nothing but `world`, and allocates nothing.
+ */
+export function step(world: World, deck: Deck = OPEN_DECK): void {
   world.tick++;
+  stepWild(world, deck);
 }
 
 /** Scratch generator: loaded from `world.rng`, drawn, written back. Never holds state between calls. */

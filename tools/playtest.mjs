@@ -40,6 +40,18 @@
  *    15-save-started-fresh.png after "start fresh": the readable dragons kept, the old save aside
  *    16-save-aside-refused.png a stale tab's start-fresh refused: why, and a reload (cycle 3)
  *
+ *  And for M8b, the wild dragon reading the keeper, on `?test&seed=WILD_SEED`, each a close
+ *  camera on the two of them with the island's spin pinned so the approach crosses the screen:
+ *    17-wild-wander.png        the keeper far: the dragon wanders, walking
+ *    18-wild-alert.png         the keeper inside its notice: head up, turned to the keeper
+ *    21-wild-wary.png          the keeper walking in: crouched, tail to the keeper, walking off
+ *    19-wild-settle.png        the keeper near and still: calm risen, the dragon settled
+ *    20-wild-flee.png          mid-takeoff after a rush
+ *  and the clip `artifacts/turntables/m8b-approach.webm`: one slow approach from far to settle,
+ *  then a rush to flight, in the orbit's own view. Before them, drills: tap-to-move under the
+ *  mouse and under touch (a tap walks, a drag orbits, a double tap runs), and a reload
+ *  mid-approach that must restore the dragon's state, position and calm exactly.
+ *
  *  And one motion artefact, `artifacts/turntables/m0-island.webm`: rubric A5 asks whether
  *  anything pops in a scene whose whole definition of done is that it *rotates*, and
  *  three stills are weak evidence for that. The critic should be able to watch it.
@@ -56,6 +68,9 @@ const TURNTABLES = 'artifacts/turntables';
 const TURNTABLE = `${TURNTABLES}/m0-island.webm`;
 const TURNTABLE_MS = 7_000;           // long enough to see the rotation carry a full prop past
 const TURNTABLE_ATTEMPTS = 2;         // one retry: the capture is a second browser context
+/** M8b: the approach clip, and the world seed every wild drill plays, so each run meets the same dragon. */
+const WILD_CLIP = `${TURNTABLES}/m8b-approach.webm`;
+const WILD_SEED = 0x0b8b5eed;
 const VIEW = { width: 1280, height: 720 };
 const SILHOUETTE_SCALE = 0.25;        // rubric A1 judges the shape at 25% zoom
 const LATE_SHOT_AFTER_MS = 8_500;     // rubric A5 wants ≥ 8 s of running before the diff
@@ -719,14 +734,27 @@ try {
         `#${d.id}:${d.genome.gid}${d.genome.generation > 0 ? `(bred ${d.genome.lineage})` : ''}`).join(' ')}`
       : 'no world');
     const hudLine = (r) => `"world ${r.hud.clock} | dragons ${r.hud.roster} | ${r.hud.save}${r.hud.note ? ` | ${r.hud.note}` : ''}"`;
-    /** Seed, roster and Rng deep-equal, tick not behind: the criterion, as a list of what broke. */
-    const diff = (a, b) => {
+    /**
+     * Seed, roster and Rng deep-equal, tick not behind: the criterion, as a list of what broke.
+     *
+     * A world that ran on between the two reads (an autosave or the `pagehide` save landing a
+     * later tick than the one read) is held to more, not less: `a` is stepped on, in the page,
+     * to `b`'s tick (`__dragonveinSave.replay`), and the whole of the result must equal `b`. The
+     * sim is deterministic, so a world that survived the reload is exactly the one that would
+     * have been reached without it. Until M8b the Rng moved only on roster changes, so equal
+     * words were enough; from M8b the island's wild dragon draws from it as time passes.
+     */
+    const diff = async (a, b, pg) => {
       const out = [];
       if (!a || !b) return ['a world is missing'];
-      if (a.seed !== b.seed) out.push(`seed ${a.seed} -> ${b.seed}`);
-      if (JSON.stringify(a.roster) !== JSON.stringify(b.roster)) out.push('roster differs');
-      if (JSON.stringify(a.rng) !== JSON.stringify(b.rng)) out.push(`rng [${a.rng}] -> [${b.rng}]`);
-      if (!(b.tick >= a.tick)) out.push(`tick went back ${a.tick} -> ${b.tick}`);
+      if (!(b.tick >= a.tick)) return [`tick went back ${a.tick} -> ${b.tick}`];
+      const ran = b.tick > a.tick ? await pg.evaluate(([w, t]) => globalThis.__dragonveinSave.replay(w, t), [a, b.tick]) : a;
+      if (ran.seed !== b.seed) out.push(`seed ${a.seed} -> ${b.seed}`);
+      if (JSON.stringify(ran.roster) !== JSON.stringify(b.roster)) out.push('roster differs');
+      if (JSON.stringify(ran.rng) !== JSON.stringify(b.rng)) {
+        out.push(`rng [${ran.rng}]${b.tick > a.tick ? ` (run on from tick ${a.tick} to ${b.tick})` : ''} -> [${b.rng}]`);
+      }
+      if (JSON.stringify(ran) !== JSON.stringify(b)) out.push('the world differs from the saved one run on to its tick');
       return out;
     };
     try {
@@ -761,7 +789,7 @@ try {
       await p.waitForTimeout(1300);    // as 09: "saved 1s ago", the clock running on from the save
       const afterHud = await p.evaluate(() => globalThis.__dragonveinSave.read());
       await p.screenshot({ path: `${SHOTS}/10-save-after-reload.png` });
-      const broke = diff(before.world, after?.world);
+      const broke = await diff(before.world, after?.world, p);
       say(`save: after reload  — ${brief(after?.world)}; loaded ${after?.report?.source} gen ` +
         `${after?.report?.gen} (${after?.report?.detail}); HUD in 10 ${hudLine(afterHud)}`);
       if (afterHud.hud.roster !== String(before.world.roster.length)) {
@@ -856,7 +884,7 @@ try {
         // The next reload waits for the scene's assets, so what it interrupts is the save,
         // not a GLB fetch (an aborted fetch logs its own error, which is not this drill's).
         await drawn(p);
-        const bad = diff(last, r?.world);
+        const bad = await diff(last, r?.world, p);
         rapid.push(`${r?.report?.source}@gen${r?.report?.gen}/tick${r?.world?.tick}${bad.length ? ` BROKE(${bad.join('; ')})` : ''}`);
         if (bad.length || !['loaded', 'journal'].includes(r?.report?.source)) {
           errors.push(`save: reload ${i + 1} mid-save lost state: ${bad.join('; ')} ${JSON.stringify(r?.report)}`);
@@ -884,7 +912,8 @@ try {
       };
       let split = null;
       for (let i = 0; i < 30 && !split; i++) { split = await stale(); if (!split) await p.waitForTimeout(100); }
-      if (diff(last, t2?.world).length) errors.push(`save: tab 2 did not load tab 1's world: ${diff(last, t2?.world).join('; ')}`);
+      const t2diff = await diff(last, t2?.world, p2);
+      if (t2diff.length) errors.push(`save: tab 2 did not load tab 1's world: ${t2diff.join('; ')}`);
       if (!split) {
         const [s1, s2] = [await stateOf(p), await stateOf(p2)];
         errors.push(`save: two tabs are both saving: tab 1 ${s1.state} gen ${s1.gen}, tab 2 ${s2.state} gen ${s2.gen}`);
@@ -911,8 +940,8 @@ try {
         const back = await ready(split.live);
         say(`save: stale tab closed; ${split.liveName} reloaded ${back?.report?.source} gen ${back?.report?.gen} ` +
           `(want ${liveR.gen}), roster ${back?.world?.roster.length}`);
-        if (back?.report?.gen !== liveR.gen || diff(last, back?.world).length) {
-          errors.push(`save: the stale tab overwrote the live one: gen ${back?.report?.gen} vs ${liveR.gen}`);
+        if (back?.report?.gen !== liveR.gen || (await diff(last, back?.world, split.live)).length) {
+          errors.push(`save: the stale tab overwrote the live one: gen ${back?.report?.gen} vs ${liveR.gen}; ${(await diff(last, back?.world, split.live)).join('; ')}`);
         }
       }
     } catch (e) {
@@ -1333,6 +1362,385 @@ try {
       await ctx.close();
     }
     errors.push(...blockedErrors.map((e) => `blocked storage: ${e}`));
+  }
+  await flush();
+
+  // --- the wild dragon and the keeper (M8b criteria 3 and 4) ----------------------------
+  /*
+   * Each drill in its own context on `?test&seed=WILD_SEED`, so every run meets the same
+   * wild dragon on a fresh IndexedDB. `__dragonveinWild` reads the sim's state and the
+   * render's, and aims: `project` turns a deck point into page pixels, `pinSpin` holds the
+   * island still while a pointer aims at it. The pointer itself goes through Playwright's
+   * mouse and CDP touch, the same events a player makes.
+   */
+  const wildUrl = `${preview.url}?test&seed=${WILD_SEED}`;
+  const wildRead = (pg) => pg.evaluate(() => globalThis.__dragonveinWild.read());
+  const wildReady = (pg) => pg.evaluate(() => globalThis.__dragonveinWild.ready());
+  const fmt = (v) => (Array.isArray(v) ? `(${v.map((x) => x.toFixed(2)).join(', ')})` : typeof v === 'number' ? v.toFixed(3) : String(v));
+  const wildLine = (r) => `tick ${r.tick} dragon ${r.wild.state} at ${fmt(r.wild.pos)} heading ${fmt(r.wild.heading)} calm ${fmt(r.wild.calm)}; ` +
+    `keeper at ${fmt(r.keeper.pos)} v ${fmt(r.keeper.v)}, ${r.keeperDistance.toFixed(2)} away`;
+  /** Wait (bounded) for a condition on the wild state, polling the sim. Returns the last read. */
+  const waitWild = async (pg, cond, timeoutMs, what) => {
+    const t0 = Date.now();
+    for (;;) {
+      const r = await wildRead(pg);
+      if (cond(r)) return r;
+      if (Date.now() - t0 > timeoutMs) throw new Error(`timed out (${timeoutMs} ms) waiting for ${what}: ${wildLine(r)}`);
+      await pg.waitForTimeout(100);
+    }
+  };
+  /** A deck point `ahead` units from the keeper toward `to`, as page pixels, with the spin pinned. */
+  const aimFromKeeper = async (pg, to, ahead) => pg.evaluate(([tx, tz, a]) => {
+    const h = globalThis.__dragonveinWild;
+    const r = h.read();
+    h.pinSpin(r.spin);
+    const [kx, kz] = r.keeper.pos;
+    const d = Math.hypot(tx - kx, tz - kz) || 1;
+    const x = kx + ((tx - kx) / d) * a, z = kz + ((tz - kz) / d) * a;
+    return { deck: [x, z], px: h.project(x, z) };
+  }, [to[0], to[1], ahead]);
+
+  // Tap-to-move, under the mouse: a click walks, a drag orbits and does not walk, a press that
+  // jitters inside the slop is still a click, a double click runs, a click off the island is
+  // ignored — and every answer lands in the next sim tick.
+  {
+    const ctx = await browser.newContext({ viewport: VIEW });
+    const p = await ctx.newPage();
+    const wildErrors = [];
+    p.on('pageerror', (e) => wildErrors.push(String(e)));
+    p.on('console', (m) => { if (m.type() === 'error') wildErrors.push(m.text()); });
+    try {
+      await p.goto(wildUrl, { waitUntil: 'load', timeout: 30_000 });
+      const r0 = await wildReady(p);
+      if (!r0.dragon.ready) throw new Error(`the wild dragon was not built: ${r0.dragon.error}`);
+      const boot = await p.evaluate(() => globalThis.__dragonveinSave.read());
+      say(`wild: seed ${WILD_SEED} — dragon ${r0.dragon.gid} (${r0.wild.element.join('/')}), ${r0.dragon.triangles} tris, ` +
+        `built through the worker in ${r0.dragon.buildMs.toFixed(0)} ms; first frame at ${boot.bootMs.toFixed(0)} ms, ` +
+        `world ready at ${boot.worldReadyMs.toFixed(0)} ms (the first frame does not wait for either)`);
+      say(`wild: temperament ${JSON.stringify(Object.fromEntries(Object.entries(r0.temperament).map(([k, v]) => [k, +v.toFixed(3)])))}`);
+      say(`wild: start — ${wildLine(r0)}; hint shown: ${r0.hint}`);
+      if (!r0.hint) errors.push('wild: the "tap the island to walk" hint is not shown before the first tap');
+      // Stand the keeper where its way to the dragon is open, then click a short walk along it.
+      const staged = await p.evaluate((d) => globalThis.__dragonveinWild.stage(d), r0.temperament.notice + 2.2);
+      if (!staged) throw new Error('no open approach to the dragon to stage the keeper on');
+      const to = r0.wild.pos;
+      const a = await aimFromKeeper(p, to, 1.3);
+      const pose0 = await p.evaluate(readPose);
+      const t0 = await p.evaluate(() => performance.now());
+      await p.mouse.click(a.px[0], a.px[1]);
+      const r1 = await wildRead(p);
+      const answeredMs = r1.taps.lastAt - t0;
+      const off = Math.hypot(r1.keeper.goal[0] - a.deck[0], r1.keeper.goal[1] - a.deck[1]);
+      say(`wild: mouse click at ${fmt(a.px)} px -> keeper goal ${fmt(r1.keeper.goal)} (aimed ${fmt(a.deck)}, ${off.toFixed(3)} off), ` +
+        `pace ${r1.keeper.pace.toFixed(2)}, answered in ${answeredMs.toFixed(1)} ms; hint now ${r1.hint ? 'shown' : 'gone'}`);
+      if (r1.taps.count !== 1 || off > 0.25) errors.push(`wild: a mouse click did not set the keeper's goal: ${JSON.stringify(r1.taps)} goal ${fmt(r1.keeper.goal)} aimed ${fmt(a.deck)}`);
+      if (!(answeredMs >= 0 && answeredMs < 100)) errors.push(`wild: a click took ${answeredMs} ms to answer (G3: 100)`);
+      const r2 = await waitWild(p, (r) => Math.hypot(r.keeper.pos[0] - r.keeper.goal[0], r.keeper.pos[1] - r.keeper.goal[1]) < 0.02 && r.keeper.v === 0, 20_000, 'the keeper to arrive');
+      say(`wild: the keeper walked there — ${wildLine(r2)}; ring ${fmt(r2.keeperView.ring)}`);
+      const pose1 = await p.evaluate(readPose);
+      if (Math.abs(pose1.azimuthDeg - pose0.azimuthDeg) > 1e-6 || Math.abs(pose1.pitchDeg - pose0.pitchDeg) > 1e-6) {
+        errors.push(`wild: a click moved the camera: ${poseText(pose0)} -> ${poseText(pose1)}`);
+      }
+      // A drag from a deck point orbits, and walks nobody.
+      const b = await aimFromKeeper(p, to, 0.6);
+      await p.mouse.move(b.px[0], b.px[1]);
+      await p.mouse.down();
+      await p.mouse.move(b.px[0] + 140, b.px[1] + 10, { steps: 8 });
+      await p.mouse.up();
+      await p.waitForTimeout(300);
+      const r3 = await wildRead(p);
+      const pose2 = await p.evaluate(readPose);
+      say(`wild: mouse drag 140 px from the deck -> camera ${poseText(pose1)} -> ${poseText(pose2)}; taps ${r1.taps.count} -> ${r3.taps.count}`);
+      if (r3.taps.count !== r1.taps.count) errors.push('wild: a mouse drag was taken for a tap');
+      if (Math.abs(pose2.azimuthDeg - pose1.azimuthDeg) < 10) errors.push(`wild: a drag from the deck did not orbit: ${poseText(pose1)} -> ${poseText(pose2)}`);
+      // A press that jitters 4 px is still a click, and still does not move the camera.
+      const c = await aimFromKeeper(p, to, 0.5);
+      await p.mouse.move(c.px[0], c.px[1]);
+      await p.mouse.down();
+      await p.mouse.move(c.px[0] + 3, c.px[1] - 2, { steps: 3 });
+      await p.mouse.up();
+      const r4 = await wildRead(p);
+      const pose3 = await p.evaluate(readPose);
+      say(`wild: mouse press with 4 px of jitter -> taps ${r3.taps.count} -> ${r4.taps.count}, camera ${poseText(pose3)}`);
+      if (r4.taps.count !== r3.taps.count + 1) errors.push('wild: a click with 4 px of jitter was not taken for a tap');
+      if (Math.abs(pose3.azimuthDeg - pose2.azimuthDeg) > 1e-6) errors.push('wild: a jittery click moved the camera');
+      // A double click runs.
+      const d = await aimFromKeeper(p, to, 0.9);
+      await p.mouse.dblclick(d.px[0], d.px[1]);
+      const r5 = await wildRead(p);
+      say(`wild: mouse double click -> run taps ${r5.taps.run}, keeper pace ${r5.keeper.pace.toFixed(2)} (run ${r5.keeper.pace >= 2.8 ? 'yes' : 'NO'})`);
+      if (!(r5.taps.run >= 1 && r5.keeper.pace >= 2.8)) errors.push(`wild: a double click did not run: ${JSON.stringify(r5.taps)} pace ${r5.keeper.pace}`);
+      // A click in the sky is not a walk.
+      await p.mouse.click(VIEW.width / 2, 20);
+      const r6 = await wildRead(p);
+      say(`wild: mouse click in the sky -> off-deck ${r6.taps.offDeck}, taps ${r6.taps.count} (unchanged: ${r6.taps.count === r5.taps.count})`);
+      if (r6.taps.count !== r5.taps.count) errors.push('wild: a click off the island moved the keeper');
+      for (const e of wildErrors) errors.push(`wild mouse: ${e}`);
+      say(`wild: mouse drill — ${wildErrors.length} page error(s)`);
+    } catch (e) {
+      errors.push(`wild mouse drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
+    }
+  }
+  await flush();
+
+  // The same under touch (hasTouch): a tap walks, a one-finger drag orbits, a double tap runs,
+  // a pinch zooms and walks nobody.
+  {
+    const ctx = await browser.newContext({ viewport: VIEW, hasTouch: true, isMobile: true });
+    const p = await ctx.newPage();
+    const wildErrors = [];
+    p.on('pageerror', (e) => wildErrors.push(String(e)));
+    try {
+      await p.goto(wildUrl, { waitUntil: 'load', timeout: 30_000 });
+      const r0 = await wildReady(p);
+      if (!r0.dragon.ready) throw new Error(`the wild dragon was not built: ${r0.dragon.error}`);
+      const cdp = await ctx.newCDPSession(p);
+      const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', {
+        type, touchPoints: points.map(([x, y], id) => ({ x, y, id })),
+      });
+      const tap = async (x, y) => { await touch('touchStart', [[x, y]]); await touch('touchEnd', []); };
+      const staged = await p.evaluate((d) => globalThis.__dragonveinWild.stage(d), r0.temperament.notice + 2.2);
+      if (!staged) throw new Error('no open approach to the dragon to stage the keeper on');
+      const to = r0.wild.pos;
+      const a = await aimFromKeeper(p, to, 1.3);
+      const pose0 = await p.evaluate(readPose);
+      await tap(a.px[0], a.px[1]);
+      const r1 = await wildRead(p);
+      const off = Math.hypot(r1.keeper.goal[0] - a.deck[0], r1.keeper.goal[1] - a.deck[1]);
+      say(`wild: touch tap at ${fmt(a.px)} px -> keeper goal ${fmt(r1.keeper.goal)} (aimed ${fmt(a.deck)}, ${off.toFixed(3)} off), pace ${r1.keeper.pace.toFixed(2)}`);
+      if (r1.taps.count !== 1 || off > 0.25) errors.push(`wild: a touch tap did not set the keeper's goal: ${JSON.stringify(r1.taps)}`);
+      await waitWild(p, (r) => r.keeper.v === 0 && Math.hypot(r.keeper.pos[0] - r.keeper.goal[0], r.keeper.pos[1] - r.keeper.goal[1]) < 0.02, 20_000, 'the keeper to arrive');
+      const b = await aimFromKeeper(p, to, 0.6);
+      await touch('touchStart', [[b.px[0], b.px[1]]]);
+      for (let i = 1; i <= 10; i++) await touch('touchMove', [[b.px[0] - 14 * i, b.px[1]]]);
+      await touch('touchEnd', []);
+      await p.waitForTimeout(300);
+      const r2 = await wildRead(p);
+      const pose1 = await p.evaluate(readPose);
+      say(`wild: touch drag 140 px from the deck -> camera ${poseText(pose0)} -> ${poseText(pose1)}; taps ${r1.taps.count} -> ${r2.taps.count}`);
+      if (r2.taps.count !== r1.taps.count) errors.push('wild: a touch drag was taken for a tap');
+      if (Math.abs(pose1.azimuthDeg - pose0.azimuthDeg) < 10) errors.push('wild: a touch drag from the deck did not orbit');
+      const c = await aimFromKeeper(p, to, 0.9);
+      await tap(c.px[0], c.px[1]);
+      await p.waitForTimeout(120);
+      await tap(c.px[0] + 3, c.px[1] + 2);
+      const r3 = await wildRead(p);
+      say(`wild: touch double tap -> run taps ${r3.taps.run}, keeper pace ${r3.keeper.pace.toFixed(2)}`);
+      if (!(r3.taps.run >= 1 && r3.keeper.pace >= 2.8)) errors.push(`wild: a double tap did not run: ${JSON.stringify(r3.taps)}`);
+      const cx = VIEW.width / 2, cy = VIEW.height / 2 + 60;
+      await touch('touchStart', [[cx - 30, cy], [cx + 30, cy]]);
+      for (let i = 1; i <= 8; i++) await touch('touchMove', [[cx - 30 - 10 * i, cy], [cx + 30 + 10 * i, cy]]);
+      await touch('touchEnd', []);
+      await p.waitForTimeout(300);
+      const r4 = await wildRead(p);
+      const pose2 = await p.evaluate(readPose);
+      say(`wild: touch pinch-out on the deck -> camera ${poseText(pose1)} -> ${poseText(pose2)}; taps ${r3.taps.count} -> ${r4.taps.count}`);
+      if (r4.taps.count !== r3.taps.count) errors.push('wild: a pinch was taken for a tap');
+      if (!(pose2.distance < pose1.distance - 0.5)) errors.push('wild: a pinch on the deck did not zoom');
+      for (const e of wildErrors) errors.push(`wild touch: ${e}`);
+      say(`wild: touch drill — ${wildErrors.length} page error(s)`);
+    } catch (e) {
+      errors.push(`wild touch drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
+    }
+  }
+  await flush();
+
+  // A reload mid-approach restores the dragon exactly: its state, place, heading and calm, and
+  // the keeper's place (criterion 3). The sim is held for the save, so the world saved is the
+  // world compared; after the reload it runs on from there.
+  {
+    const ctx = await browser.newContext({ viewport: VIEW });
+    const p = await ctx.newPage();
+    const wildErrors = [];
+    p.on('pageerror', (e) => wildErrors.push(String(e)));
+    try {
+      await p.goto(wildUrl, { waitUntil: 'load', timeout: 30_000 });
+      const r0 = await wildReady(p);
+      if (!r0.dragon.ready) throw new Error(`the wild dragon was not built: ${r0.dragon.error}`);
+      // Walk in to just outside its flight distance, then stand: it watches, and calm rises.
+      if (!await p.evaluate((d) => globalThis.__dragonveinWild.stage(d), r0.temperament.notice + 1.2)) {
+        throw new Error('no open approach to the dragon to stage the keeper on');
+      }
+      const { wild: { pos: [dx, dz] }, keeper: { pos: [kx, kz] } } = await wildRead(p);
+      const dist = Math.hypot(dx - kx, dz - kz), stop = dist - (r0.temperament.flight + 0.5);
+      await p.evaluate(([x, z]) => globalThis.__dragonveinWild.walkTo(x, z, false),
+        [kx + ((dx - kx) / dist) * stop, kz + ((dz - kz) / dist) * stop]);
+      const mid = await waitWild(p, (r) => r.keeper.v === 0 && r.wild.calm > 0.05 && ['alert', 'settle'].includes(r.wild.state), 60_000, 'the dragon to watch a still keeper');
+      await p.evaluate(() => globalThis.__dragonveinWild.hold(true));
+      await p.evaluate(() => globalThis.__dragonveinSave.save());
+      const before = await wildRead(p);
+      const saved = await p.evaluate(() => globalThis.__dragonveinSave.read());
+      say(`wild: before reload — ${wildLine(before)} (approach reached at ${wildLine(mid)})`);
+      await p.reload({ waitUntil: 'load', timeout: 30_000 });
+      const after = await wildReady(p);
+      if (!after.dragon.ready) throw new Error(`after the reload the wild dragon was not built: ${after.dragon.error}`);
+      const loaded = await p.evaluate(() => globalThis.__dragonveinWild.loaded());
+      const keys = ['state', 'pos', 'heading', 'calm', 't', 'dur', 'goal', 'from', 'id'];
+      const broke = keys.filter((k) => JSON.stringify(loaded?.wild?.[k]) !== JSON.stringify(saved.world.wild[k]));
+      if (JSON.stringify(loaded?.keeper) !== JSON.stringify(saved.world.keeper)) broke.push('keeper');
+      if (loaded?.wild?.genome?.gid !== saved.world.wild.genome.gid) broke.push('genome');
+      say(`wild: after reload, as loaded — dragon ${loaded?.wild?.state} at ${fmt(loaded?.wild?.pos ?? [])} heading ${fmt(loaded?.wild?.heading)} ` +
+        `calm ${fmt(loaded?.wild?.calm)}, keeper at ${fmt(loaded?.keeper?.pos ?? [])}; ${broke.length ? `DIFFERS in ${broke.join(', ')}` : 'state, position, heading and calm equal to the save'}`);
+      if (broke.length) errors.push(`wild: a reload mid-approach did not restore the dragon: ${broke.join(', ')}`);
+      // And it is drawn there, and plays on from there rather than starting over.
+      const later = await waitWild(p, (r) => r.tick > (loaded?.tick ?? 0) + 30, 30_000, 'the world to run on');
+      const drawnOff = Math.hypot(later.dragon.holder[0] - later.wild.pos[0], later.dragon.holder[2] - later.wild.pos[1]);
+      say(`wild: after reload, 30 ticks on — ${wildLine(later)}; drawn ${drawnOff.toFixed(3)} from its sim position`);
+      if (!['alert', 'settle'].includes(later.wild.state) || later.wild.calm < loaded.wild.calm) {
+        errors.push(`wild: after the reload the dragon did not carry on watching (${later.wild.state}, calm ${later.wild.calm})`);
+      }
+      if (drawnOff > 0.2) errors.push(`wild: the dragon is drawn ${drawnOff} from where the sim has it`);
+      for (const e of wildErrors) errors.push(`wild reload: ${e}`);
+    } catch (e) {
+      errors.push(`wild reload drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
+    }
+  }
+  await flush();
+
+  // The reaction, photographed (criterion 4): wander, alert, wary, settle, flee. The island's
+  // spin is pinned so the keeper comes in across the screen and the dragon is seen side on;
+  // each shot is a close camera on the two of them (the orbit's side, 22° up), taken once the
+  // pose has eased in.
+  {
+    const ctx = await browser.newContext({ viewport: VIEW });
+    const p = await ctx.newPage();
+    const wildErrors = [];
+    p.on('pageerror', (e) => wildErrors.push(String(e)));
+    const shoot = async (name, what, r) => {
+      await p.evaluate(() => globalThis.__dragonveinWild.closeUp(5.5, 22));
+      await p.waitForTimeout(250);
+      await p.screenshot({ path: `${SHOTS}/${name}` });
+      const at = r ?? await wildRead(p);
+      say(`shot: ${SHOTS}/${name}  (${what}) — ${wildLine(at)}; tells: look ${fmt(at.dragon.attitude.look)} neck ${fmt(at.dragon.attitude.neck)} ` +
+        `head ${fmt(at.dragon.attitude.head)} lower ${fmt(at.dragon.attitude.lower)} tail ${fmt(at.dragon.attitude.tail)}; walk ${fmt(at.dragon.walkWeight)} ` +
+        `flap ${fmt(at.dragon.flap)} glide ${fmt(at.dragon.glide)} altitude ${fmt(at.dragon.altitude)}; calm meter ${at.calmMeter}`);
+      await p.evaluate(() => globalThis.__dragonveinShot.release());
+    };
+    try {
+      await p.goto(wildUrl, { waitUntil: 'load', timeout: 30_000 });
+      const r0 = await wildReady(p);
+      if (!r0.dragon.ready) throw new Error(`the wild dragon was not built: ${r0.dragon.error}`);
+      await p.waitForFunction(() => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0, undefined, { timeout: 30_000 });
+      const T = r0.temperament;
+      const staged = await p.evaluate((d) => globalThis.__dragonveinWild.stage(d), T.notice + 1.4);
+      if (!staged) throw new Error('no open approach to the dragon to stage the keeper on');
+      await p.evaluate(([x, z]) => globalThis.__dragonveinWild.frameAcross(x, z), staged);
+      // 17: far, it wanders. Wait for it to be walking.
+      const wander = await waitWild(p, (r) => r.wild.state === 'wander' && r.dragon.walkWeight > 0.6, 60_000, 'the dragon to wander');
+      await p.evaluate(() => globalThis.__dragonveinWild.pinSpin(globalThis.__dragonveinWild.read().spin));
+      await shoot('17-wild-wander.png', 'the keeper far; the dragon wanders, walking', wander);
+      if (wander.keeperDistance < T.notice) errors.push('wild: 17 was taken with the keeper inside the notice radius');
+      // 18: the keeper walks in to just inside the notice radius and stands: it looks up at it.
+      const walkToward = async (gap, run) => p.evaluate(([g, rn]) => {
+        const h = globalThis.__dragonveinWild;
+        const r = h.read();
+        const [dx, dz] = r.wild.pos, [kx, kz] = r.keeper.pos;
+        const d = Math.hypot(dx - kx, dz - kz), stop = Math.max(0, d - g);
+        return h.walkTo(kx + ((dx - kx) / d) * stop, kz + ((dz - kz) / d) * stop, rn);
+      }, [gap, run]);
+      // The dragon has wandered: stage the keeper afresh on an open approach, seen across the screen.
+      const restaged = await p.evaluate((d) => globalThis.__dragonveinWild.stage(d), T.notice + 1.4);
+      if (!restaged) throw new Error('no open approach to the dragon to stage the keeper on');
+      await p.evaluate(([x, z]) => globalThis.__dragonveinWild.frameAcross(x, z), restaged);
+      await waitWild(p, (r) => r.wild.state === 'graze' || r.wild.state === 'wander', 10_000, 'the dragon at ease again');
+      await walkToward(T.comfort + 0.45, false);
+      const alert = await waitWild(p, (r) => r.wild.state === 'alert' && r.keeper.v === 0 && r.dragon.attitude.neck > 0.3
+        && Math.abs(r.dragon.attitude.look) < 1.4, 40_000, 'an alert dragon');
+      await shoot('18-wild-alert.png', 'head up, turned to the keeper', alert);
+      // 21: the keeper walks on in: it crouches, turns its tail and walks off.
+      await walkToward(T.flight + 0.4, false);
+      const wary = await waitWild(p, (r) => r.wild.state === 'wary' && r.dragon.attitude.lower > 0.28, 20_000, 'a wary dragon');
+      await shoot('21-wild-wary.png', 'crouched low, tail to the keeper, walking off', wary);
+      // 19: the keeper stands still inside the comfort ring: calm rises, it settles.
+      const settle = await waitWild(p, (r) => r.wild.state === 'settle' && r.wild.calm >= 0.5 && r.keeper.v === 0, 90_000, 'a settled dragon');
+      await shoot('19-wild-settle.png', 'the keeper near and still; calm risen, the dragon settled', settle);
+      // 20: the keeper runs at it: it takes off.
+      const calmBefore = settle.wild.calm;
+      await walkToward(0, true);
+      const flee = await waitWild(p, (r) => r.wild.state === 'flee' && r.dragon.altitude > 0.25 && r.dragon.flap > 0.5, 20_000, 'a take-off');
+      await shoot('20-wild-flee.png', 'mid-takeoff after a rush', flee);
+      say(`wild: the rush cost calm ${calmBefore.toFixed(3)} -> ${flee.wild.calm.toFixed(3)}; it flies from ${fmt(flee.wild.from)} to ${fmt(flee.wild.goal)}`);
+      if (!(flee.wild.calm < calmBefore)) errors.push('wild: fleeing did not cost calm');
+      const landed = await waitWild(p, (r) => r.wild.state !== 'flee', 30_000, 'the landing');
+      say(`wild: landed — ${wildLine(landed)}; altitude ${fmt(landed.dragon.altitude)}`);
+      for (const e of wildErrors) errors.push(`wild shots: ${e}`);
+    } catch (e) {
+      errors.push(`wild shots drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
+    }
+  }
+  await flush();
+
+  // The clip (criterion 4): one slow approach, from far through alert to settle — the last
+  // metres in short, careful steps — and then a rush that puts it to flight. Orbit view, the
+  // island's spin pinned so the approach crosses the screen; real time.
+  await rm(WILD_CLIP, { force: true });
+  for (let attempt = 1; attempt <= TURNTABLE_ATTEMPTS; attempt++) {
+    const ctx = await browser.newContext({ viewport: VIEW, recordVideo: { dir: TURNTABLES, size: VIEW } });
+    const p = await ctx.newPage();
+    p.on('pageerror', (e) => errors.push(`wild clip: ${String(e)}`));
+    let saved = false;
+    try {
+      await p.goto(wildUrl, { waitUntil: 'load', timeout: 30_000 });
+      const r0 = await wildReady(p);
+      if (!r0.dragon.ready) throw new Error(`the wild dragon was not built: ${r0.dragon.error}`);
+      const T = r0.temperament;
+      await p.evaluate(() => globalThis.__dragonveinWild.orbit(39.3, 16, 15));
+      const staged = await p.evaluate((d) => globalThis.__dragonveinWild.stage(d), T.notice + 1.6);
+      if (!staged) throw new Error('no open approach to the dragon to stage the keeper on');
+      await p.evaluate(([x, z]) => globalThis.__dragonveinWild.frameAcross(x, z), staged);
+      const t0 = Date.now();
+      const marks = [];
+      const mark = async (what) => { const r = await wildRead(p); marks.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${what}: ${r.wild.state} calm ${r.wild.calm.toFixed(2)}`); return r; };
+      await p.waitForTimeout(1500);
+      await mark('far');
+      const toward = (gap, run) => p.evaluate(([g, rn]) => {
+        const h = globalThis.__dragonveinWild;
+        const r = h.read();
+        const [dx, dz] = r.wild.pos, [kx, kz] = r.keeper.pos;
+        const d = Math.hypot(dx - kx, dz - kz), stop = Math.max(0, d - g);
+        return h.walkTo(kx + ((dx - kx) / d) * stop, kz + ((dz - kz) / d) * stop, rn);
+      }, [gap, run]);
+      await toward(T.comfort + 0.2, false);
+      await waitWild(p, (r) => r.keeper.v === 0, 30_000, 'the keeper to stop');
+      await mark('stopped at the comfort ring');
+      // Careful steps in: each shorter than SLOW / CAREFUL, a pause between.
+      for (let i = 0; i < 6; i++) {
+        const r = await wildRead(p);
+        if (r.keeperDistance < T.flight + 0.6 || r.wild.state === 'settle') break;
+        await toward(r.keeperDistance - 0.4, false);
+        await p.waitForTimeout(1600);
+      }
+      await waitWild(p, (r) => r.wild.state === 'settle' && r.wild.calm > 0.45, 90_000, 'a settled dragon');
+      await mark('settled');
+      await p.waitForTimeout(1500);
+      await toward(0, true);
+      await waitWild(p, (r) => r.wild.state === 'flee', 20_000, 'the flight');
+      await mark('rushed: flees');
+      await waitWild(p, (r) => r.wild.state !== 'flee', 30_000, 'the landing');
+      await mark('landed');
+      await p.waitForTimeout(1200);
+      const video = p.video();
+      await ctx.close();
+      if (video) {
+        await video.saveAs(WILD_CLIP);
+        await video.delete();
+        say(`clip: ${WILD_CLIP}  (${((Date.now() - t0) / 1000).toFixed(1)} s, ${(await stat(WILD_CLIP)).size} bytes, attempt ${attempt}) — ${marks.join(' · ')}`);
+        saved = true;
+      }
+    } catch (e) {
+      await ctx.close().catch(() => {});
+      say(`clip: attempt ${attempt} failed — ${e instanceof Error ? e.message : String(e)}`);
+    }
+    if (saved) break;
+    if (attempt === TURNTABLE_ATTEMPTS) errors.push(`clip: no ${WILD_CLIP} after ${TURNTABLE_ATTEMPTS} attempts`);
   }
   await flush();
 

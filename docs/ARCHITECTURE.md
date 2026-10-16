@@ -93,6 +93,17 @@ Hard rules for `src/render/`:
   The hero island's generated flora and rocks are one `FloraBatch` (`src/render/flora.ts`,
   M5f), whose shadow pass draws only its caster prefix. Per-instance culling and sorting
   stay off on a batch: both walk every instance every frame and the sort allocates.
+- Every shadow caster that is instanced, batched or skinned has its own `customDepthMaterial`:
+  three's one pooled depth material flips its `instancing` / `batching` / `skinning` flag for
+  each kind it meets, and every flip rebuilds program parameters (~8 kB/frame measured, M8b).
+- A creature in the game scene is one draw (M8b): the wild dragon's three material groups
+  become one `MeshStandardMaterial` with per-vertex roughness (`src/render/wild-dragon.ts`),
+  and the keeper is one merged geometry whose lantern and tap ring glow by vertex emission.
+  The dragon is skinned from a `mat4` uniform array its colour and depth materials share
+  (`withBones`), not a `SkinnedMesh`, whose bone texture three re-uploads every frame through
+  a path that allocates.
+- The sim's moving bodies are drawn between ticks: `src/main.ts` keeps the last two ticks'
+  positions in two fixed `Float64Array`s and interpolates at the accumulator's fraction.
 - One `DirectionalLight` for the sun. Glow is emissive + bloom, not real lights.
   Real point lights are capped at 4.
 - Shadows: cascaded, 2 cascades, resolution from the quality tier.
@@ -113,8 +124,9 @@ Since M8a, concretely:
 
 | piece | file | owns |
 |---|---|---|
-| world state | `src/sim/world.ts` | `World`: `schema`, `seed`, `tick` (20 Hz), `rng` (the four `Rng.state()` words), `nextId`, `roster` (`{ id, genome: GenomeJson }`), `eggs` (empty until M9). Plain JSON. `createWorld(seed)`, `step(world)` (in place, allocation-free), `drawU32(world)`. |
-| payload | `src/sim/migrate.ts` | the text stored: `{"rngVersion": 1, "world": {"schema": 1, …}}`. `world.schema` and `rngVersion` never move. `encodeSave`, `decodeSave`, `MIGRATIONS` (append-only; entry *i* reads schema *i*+1), validation. |
+| world state | `src/sim/world.ts` | `World`: `schema`, `seed`, `tick` (20 Hz), `rng` (the four `Rng.state()` words), `nextId`, `roster` (`{ id, genome: GenomeJson }`), `eggs` (empty until M9), and since schema 2 (M8b) `wild` and `keeper` (below). Plain JSON. `createWorld(seed, deck?)`, `step(world, deck?)` (in place, allocation-free), `drawU32(world)`. |
+| the island's wild dragon and keeper | `src/sim/wild.ts` | `wild`: `{ id, genome, pos: [x, z], heading, state, calm, t, dur, goal: [x, z], from: [x, z] }` — `state` one of `graze`, `wander`, `alert`, `wary`, `flee`, `settle`; `calm` in [0, 1]; `t` ticks in the state, `dur` its length when it has one; `goal` a wander's or flight's destination, `from` a flight's takeoff spot. Its `id` is reserved from `nextId` and never on the roster. `keeper`: `{ pos, goal, pace, v }`. Positions are 2D, world units in the island's own frame; the sim knows no heights. `temperament(genome)`, `keeperTo(world, deck, x, z, run)` (the player's tap), `stepWild`. A `Deck` (`radius`, obstacle circles, `home`, `gate`) is static configuration the page derives from the island layout and passes to `step`; it is not saved. |
+| payload | `src/sim/migrate.ts` | the text stored: `{"rngVersion": 1, "world": {"schema": 2, …}}`. `world.schema` and `rngVersion` never move. `encodeSave`, `decodeSave`, `MIGRATIONS` (append-only; entry *i* reads schema *i*+1: 1 → 2 adds `wild` and `keeper`), validation. |
 | policy | `src/sim/persist.ts` | `openWorld` / `SaveSession`: load (or promote a journal entry), refuse, set aside, back up, write. No clock or DOM: wall-clock stamps and a timing clock are passed in. |
 | store | `src/core/save.ts` | database `dragonvein`, object store `save`; keys `main`, `backup.v<N>`, `refused.<n>`; each save value `{ gen, savedAt, text, writer, seq }`. The write-ahead journal: `localStorage` key `dragonvein.journal.<writer>`. `openIdbStore()` never rejects and reopens a closed handle; `memoryStore()` / `memoryJournal()` for tests. |
 | wiring | `src/main.ts` | load at boot (dynamic import, does not block the first frame), autosave every 10 s and on `visibilitychange`→hidden and `pagehide`, a roster change at once, the 20 Hz accumulator, the HUD readout and its recovery buttons. |
@@ -171,4 +183,11 @@ The rules every future schema keeps:
 - **No IndexedDB** (missing, throwing, failing or not opening in 4 s): the game runs
   unsaved and the HUD says "not saved".
 - `tests/fixtures/save-v1.json` is a frozen schema-1 save (one bred dragon). Every build
-  must keep loading it.
+  must keep loading it: since M8b through the 1 → 2 migration, which validates it as schema 1,
+  seeds the wild dragon from one draw of the world's own stream, and places it and the keeper
+  at fixed spots (the first tick moves them off any obstacle).
+- `tests/fixtures/save-v2.json` is a frozen schema-2 save (M8b): the same roster recipe and the
+  wild dragon caught mid-approach, alert, calm partly risen. Every build must keep loading it.
+- **The wild dragon is world state, and so is the keeper.** A reload restores the dragon's
+  state, position, heading and calm, and the keeper's position and walk, exactly; gate:smoke
+  asserts it in Chromium. Render-only state (the keeper's facing, eased poses) is not saved.
