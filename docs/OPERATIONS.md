@@ -88,6 +88,89 @@ npm ci && npm run gates     # ground truth, beats every document above
 the handoff even if its code was perfect, which is why `CLAUDE.md` §3.7 makes rewriting it
 the first thing a run does when closing out.
 
+## Running a build from your own machine
+
+Use this to spend the **local** Claude Code login's quota instead of a cloud account's. A
+cloud session always bills the account that started it, and there is no way to point one at
+a different login — so to use a given account's allowance, the run has to happen where that
+account is logged in. On your own machine that is the Claude Code CLI.
+
+It also sidesteps the GitHub-App restriction that blocks cloud sessions in a Teams org: a
+local run pushes with **your own git credentials**, not the Claude GitHub App.
+
+### Once, to set the machine up
+
+| Needed for | Install |
+|---|---|
+| Everything | `git`, Node **≥ 20** (`package.json` §engines), and the Claude Code CLI you already have |
+| `gate:perf`, `gate:smoke` | a headless Chromium — `npx playwright install chromium` |
+| Steps that add or change a **generator** (`assets:build`, `assets:render`) | Python 3.11 and `pip install bpy`. See the `asset-env` skill for the verified details |
+
+A step that only *places* existing `.glb` files needs no Python and no Blender. Check what
+the step touches before installing anything.
+
+```sh
+git clone https://github.com/vtpqui3009/dragonvein
+cd dragonvein
+npm ci
+npm run gates          # ground truth before you change anything
+```
+
+### To run a step, interactively
+
+```sh
+cd dragonvein
+claude
+```
+
+Then one line, which is the same thing the cloud dispatcher sends:
+
+> Read `ops/build-prompt.md` at the root of this repository and follow it exactly. Then read
+> `NEXT.md` and continue from whatever step it and `docs/ROADMAP.md` say is first in reading
+> order and not `DONE`.
+
+`ops/build-prompt.md` is kept current in git precisely so this line never goes stale.
+
+### To run a step unattended, on a schedule
+
+```bat
+cd /d C:\path\to\dragonvein
+git pull --ff-only origin main
+claude -p "Read ops/build-prompt.md at the root of this repository and follow it exactly. Then read NEXT.md and continue from whatever step it and docs/ROADMAP.md say is first in reading order and not DONE." --permission-mode acceptEdits --permission-prompts none
+```
+
+Save as `run-build.cmd` and point Windows Task Scheduler at it.
+
+- `--permission-prompts none` denies anything that would otherwise wait for a person, and
+  tells Claude not to retry it, so the run cannot hang on a prompt at 3am. Requires CLI
+  v2.1.259 or later.
+- **Never pass `--bare` for this project.** Bare mode skips `CLAUDE.md`, `.claude/skills/`
+  and `.claude/agents/` — which here means it skips the build contract, the three critics and
+  the `asset-env`, `critic-round` and `run-closeout` procedures. The run would look like it
+  worked and would have followed none of the rules.
+
+### What it costs your machine
+
+`npm run gates` ends with `gate:perf` and `gate:smoke`, which drive a headless Chromium on
+the SwiftShader software rasteriser. That is CPU-bound and takes minutes, on every gate run,
+and a run gates several times. `assets:render` is heavier still: Cycles on CPU is 25–100
+seconds **per frame**, and a turntable is many frames.
+
+So the honest split, for a weak machine:
+
+- **Gameplay steps are fine locally.** M7 (animation), M8 (taming, roster), M9 (breeding, the
+  gene inspector) are TypeScript. No Blender, no new assets — `tsc`, `eslint`, `vitest`, then
+  the Chromium gates.
+- **Steps that add generators are not.** Any M15-style asset wave means Blender renders for
+  minutes per frame. Leave those to a cloud session.
+
+### Do not run both at once
+
+Two sessions pushing to `main` collide, and a local run is invisible to the cloud
+`list_sessions` check exactly as a second account's is. Start one, let it finish, then start
+the next. The marker commit that `ops/build-prompt.md` §Step 0 pushes is how you can tell
+from `git log` that a run is live.
+
 ## Environment hazards, all of them met in practice
 
 - **Detached HEAD on checkout.** Local `main` arrives stale; the first push is rejected as
