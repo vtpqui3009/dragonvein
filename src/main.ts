@@ -3,6 +3,8 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Rng } from './core/rng';
 import { FloraBatch, batchable } from './render/flora';
 import { bakeWindBend, setWindTime, withWind } from './render/wind';
+import { TICK_HZ, TICK_MS, createWorld, step, type World } from './sim/world';
+import type { LoadReport, SaveSession, SaveState } from './sim/persist';
 
 /**
  * M0 spine: prove the whole chain works end to end — build, deploy, render, measure.
@@ -1991,6 +1993,179 @@ const hud = {
 };
 if (hud.build) hud.build.textContent = __BUILD_VERSION__;
 
+// --- the world and its save (M8a) -------------------------------------------------------
+/**
+ * The sim world (src/sim/world.ts) and the session that keeps it in IndexedDB
+ * (src/sim/persist.ts over src/core/save.ts). docs/ARCHITECTURE.md §Save has the contract;
+ * what this file adds is only the wiring:
+ *
+ * - **Load never blocks the first frame.** The save code is a dynamic import started here,
+ *   and the frame loop runs from the first rAF whether or not it has landed. Until it has,
+ *   `world` is null, the sim does not tick and the HUD says `loading`. `worldReadyMs`
+ *   records when it landed, beside `bootMs`, so the claim is checkable.
+ * - **The sim advances at a fixed 20 Hz from the frame loop's accumulated dt.** Wall-clock
+ *   time enters here and is turned into whole ticks; src/sim never sees it. At most
+ *   MAX_CATCH_UP_MS is credited per frame, so a tab back from the background does not
+ *   fast-forward its world.
+ * - **Saves:** once at load (so "saved" on screen means a write has landed, and a store
+ *   that opens but cannot write is caught at once), every AUTOSAVE_MS, on
+ *   `visibilitychange` to hidden and on `pagehide`. A roster change saves at once — a bred
+ *   dragon must not wait 10 s to exist on disk (rubric G4).
+ * - **Two tabs:** a write only replaces the record its tab last saw (`gen`, checked inside
+ *   the write's own transaction), so a stale tab is refused rather than overwriting a
+ *   roster it never saw, and stops saving. A tab whose write lands also says so on a
+ *   BroadcastChannel, so other tabs stop at once instead of at their next autosave.
+ * - **Nothing per frame.** Serialising happens only inside a save. The HUD is repainted on
+ *   the 250 ms timer, and its strings are rebuilt only when what they show changes.
+ */
+const TEST_HOOKS = new URLSearchParams(location.search).has('test');
+const AUTOSAVE_MS = 10_000;
+const MAX_CATCH_UP_MS = 250;
+
+let world: World | null = null;
+let save: SaveSession | null = null;
+let loadReport: LoadReport | null = null;
+/** `performance.now()` when the world was ready: compare with `bootMs` (first frame). */
+let worldReadyMs = 0;
+let simAccMs = 0;
+const saveChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('dragonvein-save') : null;
+
+const hudWorld = {
+  clock: document.getElementById('hud-clock'),
+  roster: document.getElementById('hud-roster'),
+  save: document.getElementById('hud-save'),
+  note: document.getElementById('hud-save-note'),
+};
+
+const worldReady: Promise<void> = (async () => {
+  const seed = crypto.getRandomValues(new Uint32Array(1))[0] ?? 1;
+  try {
+    const [{ openGameWorld }, { openIdbStore }] = await Promise.all([
+      import('./sim/persist'), import('./core/save'),
+    ]);
+    const opened = await openIdbStore();
+    const r = await openGameWorld(opened.ok ? opened.store : null, seed, opened.ok ? undefined : opened.why);
+    world = r.world;
+    save = r.session;
+    loadReport = r.report;
+    if (!r.session.writable) console.warn(`DRAGONVEIN: progress is not saved (${r.session.state}: ${r.session.detail})`);
+  } catch (e) {
+    // The save code itself failed to load. Play on, unsaved, and say so.
+    world = createWorld(seed);
+    save = null;
+    console.warn(`DRAGONVEIN: progress is not saved (${e instanceof Error ? e.message : String(e)})`);
+  }
+  worldReadyMs = performance.now();
+  paintWorldHud();
+  await saveWorld();
+})();
+
+function saveWorld(): Promise<void> {
+  const s = save;
+  if (!world || !s || !s.writable) return Promise.resolve();
+  const before = s.gen;
+  return s.save(world, Date.now()).then(() => {
+    if (s.gen !== before) saveChannel?.postMessage(s.gen);
+    paintWorldHud();
+  });
+}
+saveChannel?.addEventListener('message', (e: MessageEvent<unknown>) => {
+  if (typeof e.data === 'number' && save) { save.markStale(e.data); paintWorldHud(); }
+});
+setInterval(() => { void saveWorld(); }, AUTOSAVE_MS);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') void saveWorld();
+});
+addEventListener('pagehide', () => { void saveWorld(); });
+
+/** What the HUD's save readout says in each state, and the warning line under it. */
+const SAVE_TEXT: Record<SaveState | 'loading', readonly [string, string]> = {
+  loading: ['loading', ''],
+  pending: ['saving', ''],
+  saved: ['saved', ''],
+  error: ['not saved', 'the last save failed — retrying'],
+  unavailable: ['not saved', 'storage unavailable — progress is not kept'],
+  conflict: ['not saved', 'another tab is saving — reload to play here'],
+  newer: ['not saved', 'save from a newer version kept, not overwritten'],
+  corrupt: ['not saved', 'unreadable save kept, not overwritten'],
+  incomplete: ['not saved', 'incomplete save kept, not overwritten'],
+};
+let shownSec = -2;
+let shownRoster = -2;
+let shownState = '';
+let shownAgo = -2;
+
+function paintWorldHud(): void {
+  const sec = world ? Math.floor(world.tick / TICK_HZ) : -1;
+  if (sec !== shownSec && hudWorld.clock) {
+    shownSec = sec;
+    const m = Math.floor(sec / 60) % 60;
+    const ss = sec % 60;
+    hudWorld.clock.textContent = sec < 0 ? '—'
+      : `${Math.floor(sec / 3600)}:${m < 10 ? '0' : ''}${m}:${ss < 10 ? '0' : ''}${ss}`;
+  }
+  const roster = world ? world.roster.length : -1;
+  if (roster !== shownRoster && hudWorld.roster) {
+    shownRoster = roster;
+    hudWorld.roster.textContent = roster < 0 ? '—' : String(roster);
+  }
+  const state: SaveState | 'loading' = save ? save.state : world ? 'unavailable' : 'loading';
+  const ago = state === 'saved' && save?.lastSavedAt != null
+    ? Math.max(0, Math.floor((Date.now() - save.lastSavedAt) / 1000)) : -1;
+  if (state === shownState && ago === shownAgo) return;
+  shownState = state;
+  shownAgo = ago;
+  const [value, note] = SAVE_TEXT[state];
+  if (hudWorld.save) {
+    hudWorld.save.textContent = ago < 0 ? value : `${value} ${ago < 60 ? `${ago}s` : `${Math.floor(ago / 60)}m`} ago`;
+    hudWorld.save.classList.toggle('off', value === 'not saved');
+  }
+  if (hudWorld.note) {
+    hudWorld.note.textContent = note;
+    hudWorld.note.hidden = note === '';
+  }
+}
+
+/** The `?test` hook's view of the world: a deep copy, never the live object. */
+function readSave() {
+  return {
+    world: world ? JSON.parse(JSON.stringify(world)) as World : null,
+    state: save?.state ?? (world ? 'unavailable' : 'loading'),
+    detail: save?.detail ?? '',
+    gen: save?.gen ?? 0,
+    writes: save?.writes ?? 0,
+    lastSavedAt: save?.lastSavedAt ?? null,
+    report: loadReport,
+    worldReadyMs,
+    bootMs,
+    hud: {
+      clock: hudWorld.clock?.textContent ?? '',
+      roster: hudWorld.roster?.textContent ?? '',
+      save: hudWorld.save?.textContent ?? '',
+      note: hudWorld.note && !hudWorld.note.hidden ? hudWorld.note.textContent ?? '' : '',
+    },
+  };
+}
+if (TEST_HOOKS) {
+  globalThis.__dragonveinSave = {
+    ready: async () => { await worldReady; return readSave(); },
+    read: readSave,
+    seedRoster: async () => {
+      await worldReady;
+      const w = world;
+      if (!w) throw new Error('no world');
+      const { addWild, addBred } = await import('./sim/roster');
+      const a = addWild(w);
+      const b = addWild(w);
+      addBred(w, a.id, b.id);
+      paintWorldHud();
+      await saveWorld();
+      return readSave();
+    },
+    save: async () => { await worldReady; await saveWorld(); return readSave(); },
+  };
+}
+
 function resize(): void {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
@@ -2278,6 +2453,16 @@ function frame(now: number): void {
   frameMs = now - last;
   last = now;
 
+  // The fixed 20 Hz sim, before the context check: the world's clock does not stop for a
+  // GPU reset. Allocation-free — `step` mutates the world in place.
+  if (world !== null) {
+    simAccMs += frameMs < MAX_CATCH_UP_MS ? frameMs : MAX_CATCH_UP_MS;
+    while (simAccMs >= TICK_MS) {
+      step(world);
+      simAccMs -= TICK_MS;
+    }
+  }
+
   if (contextLost) {
     // rAF keeps firing after the context dies, and three's `render()` turns into a no-op.
     // Timing that no-op would record a flattering ~0 ms frame cost, and feeding the rAF
@@ -2341,6 +2526,7 @@ requestAnimationFrame(frame);
  * mattered.
  */
 function paintHud(): void {
+  paintWorldHud();
   if (contextLost) {
     fps = 0;
     framesSinceSample = 0;
@@ -2461,6 +2647,14 @@ declare global {
     freeze: (windSeconds: number) => void;
     /** Back to the live clock. */
     release: () => void;
+  } | undefined;
+  /** `?test` only (M8a, gate:smoke): seed a roster, force a save, read the world back. */
+  var __dragonveinSave: {
+    ready: () => Promise<ReturnType<typeof readSave>>;
+    read: () => ReturnType<typeof readSave>;
+    /** Two wild dragons and their child, then an immediate save. */
+    seedRoster: () => Promise<ReturnType<typeof readSave>>;
+    save: () => Promise<ReturnType<typeof readSave>>;
   } | undefined;
   var __dragonveinPerf: {
     reset: () => void;

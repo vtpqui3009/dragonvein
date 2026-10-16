@@ -107,3 +107,35 @@ Hard rules for `src/render/`:
 IndexedDB, one store. The record holds the sim state, the RNG version and a schema
 version. Migrations live in `src/sim/migrate.ts` and are only ever added, never deleted —
 a player's bred dragons must survive every future release.
+
+Since M8a, concretely:
+
+| piece | file | owns |
+|---|---|---|
+| world state | `src/sim/world.ts` | `World`: `schema`, `seed`, `tick` (20 Hz), `rng` (the four `Rng.state()` words), `nextId`, `roster` (`{ id, genome: GenomeJson }`), `eggs` (empty until M9). Plain JSON. `createWorld(seed)`, `step(world)` (in place, allocation-free), `drawU32(world)`. |
+| payload | `src/sim/migrate.ts` | the text stored: `{"rngVersion": 1, "world": {"schema": 1, …}}`. `world.schema` and `rngVersion` never move. `encodeSave`, `decodeSave`, `MIGRATIONS` (append-only; entry *i* reads schema *i*+1), validation. |
+| policy | `src/sim/persist.ts` | `openWorld` / `SaveSession`: load or start fresh, refuse, back up, write generations, coalescing. No clock or DOM: wall-clock stamps are passed in. |
+| store | `src/core/save.ts` | database `dragonvein`, object store `save`; keys `main` and `backup.v<N>`; each value `{ gen, savedAt, text }`. `openIdbStore()` never rejects; `memoryStore()` for tests. |
+| wiring | `src/main.ts` | load at boot (dynamic import, does not block the first frame), autosave every 10 s and on `visibilitychange`→hidden and `pagehide`, the 20 Hz accumulator, the HUD readout. |
+
+The rules every future schema keeps:
+
+- **Refuse, never repair or overwrite.** A record from a newer schema or RNG version
+  (`newer`), with a field missing (`incomplete`), or unparseable, mistyped, carrying an
+  unknown field or a genome whose alleles do not hash to its `gid` (`corrupt`) is refused.
+  The game starts a fresh world, the HUD says the save was kept and not overwritten, and
+  that session never writes.
+- **Back up before migrating.** The first write after loading schema N < current copies the
+  stored record to `backup.vN` in the same transaction.
+- **Atomic writes.** Check, backup and put are one `readwrite` transaction, resolved on
+  `complete`; a reload or crash mid-save leaves the previous record whole.
+- **Two tabs: a write replaces only the record its tab last saw.** Each record carries `gen`;
+  a write passes the gen it expects and the store refuses it, inside the transaction, if the
+  stored gen moved. The refused tab stops saving and says so; a tab whose write lands posts
+  its gen on `BroadcastChannel('dragonvein-save')` so others stop at once. Chosen over Web
+  Locks because it needs no lock lifetime management and is enforced at the store, where a
+  bug in the page cannot bypass it.
+- **No IndexedDB** (missing, throwing, failing or not opening in 4 s): the game runs
+  unsaved and the HUD says "not saved".
+- `tests/fixtures/save-v1.json` is a frozen schema-1 save (one bred dragon). Every build
+  must keep loading it.

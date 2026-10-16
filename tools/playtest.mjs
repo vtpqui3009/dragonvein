@@ -32,6 +32,11 @@
  *  understory read, and lichen can be checked for z-fighting:
  *    12-island-close.png       pose CLOSE_POSE below, island spin at sceneMs 0
  *
+ *  And for M8a, the save surviving a reload in real IndexedDB, each from its own context:
+ *    09-save-before.png        the HUD's world clock and "saved Ns ago" just before a reload
+ *    10-save-after-reload.png  the same world after it, read back from IndexedDB
+ *    13-save-not-saved.png     a boot with IndexedDB blocked: the game runs and says "not saved"
+ *
  *  And one motion artefact, `artifacts/turntables/m0-island.webm`: rubric A5 asks whether
  *  anything pops in a scene whose whole definition of done is that it *rotates*, and
  *  three stills are weak evidence for that. The critic should be able to watch it.
@@ -87,6 +92,10 @@ const REQUIRED_KINDS = [
  * looking north-west across the columnar outcrops and the glade's edge.
  */
 const CLOSE_POSE = { position: [2.4, 1.6, 5.2], target: [0.0, 0.45, 1.4], sceneMs: 0 };
+/** M8a: ticks the world must have run (20 Hz) before the roster is seeded and saved. */
+const SAVE_MIN_TICKS = 40;
+/** M8a: reloads fired straight after a save request, each one a reload mid-save. */
+const RAPID_RELOADS = 5;
 
 /**
  * Runs in the page. Where every visible piece of the HUD sits against the viewport.
@@ -675,6 +684,206 @@ try {
     } finally {
       await ctx.close();
     }
+  }
+  await flush();
+
+  // --- the world survives a reload, in real IndexedDB (M8a criterion 3) ---------------
+  /*
+   * Its own browser context, so its IndexedDB starts empty and outlives `reload()`. `?test`
+   * turns on `__dragonveinSave`, which seeds a roster (two wild dragons and their bred
+   * child) and reads the world back as JSON. Then, in order: a plain reload; reloads fired
+   * straight after a save request, so the reload lands mid-save; and a second tab on the
+   * same database. Each must leave the roster exactly as saved.
+   */
+  {
+    const ctx = await browser.newContext({ viewport: VIEW });
+    const saveErrors = [];
+    const watch = (pg, tag) => {
+      pg.on('pageerror', (e) => saveErrors.push(`${tag}: ${String(e)}`));
+      pg.on('console', (m) => { if (m.type() === 'error') saveErrors.push(`${tag}: ${m.text()}`); });
+    };
+    const url = `${preview.url}?test`;
+    const drawn = (pg) => pg.waitForFunction(
+      () => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0, undefined, { timeout: 30_000 });
+    const ready = (pg) => pg.evaluate(() => globalThis.__dragonveinSave?.ready() ?? null);
+    const savedState = (pg) => pg.waitForFunction(
+      () => globalThis.__dragonveinSave?.read().state === 'saved', undefined, { timeout: 15_000 });
+    const brief = (w) => (w
+      ? `seed ${w.seed} tick ${w.tick} rng [${w.rng.join(',')}] roster ${w.roster.map((d) =>
+        `#${d.id}:${d.genome.gid}${d.genome.generation > 0 ? `(bred ${d.genome.lineage})` : ''}`).join(' ')}`
+      : 'no world');
+    const hudLine = (r) => `"world ${r.hud.clock} | dragons ${r.hud.roster} | ${r.hud.save}${r.hud.note ? ` | ${r.hud.note}` : ''}"`;
+    /** Seed, roster and Rng deep-equal, tick not behind: the criterion, as a list of what broke. */
+    const diff = (a, b) => {
+      const out = [];
+      if (!a || !b) return ['a world is missing'];
+      if (a.seed !== b.seed) out.push(`seed ${a.seed} -> ${b.seed}`);
+      if (JSON.stringify(a.roster) !== JSON.stringify(b.roster)) out.push('roster differs');
+      if (JSON.stringify(a.rng) !== JSON.stringify(b.rng)) out.push(`rng [${a.rng}] -> [${b.rng}]`);
+      if (!(b.tick >= a.tick)) out.push(`tick went back ${a.tick} -> ${b.tick}`);
+      return out;
+    };
+    try {
+      const p = await ctx.newPage();
+      watch(p, 'save tab 1');
+      await p.goto(url, { waitUntil: 'load', timeout: 30_000 });
+      const r0 = await ready(p);
+      if (!r0) throw new Error('the page exposes no __dragonveinSave hook under ?test');
+      say(`save: first boot — ${r0.report?.source} (${r0.report?.detail}), state ${r0.state}; first frame at ` +
+        `${r0.bootMs.toFixed(0)} ms, world ready at ${r0.worldReadyMs.toFixed(0)} ms after navigation ` +
+        `(${r0.worldReadyMs > r0.bootMs ? 'after' : 'before'} the first frame, which does not wait for it)`);
+      await p.waitForFunction((n) => (globalThis.__dragonveinSave?.read().world?.tick ?? 0) >= n,
+        SAVE_MIN_TICKS, { timeout: 30_000 });
+      const seeded = await p.evaluate(() => globalThis.__dragonveinSave.seedRoster());
+      const bred = seeded.world?.roster.filter((d) => d.genome.generation > 0) ?? [];
+      if (seeded.state !== 'saved' || (seeded.world?.roster.length ?? 0) < 3 || bred.length < 1) {
+        errors.push(`save: seeding did not give a saved roster of >= 3 with one bred: ${seeded.state} ${brief(seeded.world)}`);
+      }
+      await drawn(p);
+      await p.waitForTimeout(1300);    // the readout ticks to "saved 1s ago": the clock is live
+      const beforeHud = await p.evaluate(() => globalThis.__dragonveinSave.read());
+      await p.screenshot({ path: `${SHOTS}/09-save-before.png` });
+      // Saved after the shot, so the world compared below is at least as late as the frame.
+      const before = await p.evaluate(() => globalThis.__dragonveinSave.save());
+      say(`save: before reload — ${brief(before.world)}; gen ${before.gen}; HUD in 09 ${hudLine(beforeHud)}`);
+      say(`shot: ${SHOTS}/09-save-before.png  (M8a criterion 5)`);
+
+      await p.reload({ waitUntil: 'load', timeout: 30_000 });
+      const after = await ready(p);
+      await savedState(p);
+      await drawn(p);
+      await p.waitForTimeout(1300);    // as 09: "saved 1s ago", the clock running on from the save
+      const afterHud = await p.evaluate(() => globalThis.__dragonveinSave.read());
+      await p.screenshot({ path: `${SHOTS}/10-save-after-reload.png` });
+      const broke = diff(before.world, after?.world);
+      say(`save: after reload  — ${brief(after?.world)}; loaded ${after?.report?.source} gen ` +
+        `${after?.report?.gen} (${after?.report?.detail}); HUD in 10 ${hudLine(afterHud)}`);
+      if (afterHud.hud.roster !== String(before.world.roster.length)) {
+        errors.push(`save: the HUD after reload shows ${afterHud.hud.roster} dragons, want ${before.world.roster.length}`);
+      }
+      say(`save: round trip ${broke.length ? `FAILED — ${broke.join('; ')}` : 'OK — seed, roster ' +
+        `(${before.world.roster.length} genomes, ${bred.length} bred) and Rng state deep-equal; tick ` +
+        `${before.world.tick} -> ${after.world.tick}`}`);
+      say(`shot: ${SHOTS}/10-save-after-reload.png  (M8a criterion 5)`);
+      if (broke.length) errors.push(`save: the world did not survive a reload: ${broke.join('; ')}`);
+      if (after?.report?.source !== 'loaded') errors.push(`save: the reload did not load the save: ${JSON.stringify(after?.report)}`);
+
+      // Reloads mid-save: ask for a save and reload without waiting for it.
+      let last = after.world;
+      const rapid = [];
+      for (let i = 0; i < RAPID_RELOADS; i++) {
+        await p.evaluate(() => { void globalThis.__dragonveinSave.save(); });
+        await p.reload({ waitUntil: 'load', timeout: 30_000 });
+        const r = await ready(p);
+        // The next reload waits for the scene's assets, so what it interrupts is the save,
+        // not a GLB fetch (an aborted fetch logs its own error, which is not this drill's).
+        await drawn(p);
+        const bad = diff(last, r?.world);
+        rapid.push(`${r?.report?.source}@gen${r?.report?.gen}/tick${r?.world?.tick}${bad.length ? ` BROKE(${bad.join('; ')})` : ''}`);
+        if (bad.length || r?.report?.source !== 'loaded') {
+          errors.push(`save: reload ${i + 1} mid-save lost state: ${bad.join('; ')} ${JSON.stringify(r?.report)}`);
+        }
+        last = r?.world ?? last;
+      }
+      await savedState(p);
+      say(`save: ${RAPID_RELOADS} reloads fired straight after a save request: ${rapid.join(', ')}`);
+
+      // A second tab on the same database. Its boot save claims the slot — unless tab 1's
+      // autosave lands first, in which case tab 2's claim is refused. Either way exactly one
+      // tab may keep saving, the other must say it is not, and the stale one must never
+      // overwrite the live one's record.
+      const p2 = await ctx.newPage();
+      watch(p2, 'save tab 2');
+      await p2.goto(url, { waitUntil: 'load', timeout: 30_000 });
+      const t2 = await ready(p2);
+      await p2.waitForFunction(() => ['saved', 'conflict'].includes(globalThis.__dragonveinSave?.read().state ?? ''),
+        undefined, { timeout: 15_000 });
+      const stateOf = (pg) => pg.evaluate(() => globalThis.__dragonveinSave.read());
+      const stale = async () => {
+        const [s1, s2] = [await stateOf(p), await stateOf(p2)];
+        return s1.state === 'conflict' ? { live: p2, dead: p, liveName: 'tab 2', deadR: s1 }
+          : s2.state === 'conflict' ? { live: p, dead: p2, liveName: 'tab 1', deadR: s2 } : null;
+      };
+      let split = null;
+      for (let i = 0; i < 30 && !split; i++) { split = await stale(); if (!split) await p.waitForTimeout(100); }
+      if (diff(last, t2?.world).length) errors.push(`save: tab 2 did not load tab 1's world: ${diff(last, t2?.world).join('; ')}`);
+      if (!split) {
+        const [s1, s2] = [await stateOf(p), await stateOf(p2)];
+        errors.push(`save: two tabs are both saving: tab 1 ${s1.state} gen ${s1.gen}, tab 2 ${s2.state} gen ${s2.gen}`);
+      } else {
+        const liveR = await split.live.evaluate(() => globalThis.__dragonveinSave.save());
+        const deadR = await split.dead.evaluate(() => globalThis.__dragonveinSave.save());
+        say(`save: two tabs — tab 2 loaded ${t2?.report?.source} gen ${t2?.report?.gen}; ${split.liveName} keeps ` +
+          `the slot (${liveR.state}, gen ${liveR.gen}); the other is ${deadR.state} (${deadR.detail}), HUD ${hudLine(deadR)}`);
+        if (liveR.state !== 'saved') errors.push(`save: the live tab could not save: ${liveR.state} ${liveR.detail}`);
+        // The stale tab goes away (its pagehide save must be refused), then the live tab's
+        // record must still be there: a reload of the live tab reads its own gen back.
+        await split.dead.close({ runBeforeUnload: true });
+        await split.live.reload({ waitUntil: 'load', timeout: 30_000 });
+        const back = await ready(split.live);
+        say(`save: stale tab closed; ${split.liveName} reloaded ${back?.report?.source} gen ${back?.report?.gen} ` +
+          `(want ${liveR.gen}), roster ${back?.world?.roster.length}`);
+        if (back?.report?.gen !== liveR.gen || diff(last, back?.world).length) {
+          errors.push(`save: the stale tab overwrote the live one: gen ${back?.report?.gen} vs ${liveR.gen}`);
+        }
+      }
+    } catch (e) {
+      errors.push(`save drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
+    }
+    say(`save: ${saveErrors.length} page error(s) across the drill`);
+    errors.push(...saveErrors);
+  }
+  await flush();
+
+  // --- IndexedDB blocked: the game runs and says it is not saving ----------------------
+  /*
+   * As a storage-blocked context does — Firefox private browsing before 115, a sandboxed
+   * frame, "block all site data" — reading `indexedDB` throws a SecurityError.
+   */
+  {
+    const ctx = await browser.newContext({ viewport: VIEW });
+    await ctx.addInitScript(() => {
+      Object.defineProperty(globalThis, 'indexedDB', {
+        configurable: true,
+        get() { throw new DOMException('The user denied permission to access the database.', 'SecurityError'); },
+      });
+    });
+    const blockedErrors = [];
+    const p = await ctx.newPage();
+    p.on('pageerror', (e) => blockedErrors.push(String(e)));
+    p.on('console', (m) => { if (m.type() === 'error') blockedErrors.push(m.text()); });
+    try {
+      await p.goto(preview.url, { waitUntil: 'load', timeout: 30_000 });
+      await p.waitForFunction(
+        () => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0, undefined, { timeout: 30_000 });
+      await p.waitForFunction(
+        () => document.getElementById('hud-save')?.textContent === 'not saved', undefined, { timeout: 15_000 });
+      const clock0 = await p.evaluate(() => document.getElementById('hud-clock')?.textContent ?? '');
+      await p.waitForTimeout(1500);
+      const hud = await p.evaluate(() => ({
+        clock: document.getElementById('hud-clock')?.textContent ?? '',
+        save: document.getElementById('hud-save')?.textContent ?? '',
+        note: document.getElementById('hud-save-note')?.textContent ?? '',
+        draws: globalThis.__dragonveinStats?.().drawCalls ?? null,
+      }));
+      const fit = await p.evaluate(measureHud);
+      await p.screenshot({ path: `${SHOTS}/13-save-not-saved.png` });
+      say(`save: IndexedDB blocked — HUD "${hud.clock} | ${hud.save} | ${hud.note}", world clock ${clock0} -> ` +
+        `${hud.clock}, draws ${hud.draws}, ${blockedErrors.length} page error(s); hud ${JSON.stringify(fit)}`);
+      say(`shot: ${SHOTS}/13-save-not-saved.png  (M8a criteria 3 and 5)`);
+      if (hud.save !== 'not saved') errors.push(`save: with IndexedDB blocked the HUD says "${hud.save}"`);
+      if (!((hud.draws ?? 0) > 0) || hud.clock === clock0) {
+        errors.push(`save: with IndexedDB blocked the game did not run on (draws ${hud.draws}, clock ${clock0} -> ${hud.clock})`);
+      }
+      if (!fit || fit.clipped.length || fit.overflow) errors.push(`save: not-saved HUD is clipped: ${JSON.stringify(fit)}`);
+    } catch (e) {
+      errors.push(`blocked-storage drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
+    }
+    errors.push(...blockedErrors.map((e) => `blocked storage: ${e}`));
   }
   await flush();
 
