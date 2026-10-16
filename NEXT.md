@@ -10,10 +10,9 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-16** · at commit `9242ee2`. **Run 32 is in flight on M8a** in the owner's
-main session (criteria in STATE.md run 32). **Do not start M8a from a second session while this
-line stands.** If no `feat` commit for M8a lands hours later, run 32 died: take M8a from the
-STATE.md run 32 criteria. Run 31 closed M7c. The daily routine is disabled (`3724d5e`), so runs start by hand.
+Last updated: **2026-10-16** · at commit `9179782`, the last code commit of run 32. The
+close-out docs commits follow it. **Run 32 closed M8a.** No run is in flight. The daily
+routine is disabled (`3724d5e`), so runs start by hand.
 
 ---
 
@@ -34,64 +33,66 @@ question into this file and waits for the owner to play it.
 
 ## Current step
 
-**M8a — IndexedDB save and load; a world survives reload; migrations in place** · `TODO`. It is
-the first step in reading order that is not `DONE`. M8b–d (approach, taming, roster), M9 and the
-playable checkpoint follow.
+**M8b — approach and calm: a wild dragon reacts to the player** · `TODO`. It is the first step in
+reading order that is not `DONE`. M8c (taming completes and the dragon joins the roster), M8d
+(roster UI), M9 and the playable checkpoint follow. M7 and M5 have every step `DONE` and wait
+only on the owner's look (§Open items).
 
-**M7 the milestone is `IN_PROGRESS`, awaiting the owner's look.** All three steps are `DONE` and
-the last pass is ≥ 8.0, but no human has seen the animation running (CLAUDE.md §7). See
-§Open items. M5 waits the same way.
-
-**M7c closed** in run 31 at cycle 2. Cycle 2 scored art **8.1**, perf **8.9** and gameplay
-**9.3**; cycle 1 scored 8.0 / 9.0 / 8.1, with two majors fixed in rework. What it added:
-- Each wing gets a bone chain, read off the graph's own wing nodes: arm, then one bone per
-  finger. `graph.ts` is unchanged and parity is exact.
-- `flightParams(genome)` sets the beat period from wingSpan and bodyMass. Stroke, `upShare` and
-  `fanOpen` come from wingShape and mass.
-- The flap lifts the dragon, the legs tuck, and the glide holds altitude.
-- `dragon.html?view=flight&i=K` has Flap, Glide and Land buttons (touch and mouse) and the F, G
-  and L keys, guarded against modifiers.
-- `tools/dragon-flight.mjs` measures clearance on the 8 sheet dragons plus wingSpan 0.55 and
-  1.65. Body clearance is ≥ 0.003 (the root seam), wing to wing ≥ 0.314, with 0 finger
-  crossings, tip travel of 74–86 %, and feet ≥ 0.83 off the ground in flight.
+**M8a closed** in run 32 on cycle 3. Cycle 3 scored art **8.5**, perf **8.8** and gameplay
+**8.9**. Cycles 1 and 2 each found a save-path major that was then fixed. What M8a added:
+- **`src/sim/` exists.** `world.ts` holds the world (seed, 20 Hz tick, Rng state, roster,
+  eggs, nextId), and `migrate.ts` is the append-only chain. `check:layers` now holds `src/sim`
+  and `src/core` to an allow-list.
+- **IndexedDB is the save** (`src/core/save.ts`), with a **localStorage write-ahead journal**
+  beside it so a save survives an unload behind another tab's transaction.
+  - A write lands only over the exact record its session loaded (gen + writer + seq).
+  - A refused record is never overwritten. It can be exported, or set aside byte-identical in
+    `refused.<n>` with the readable dragons salvaged.
+  - A stale second tab pauses.
+- **Frozen fixture `tests/fixtures/save-v1.json`.** It has 4 dragons, one of them bred, and
+  must load forever.
+- **`gate:smoke` drills every save failure mode** in real Chromium IndexedDB: reload under a
+  held store, reload storms, two tabs, refused, export, start fresh, deleted DB, newer DB,
+  read timeout and journal off.
 
 ## The single next action
 
-**Take M8a: save and load.** Write the criteria into STATE.md first. This is `src/core/` work
-(the save and load spine, owned by core-builder), plus the wiring in `src/main.ts`, which needs
-a sequential owner if it crosses directories.
-- **IndexedDB only.** The game is offline: no backend, no login, no telemetry (CLAUDE.md §7).
-- Write a versioned schema with a migration chain from version 1, tested with a fixture saved at
-  an older version.
-- **Define "a world survives reload" as a checkable round trip.** For example: seed, the island
-  state, and a roster stub holding a few genomes. Save it, reload the page, and assert deep
-  equality in a headless test and in `gate:smoke`.
-- Keep `src/sim/` deterministic. Saving must not perturb the `Rng` stream. Snapshot and restore
-  the stream state.
-- G4 ("state survives reload") goes live at M8a in the rubric, so the gameplay critic will score
-  it from now on.
+**Take M8b: approach and calm.** Write the criteria into STATE.md first. This is the first step
+that puts a **dragon into the game scene** and gives the sim real work. Decide these before
+writing code:
+- **Who is "the player"?** There is no avatar yet, so pick the smallest honest subject: a
+  pointer or cursor on the island, or a simple avatar. Record the decision.
+- **A wild dragon's reaction, as sim state.** It is deterministic, in `src/sim/`, driven by
+  the `Rng`. For example: wary → flee or approach → calm, with a calm meter. The reaction should
+  read the genome (temperament from body or element genes) so the genetics are visible
+  (CLAUDE.md §0).
+- **The render reads a snapshot** and plays the M7 idle, walk and flight on it.
 
 **Hazards:**
-- **The game-page heap is the tightest budget.** `perf.json` reads 38 687 B/frame against
-  40 960, and 43 514 uncorrected. The figure rose from 31 873 at M7b with no game-page change,
-  so it is noisy. Each skinned dragon costs about 840 B/frame (`dragon-flight.json`
-  `flapAddsBytesPerFrame` 7 133 for 8). Save and load must allocate nothing per frame. Before
-  dragons enter the game scene (M8b), attribute that skinned-path cost. **Never raise the
-  budget.**
-- **meshgen is rising:** round-trip max 39.5 → 50.5 → 56.7 ms over three rounds, against 120.
-- `new DragonFlight` main-thread setup is untimed by any gate.
+- **The heap is the binding budget.**
+  - The game page reads 37 874 B/frame against 40 960, and the uncorrected figure, 43 938, is
+    already over.
+  - The post-scavenge floor creeps up about 0.8 MB over 300 s.
+  - One skinned dragon costs about 840 B/frame (`dragon-flight.json`).
+  - Attribute and cut the three.js skinned-path cost before or while adding the dragon.
+    **Never raise the budget.**
+- **`cpuFrameMs` now includes the sim step** (`startedAt` moved, run 32). From M8b on, sim cost
+  counts against 3.5 ms.
+- **Saves serialise in full and issue at once.** Coalesce the IndexedDB write before events
+  burst. There is no roster-scaled save probe yet; perf asked for one at 50 and 200 dragons,
+  with a budget.
+- **Save edge cases still open:**
+  - A roster change must bump the save seq before repainting the HUD, or the HUD can say
+    "saved" for one 250 ms window (`seedRoster` in `src/main.ts`).
+  - Nothing in-game reaches `refused.*`. This becomes a major once a second schema ships.
 
-**Carried minors from M7c (FINDINGS):**
-- The glide wings read weakly from the default camera (swept rake, edge-on). The wings are
-  smaller and more swept than concept 01.
-- The folded membrane shows dark self-shadow patches in `dragon-flap-a.png` (A, C, E, H).
-- Facets on C and G's sail.
-- Flap kinematics vary shallowly.
-- The sheet's row-2 wings cross the row-1 captions, and the hint text has low contrast.
-- The flight buttons show no active state.
-- The phone framing is small.
-- Fixtures #13 and #24 have a frill through a wing at rest. That is graph geometry and needs an
-  owner decision (§Open items).
+**Carried minors (FINDINGS):**
+- **HUD:** the warning panel covers the hanging island; there is no reload after an
+  IndexedDB open timeout; the "backup journal off" line is permanent.
+- **Save storage:** the first tab to save after the storage is cleared wins the slot;
+  `navigator.storage.persist()` is never called; the journal sweep deletes entries it cannot
+  decode.
+- **Scene:** black slivers float in the sky.
 
 ## Open items that need the owner, not a run
 
@@ -104,6 +105,13 @@ a sequential owner if it crosses directories.
 
   Do the feet stay planted? Do the wings ever pass through the body? Does it feel like a dragon?
   Tell me what you saw and the FPS. This is also the first real-GPU reading with skinning.
+
+- **Confirm a reading of CLAUDE.md §7 ("saves to IndexedDB").** M8a keeps the save in
+  IndexedDB and adds a **localStorage write-ahead journal** beside it. Each save also writes
+  there synchronously, so a reload during a slow IndexedDB write loses nothing. The next load
+  promotes the journal into IndexedDB and clears it. Nothing leaves the machine. Is a local
+  journal beside IndexedDB acceptable? If not, say so, and a run will remove it at the cost of
+  that reload case.
 
 - **Decision: the frill-through-wing at rest on 2 of 32 fixture genomes.** Fixtures #13 and #24
   have a crest frill that pierces a wing before anything moves (−0.034 and −0.048). A stress
@@ -145,8 +153,8 @@ a sequential owner if it crosses directories.
   23 published to **https://claude.ai/artifact/HXPyJnjvcwr5tayAwbpD9a**. Either re-share the
   original to that account and say so here, or adopt the new link as standing. **Do not create
   a third.**
-- **`wip/m7b` and `wip/m7c` can be deleted.** They are run 30 and run 31 snapshots, superseded by
-  `6e1debb` and `9242ee2` on `main`.
+- **`wip/m7b`, `wip/m7c` and `wip/m8a` can be deleted.** They are snapshots of runs 30–32,
+  superseded by `6e1debb`, `9242ee2` and `9179782` on `main`.
 
 - **`wip/m5d` can be deleted.** Confirmed to differ from `main` only in `NEXT.md` and
   `STATE.md` — no code or asset delta. The push that deletes it is refused from the container.
@@ -155,10 +163,9 @@ a sequential owner if it crosses directories.
 
 ## Carried forward, minor (all in `FINDINGS.md`)
 
-- **P4 headroom.** The game page churns 38 687 B per frame, 94 % of the 40 960 budget
-  (perf.json at `9242ee2`; the uncorrected figure is 43 514). The game-page code has not changed
-  since M7b, where it read 31 873, so the measurement is noisy. There is about 2 kB of headroom.
-  **Never raise the budget.**
+- **P4 headroom.** The game page churns 37 874 B per frame, 92 % of the 40 960 budget
+  (`perf.json` at `9179782`). The uncorrected figure is 43 938, and the post-scavenge floor
+  creeps. **Never raise the budget.**
 - **M5e must merge the understory into instanced batches** — one `InstancedMesh` per plant
   type with LOD inside the instance. At 28 draws there are about 2 draws of headroom. Four
   independent perf rounds now agree.
