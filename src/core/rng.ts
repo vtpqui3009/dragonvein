@@ -25,6 +25,27 @@
 const ZERO_SEED = 0x9e3779b9;
 const TWO_POW_32 = 4294967296;
 
+/**
+ * Which stream this class produces. A save records it beside the four state words, because
+ * the words only mean something to the algorithm that wrote them. It changes only if the
+ * algorithm does — which would also break `assetgen/genome.py` parity, so in practice never.
+ */
+export const RNG_VERSION = 1;
+
+/** The whole generator: four unsigned 32-bit words. Plain numbers, so it is JSON-able. */
+export type RngState = [number, number, number, number];
+
+/** True when `s` is four uint32 words, not all zero (xorshift's one dead state). */
+export function isRngState(s: unknown): s is RngState {
+  if (!Array.isArray(s) || s.length !== 4) return false;
+  let any = 0;
+  for (const w of s) {
+    if (typeof w !== 'number' || !Number.isInteger(w) || w < 0 || w >= TWO_POW_32) return false;
+    any |= w;
+  }
+  return any !== 0;
+}
+
 export class Rng {
   private a: number;
   private b: number;
@@ -78,8 +99,38 @@ export class Rng {
     return this.next() < p;
   }
 
-  /** The four state words, for tests and save files. Never mutate the result. */
-  state(): readonly [number, number, number, number] {
+  /** The four state words, for tests and save files. A fresh array each call. */
+  state(): RngState {
     return [this.a, this.b, this.c, this.d];
+  }
+
+  /**
+   * Continue a stream exactly where `state()` left it: the next draw from the result is the
+   * draw the saved generator would have made next. Nothing about seeding is replayed, so the
+   * Python reference needs no counterpart — the four words *are* its state too.
+   */
+  static fromState(s: readonly number[]): Rng {
+    const r = new Rng(1);
+    r.setState(s);
+    return r;
+  }
+
+  /** Overwrite this generator's state in place. Throws on anything `isRngState` refuses. */
+  setState(s: readonly number[]): this {
+    if (!isRngState(s)) throw new RangeError(`Rng state must be four uint32 words, not all zero: ${JSON.stringify(s)}`);
+    this.a = s[0];
+    this.b = s[1];
+    this.c = s[2];
+    this.d = s[3];
+    return this;
+  }
+
+  /** Write the state into `out` without allocating, for a caller that keeps it in place. */
+  writeState(out: RngState): RngState {
+    out[0] = this.a;
+    out[1] = this.b;
+    out[2] = this.c;
+    out[3] = this.d;
+    return out;
   }
 }
