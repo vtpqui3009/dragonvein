@@ -18,7 +18,7 @@
  * Images and the turntable are embedded as data URIs so the page works as a single file
  * and as an Artifact, whose CSP blocks every other way of loading them.
  */
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
@@ -149,6 +149,23 @@ const sheetUri = (p) => jpegUri(p, 'sheets');
 /** The in-game shots go the same way since run 29: fifteen 1280x720 PNGs plus a growing set
  *  of turntables pushed the page past the limit again. The PNGs stay the critics' source. */
 const shotUri = (p) => jpegUri(p, 'shots');
+/** The turntables went the same way in run 32: the dragon idle, walk and flight clips (up to
+ *  0.9 MB each) pushed the page past the limit a third time. Clips over 150 kB are re-encoded
+ *  for the page at 640 px wide, VP9 CRF 42 (dragon-flight 653 kB -> 165 kB); the originals in
+ *  artifacts/turntables/ stay the critics' source. Without ffmpeg the original is embedded. */
+const VIDEO_REENCODE_ABOVE = 150_000;
+const videoUri = (p) => {
+  if (statSync(p).size <= VIDEO_REENCODE_ABOVE) return dataUri(p, 'video/webm');
+  const out = path.join(OUT_DIR, 'turntables', path.basename(p));
+  try {
+    mkdirSync(path.dirname(out), { recursive: true });
+    execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', p, '-vf', "scale='min(640,iw)':-2",
+      '-c:v', 'libvpx-vp9', '-crf', '42', '-b:v', '0', '-an', '-deadline', 'good', '-cpu-used', '4', out]);
+    return dataUri(out, 'video/webm');
+  } catch {
+    return dataUri(p, 'video/webm');
+  }
+};
 
 const sha = git('rev-parse', '--short', 'HEAD');
 const subject = git('log', '-1', '--format=%s');
@@ -297,7 +314,7 @@ figcaption b { font: 600 12px var(--mono); color: var(--ink); }
     </figure>`).join('')}
     <div class="shots">${turntables.map((f) => `
       <figure>
-        <video controls muted loop playsinline preload="metadata" src="${dataUri(path.join(TURNTABLES, f), 'video/webm')}"></video>
+        <video controls muted loop playsinline preload="metadata" src="${videoUri(path.join(TURNTABLES, f))}"></video>
         <figcaption><b>${esc(f)}</b> ${f.startsWith('m0-island') ? 'the island turning in the game, about 7 s' : 'asset turntable, LOD0, one full revolution'}</figcaption>
       </figure>`).join('')}
     </div>
