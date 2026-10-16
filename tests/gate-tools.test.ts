@@ -104,6 +104,44 @@ describe('check:layers', () => {
     expect(r.output).toContain('LAYER VIOLATION');
     expect(r.output).toContain(spec);
   });
+
+  // docs/ARCHITECTURE.md §Ownership: "src/sim may import `core`" and "src/core … nothing".
+  // A forbid-list passed every one of these until M8a; the allow-list catches them.
+  it('accepts sim importing core and itself, in every import form', () => {
+    const dir = makeTree({
+      'src/sim/world.ts': "import { Rng } from '../core/rng';\n" +
+        "import type {\n  GenomeJson,\n} from '../core/genome';\n" +
+        "export { step } from './step';\nexport const r = [Rng] as unknown as GenomeJson;\n" +
+        "export const later = () => import('./roster');\n",
+      'src/sim/step.ts': 'export const step = 1;\n',
+      'src/sim/roster.ts': 'export const roster = 1;\n',
+      'src/core/rng.ts': "import { py } from './py';\nexport const Rng = py;\n",
+      'src/core/py.ts': 'export const py = 1;\n',
+    });
+    const r = runTool('check-layers.mjs', dir);
+    expect(r.output).toContain('check:layers OK');
+    expect(r.code).toBe(0);
+  });
+
+  it.each([
+    ['src/sim/world.ts', '../content/items', "import { items } from '../content/items';\nexport const x = items;\n"],
+    ['src/sim/world.ts', 'node:fs', "import { readFileSync } from 'node:fs';\nexport const x = readFileSync;\n"],
+    ['src/sim/world.ts', 'zod', "import { z } from 'zod';\nexport const x = z;\n"],
+    ['src/sim/world.ts', '../main', "import { boot } from '../main';\nexport const x = boot;\n"],
+    ['src/sim/world.ts', '../render/scene', "export { scene } from '../render/scene';\n"],
+    ['src/sim/world.ts', '../ui/panel', "export const x = () => import('../ui/panel');\n"],
+    ['src/sim/world.ts', '../audio/bus', "import '../audio/bus';\n"],
+    ['src/sim/deep/a.ts', '../../dragon-view', "import { v } from '../../dragon-view';\nexport const x = v;\n"],
+    ['src/core/save.ts', 'idb', "import { idb } from 'idb';\nexport const x = idb;\n"],
+  ])('allow-list: rejects %s importing %s', (file, spec, body) => {
+    const dir = makeTree({ [file]: body });
+    const r = runTool('check-layers.mjs', dir);
+    expect(r.code).toBe(1);
+    expect(r.output).toContain('LAYER VIOLATION');
+    expect(r.output).toContain(spec);
+    // One bad import is one violation, even where the forbid-list caught it as well.
+    expect(r.output).toContain('1 layer violation(s)');
+  });
 });
 
 describe('check:assets', () => {
