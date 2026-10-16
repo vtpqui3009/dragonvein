@@ -306,6 +306,12 @@ What this means for every milestone after M0, in order of preference:
    `WebGLPrograms.getParameters`, called twice per frame because one pooled depth material
    is shared between instanced and non-instanced shadow casters and the `instancing` flag
    flips between them. Splitting that pool is a real saving that costs no visual quality.
+   **Done at M8b:** the crystals, the one instanced caster that used the pool, carry their
+   own `customDepthMaterial`, so the pooled one only ever sees plain meshes. A sampling heap
+   profile of the game page (`HeapProfiler.startSampling`, 1920×1080, SwiftShader) put
+   `getProgram` → `getParameters` + `getProgramCacheKey` at ~8.5 kB/frame before and nothing
+   after; `gate:perf` read 32 853 B/frame against 37 874 at M8a. Every new shadow caster
+   that is instanced, batched or skinned gets its own depth material for the same reason.
 3. **Never raise the 40 960.** If churn goes red because the scene grew, that is the budget
    doing its job. CLAUDE.md §2.7.
 

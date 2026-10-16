@@ -1966,6 +1966,11 @@ function updateFarMotion(nowMs: number): void {
 {
   const crystals = instanced(new THREE.OctahedronGeometry(0.3, 0), crystalShards.length, 0.35);
   crystals.castShadow = true;
+  // Its own depth material, so three's one pooled shadow material is never shared between
+  // an instanced caster and a plain one. Shared, the `instancing` flag flipped twice a frame
+  // and three rebuilt the program parameters and cache key each time (`getProgram` from
+  // `setProgram`): ~8 kB/frame of heap churn, measured with a sampling heap profile (M8b).
+  crystals.customDepthMaterial = new THREE.MeshDepthMaterial();
   // The shards glow. A shared `emissive` lights every instance the same, so the hue
   // variation rides the per-instance colour and the material carries a modest emissive of
   // its own — enough to read against the grass without blowing out under ACES.
