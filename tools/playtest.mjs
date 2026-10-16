@@ -38,6 +38,7 @@
  *    13-save-not-saved.png     a boot with IndexedDB blocked: the game runs and says "not saved"
  *    14-save-refused.png       a save refused for one tampered dragon: the way out on the HUD
  *    15-save-started-fresh.png after "start fresh": the readable dragons kept, the old save aside
+ *    16-save-aside-refused.png a stale tab's start-fresh refused: why, and a reload (cycle 3)
  *
  *  And one motion artefact, `artifacts/turntables/m0-island.webm`: rubric A5 asks whether
  *  anything pops in a scene whose whole definition of done is that it *rotates*, and
@@ -991,6 +992,11 @@ try {
           `${refused.state} ${JSON.stringify(shown.refused)} [${shown.hud.actions}]`);
       }
       if (!fit || fit.clipped.length || fit.overflow) errors.push(`save: refused-state HUD is clipped: ${JSON.stringify(fit)}`);
+      // Cycle 3, D8: touch targets.
+      const heights = await p.evaluate(() => [...document.querySelectorAll('#hud-save-actions button')]
+        .filter((b) => !b.hidden).map((b) => Math.round(b.getBoundingClientRect().height)));
+      say(`save: recovery buttons ${heights.join(' / ')} px tall (want >= 44)`);
+      if (!heights.length || heights.some((h) => h < 44)) errors.push(`save: a recovery button is under 44 px: ${heights}`);
 
       // Export: a real click, a real download, the stored record exactly.
       const [download] = await Promise.all([
@@ -1003,6 +1009,11 @@ try {
       const same = JSON.stringify(exported) === tampered;
       say(`save: export — downloaded ${download.suggestedFilename()}, ${same ? 'identical to' : 'DIFFERENT from'} the stored record`);
       if (!same) errors.push('save: the exported file is not the stored record');
+      // Cycle 3, D3: the HUD confirms it.
+      await p.waitForTimeout(300);
+      const confirmed = (await p.evaluate(() => globalThis.__dragonveinSave.read())).hud.note;
+      say(`save: after export the HUD says "${confirmed}"`);
+      if (!confirmed.includes(`exported ${download.suggestedFilename()}`)) errors.push(`save: export not confirmed on the HUD: ${confirmed}`);
 
       // Start fresh: a real click. The record moves aside untouched; the readable dragons come along.
       await p.click('#hud-save-fresh');
@@ -1032,6 +1043,29 @@ try {
       say(`save: store handle closed under the game, next save ${reopened.state} (gen ${reopened.gen})`);
       if (reopened.state !== 'saved') errors.push(`save: a closed store was not reopened: ${reopened.state} ${reopened.detail}`);
 
+      // Cycle 3, D6: the database is deleted under the running tab. The slot is empty, so
+      // the tab writes its world again and says what happened — not "another tab".
+      {
+        const killer = await ctx.newPage();
+        await killer.goto(blank);
+        const deleted = await killer.evaluate(() => new Promise((resolve) => {
+          const q = indexedDB.deleteDatabase('dragonvein');
+          q.onsuccess = () => resolve(true);
+          q.onerror = () => resolve(false);
+        }));
+        await killer.close();
+        const resaved = await p.evaluate(() => globalThis.__dragonveinSave.save());
+        await p.waitForTimeout(300);
+        const r = await p.evaluate(() => globalThis.__dragonveinSave.read());
+        const stored = await idb(p, 'get', 'main');
+        const storedRoster = stored ? JSON.parse(JSON.parse(stored).text).world.roster.length : null;
+        say(`save: database deleted under the tab (${deleted ? 'deleted' : 'NOT deleted'}) — next save ${resaved.state}; ` +
+          `HUD "${r.hud.save} | ${r.hud.note}"; IndexedDB main now holds ${storedRoster} dragons (world has ${r.world.roster.length})`);
+        if (resaved.state !== 'saved' || !r.hud.note.includes('emptied') || storedRoster !== r.world.roster.length) {
+          errors.push(`save: a deleted database was not handled: ${resaved.state} "${r.hud.note}"`);
+        }
+      }
+
       // D3: a newer build upgrades the database. This page lets go; its next save cannot
       // reopen at the old version, and the HUD must say so rather than promise a retry.
       const newer = await ctx.newPage();
@@ -1050,6 +1084,16 @@ try {
       if (afterUpgrade.state !== 'error' || !hud.hud.note.includes('newer version')) {
         errors.push(`save: after a newer build's upgrade the HUD does not say so: ${hud.hud.note}`);
       }
+      // Cycle 3, D7: this (now stale) build booting against the newer database says the same.
+      await p.reload({ waitUntil: 'load', timeout: 30_000 });
+      const stale = await p.evaluate(() => globalThis.__dragonveinSave.ready());
+      await p.waitForTimeout(400);
+      const staleHud = (await p.evaluate(() => globalThis.__dragonveinSave.read())).hud;
+      say(`save: a stale build booting against the newer database — ${stale.state}; HUD "${staleHud.save} | ` +
+        `${staleHud.note}" [${staleHud.actions.join(' | ')}]`);
+      if (!staleHud.note.includes('newer version') || !staleHud.actions.includes('reload')) {
+        errors.push(`save: a stale build at boot does not say a newer version upgraded the save: "${staleHud.note}"`);
+      }
     } catch (e) {
       errors.push(`refused-save drill failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -1057,6 +1101,188 @@ try {
     }
     say(`save: ${d2Errors.length} page error(s) across the refused-save drill`);
     errors.push(...d2Errors.map((e) => `refused save: ${e}`));
+  }
+  await flush();
+
+  // --- cycle 3: start-fresh in a stale tab, a held load, and no journal -----------------
+  /*
+   * D1 (the gameplay critic's repro): garbage at gen 2, two tabs both refusing it. Tab A
+   * starts fresh and saves up to gen 2; tab B then clicks start fresh. B must move nothing,
+   * say why and offer a reload; A's save stays in `main`, and there is no `refused.2`.
+   */
+  {
+    const ctx = await browser.newContext({ viewport: VIEW });
+    const c3Errors = [];
+    const blank = new URL('__blank.html', preview.url).href;
+    await ctx.route(blank, (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>blank</title>' }));
+    const watch = (pg, tag) => {
+      pg.on('pageerror', (e) => c3Errors.push(`${tag}: ${String(e)}`));
+      pg.on('console', (m) => { if (m.type() === 'error') c3Errors.push(`${tag}: ${m.text()}`); });
+    };
+    /** Run one IndexedDB op on the save store from `pg`: get a key, or put a value at one. */
+    const idbOp = (pg, op, key, value) => pg.evaluate(([o, k, v]) => new Promise((resolve, reject) => {
+      const q = indexedDB.open('dragonvein', 1);
+      q.onupgradeneeded = () => q.result.createObjectStore('save');
+      q.onerror = () => reject(q.error);
+      q.onsuccess = () => {
+        const db = q.result;
+        const tx = db.transaction('save', o === 'put' ? 'readwrite' : 'readonly');
+        let out = null;
+        if (o === 'put') tx.objectStore('save').put(v, k);
+        else { const g = tx.objectStore('save').get(k); g.onsuccess = () => { out = g.result ?? null; }; }
+        tx.oncomplete = () => { db.close(); resolve(out); };
+      };
+    }), [op, key, value]);
+    const drawn = (pg) => pg.waitForFunction(
+      () => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0, undefined, { timeout: 30_000 });
+    try {
+      const seedPage = await ctx.newPage();
+      await seedPage.goto(blank);
+      await idbOp(seedPage, 'put', 'main', { gen: 2, savedAt: 1, text: 'garbage' });
+      const a = await ctx.newPage();
+      watch(a, 'tab A');
+      const b = await ctx.newPage();
+      watch(b, 'tab B');
+      await a.goto(`${preview.url}?test`, { waitUntil: 'load', timeout: 30_000 });
+      await b.goto(`${preview.url}?test`, { waitUntil: 'load', timeout: 30_000 });
+      const ra = await a.evaluate(() => globalThis.__dragonveinSave.ready());
+      const rb = await b.evaluate(() => globalThis.__dragonveinSave.ready());
+      await drawn(a);
+      await drawn(b);
+      const fa = await a.evaluate(() => globalThis.__dragonveinSave.startFresh());
+      // Start fresh writes gen 1 and the roster change gen 2: the gen B read and refused.
+      const sa = await a.evaluate(() => globalThis.__dragonveinSave.seedRoster());
+      const liveBefore = await idbOp(seedPage, 'get', 'main');
+      await b.click('#hud-save-fresh', { timeout: 10_000 });
+      await b.waitForTimeout(500);
+      const rb2 = await b.evaluate(() => globalThis.__dragonveinSave.read());
+      const liveAfter = await idbOp(seedPage, 'get', 'main');
+      const refused2 = await idbOp(seedPage, 'get', 'refused.2');
+      const refused1 = await idbOp(seedPage, 'get', 'refused.1');
+      await b.screenshot({ path: `${SHOTS}/16-save-aside-refused.png` });
+      say(`save: stale start-fresh — tabs A ${ra.state} / B ${rb.state}; A set aside to ${fa.key}, seeded and ` +
+        `saved to gen ${sa.gen}; B's start fresh moved ${rb2.asideKey ?? 'nothing'}; B HUD "${rb2.hud.save} | ` +
+        `${rb2.hud.note}" [${rb2.hud.actions.join(' | ')}]; main ${JSON.stringify(liveAfter) === JSON.stringify(liveBefore)
+        ? `unchanged (A's gen ${liveAfter?.gen}, ${JSON.parse(liveAfter.text).world.roster.length} dragons)` : 'CHANGED'}; ` +
+        `refused.1 ${refused1?.text === 'garbage' ? 'is the garbage' : 'WRONG'}, refused.2 ${refused2 ? 'EXISTS' : 'absent'}`);
+      say(`shot: ${SHOTS}/16-save-aside-refused.png  (M8a cycle 3, D1/D2)`);
+      if (ra.state !== 'corrupt' || rb.state !== 'corrupt' || fa.key !== 'refused.1' || sa.gen !== 2
+        || JSON.stringify(liveAfter) !== JSON.stringify(liveBefore) || refused2 || rb2.asideKey
+        || !rb2.hud.actions.includes('reload') || rb2.hud.actions.some((t) => t.startsWith('start fresh'))) {
+        errors.push('save: start-fresh in a stale tab moved the live save, or left a dead button');
+      }
+      // B's reload button leads to A's world.
+      await b.click('#hud-save-reload');
+      await b.waitForLoadState('load');
+      const rb3 = await b.evaluate(() => globalThis.__dragonveinSave.ready());
+      say(`save: tab B after its reload — ${rb3.report.source}, ${rb3.world.roster.length} dragons`);
+      if (rb3.world.roster.length !== 3) errors.push(`save: tab B's reload did not show A's world: ${rb3.world.roster.length}`);
+      await a.close();
+      await b.close();
+
+      // D5: a load whose read waits on another tab says so, then gives up without writing.
+      // (`?readTimeoutMs=3000` shortens the 10 s default for the drill.)
+      const holder = await ctx.newPage();
+      await holder.goto(blank);
+      const heldMain = await idbOp(holder, 'get', 'main');
+      await holder.evaluate(() => new Promise((started) => {
+        const q = indexedDB.open('dragonvein');
+        q.onsuccess = () => {
+          const db = q.result;
+          const tx = db.transaction('save', 'readwrite');
+          const os = tx.objectStore('save');
+          const end = performance.now() + 5000;
+          const spin = () => { if (performance.now() < end) os.get('main').onsuccess = spin; };
+          spin();
+          tx.oncomplete = () => db.close();
+          started(true);
+        };
+      }));
+      const w = await ctx.newPage();
+      watch(w, 'held load');
+      await w.goto(`${preview.url}?test&readTimeoutMs=3000`, { waitUntil: 'load', timeout: 30_000 });
+      await w.waitForTimeout(1800);
+      const waiting = await w.evaluate(() => globalThis.__dragonveinSave.read().hud);
+      const timedOut = await w.evaluate(() => globalThis.__dragonveinSave.ready());
+      await w.waitForTimeout(400);
+      const timedOutHud = (await w.evaluate(() => globalThis.__dragonveinSave.read())).hud;
+      await w.waitForTimeout(3500);    // the hold ends; nothing may have been written
+      const mainAfter = await idbOp(holder, 'get', 'main');
+      say(`save: load behind a held store — at 1.8 s HUD "${waiting.save} | ${waiting.note}"; then ${timedOut.state} ` +
+        `(${timedOut.detail}); HUD "${timedOutHud.save} | ${timedOutHud.note}" [${timedOutHud.actions.join(' | ')}]; ` +
+        `main ${JSON.stringify(mainAfter) === JSON.stringify(heldMain) ? 'untouched' : 'CHANGED'} after the hold`);
+      if (!waiting.note.includes('waiting for another tab') || timedOut.state !== 'unavailable'
+        || !timedOutHud.note.includes('could not be read in time') || !timedOutHud.actions.includes('reload')
+        || JSON.stringify(mainAfter) !== JSON.stringify(heldMain)) {
+        errors.push('save: a held load did not wait visibly, time out and leave the record alone');
+      }
+      await w.close();
+      await holder.close();
+      await seedPage.close();
+    } catch (e) {
+      errors.push(`stale start-fresh / held-load drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
+    }
+    say(`save: ${c3Errors.length} page error(s) across the stale start-fresh and held-load drills`);
+    errors.push(...c3Errors);
+  }
+  await flush();
+
+  // D4: localStorage blocked: the HUD says the journal is off, and a roster change waiting
+  // on a busy store reads "saving", never "saved", until it lands.
+  {
+    const ctx = await browser.newContext({ viewport: VIEW });
+    await ctx.addInitScript(() => {
+      Object.defineProperty(globalThis, 'localStorage', {
+        configurable: true,
+        get() { throw new DOMException('The operation is insecure.', 'SecurityError'); },
+      });
+    });
+    const blank = new URL('__blank.html', preview.url).href;
+    await ctx.route(blank, (r) => r.fulfill({ contentType: 'text/html', body: '<!doctype html><title>blank</title>' }));
+    const jErrors = [];
+    const p = await ctx.newPage();
+    p.on('pageerror', (e) => jErrors.push(String(e)));
+    p.on('console', (m) => { if (m.type() === 'error') jErrors.push(m.text()); });
+    try {
+      await p.goto(`${preview.url}?test`, { waitUntil: 'load', timeout: 30_000 });
+      await p.evaluate(() => globalThis.__dragonveinSave.ready());
+      await p.waitForFunction(() => globalThis.__dragonveinSave.read().state === 'saved', undefined, { timeout: 15_000 });
+      await p.waitForTimeout(300);
+      const idle = (await p.evaluate(() => globalThis.__dragonveinSave.read())).hud;
+      const holder = await ctx.newPage();
+      await holder.goto(blank);
+      await holder.evaluate(() => new Promise((started) => {
+        const q = indexedDB.open('dragonvein');
+        q.onsuccess = () => {
+          const db = q.result;
+          const tx = db.transaction('save', 'readwrite');
+          const os = tx.objectStore('save');
+          const end = performance.now() + 2000;
+          const spin = () => { if (performance.now() < end) os.get('main').onsuccess = spin; };
+          spin();
+          tx.oncomplete = () => db.close();
+          started(true);
+        };
+      }));
+      await p.evaluate(() => { void globalThis.__dragonveinSave.seedRoster(); });
+      await p.waitForTimeout(600);
+      const busy = (await p.evaluate(() => globalThis.__dragonveinSave.read())).hud;
+      await p.waitForFunction(() => globalThis.__dragonveinSave.read().hud.save.startsWith('saved'), undefined, { timeout: 15_000 });
+      const landed = (await p.evaluate(() => globalThis.__dragonveinSave.read())).hud;
+      await holder.close();
+      say(`save: localStorage blocked — HUD idle "${idle.save} | ${idle.note}"; with the store busy after a roster ` +
+        `change "${busy.save}"; once it lands "${landed.save}" (${landed.roster} dragons)`);
+      if (!idle.note.includes('journal off') || busy.save !== 'saving' || landed.roster !== '3') {
+        errors.push(`save: with no journal the HUD did not say so, or claimed "saved" early: "${idle.note}" / "${busy.save}"`);
+      }
+    } catch (e) {
+      errors.push(`journal-off drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
+    }
+    errors.push(...jErrors.map((e) => `journal off: ${e}`));
   }
   await flush();
 

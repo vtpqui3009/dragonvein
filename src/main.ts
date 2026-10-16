@@ -2024,6 +2024,9 @@ if (hud.build) hud.build.textContent = __BUILD_VERSION__;
  *   the 250 ms timer, and its strings are rebuilt only when what they show changes.
  */
 const TEST_HOOKS = new URLSearchParams(location.search).has('test');
+const TEST_READ_TIMEOUT_MS = TEST_HOOKS ? Number(new URLSearchParams(location.search).get('readTimeoutMs') ?? 0) || 0 : 0;
+/** When the load began, so a slow one can say what it waits for (cycle 2, D5). */
+const bootStartedAt = performance.now();
 const AUTOSAVE_MS = 10_000;
 const MAX_CATCH_UP_MS = 250;
 
@@ -2065,6 +2068,8 @@ const worldReady: Promise<void> = (async () => {
     const opened = await openIdbStore();
     const r = await openGameWorld(opened.ok ? opened.store : null, seed, {
       writer: sessionId(), journal: localJournal(), clock: () => performance.now(),
+      // gate:smoke shortens the load-read timeout to drill it; play keeps the 10 s default.
+      ...(TEST_READ_TIMEOUT_MS > 0 ? { readTimeoutMs: TEST_READ_TIMEOUT_MS } : {}),
       ...(opened.ok ? {} : { unavailable: opened.why }),
     });
     world = r.world;
@@ -2143,10 +2148,13 @@ function exportRefused(): string | null {
   const a = document.createElement('a');
   a.href = url;
   a.download = `dragonvein-save-${r.gen > 0 ? `gen${r.gen}` : 'unreadable'}.json`;
+  exportedName = a.download;
+  shownKind = -1;
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  paintWorldHud();
   return text;
 }
 hudWorld.fresh?.addEventListener('click', () => { void startFresh(); });
@@ -2167,12 +2175,43 @@ const SAVE_TEXT: Record<SaveState | 'loading', readonly [string, string]> = {
 };
 const ERROR_CLOSED = 'storage was closed and could not be reopened — retrying every 10 s';
 const ERROR_NEWER_DB = 'a newer version of the game upgraded the save — reload to update';
+const READ_TIMEOUT = 'the save could not be read in time (another tab held it) — nothing was overwritten; reload to try again';
+const WAITING = 'waiting for another tab\'s save…';
+const JOURNAL_OFF = 'backup journal off (storage blocked or full) — saves may lag a reload';
+/** When `loading` has lasted this long, the HUD says what it is waiting for. */
+const LOADING_SLOW_MS = 1000;
+/** The file name of the last export, confirmed on the HUD (cycle 2, D3). */
+let exportedName: string | null = null;
 let shownSec = -2;
 let shownRoster = -2;
 let shownState = '';
 let shownAgo = -2;
 /** Which variant of the note is shown, so a change of detail repaints without a string compare. */
 let shownKind = -1;
+
+/**
+ * Which note goes under the save readout. A small integer so the 250 ms repaint compares
+ * numbers, not strings:
+ *   0 the state's own note · 1 store closed · 2 newer database · 3 old save kept aside ·
+ *   4 set-aside refused (detail) · 5 exported · 6 slot emptied and re-saved · 7 journal off ·
+ *   8 read timed out · 9 still loading
+ */
+function noteKind(s: SaveSession | null, state: SaveState | 'loading'): number {
+  if (state === 'loading') return performance.now() - bootStartedAt > LOADING_SLOW_MS ? 9 : 0;
+  const detail = s ? s.detail : '';
+  if (state === 'unavailable') {
+    if (detail.includes('newer version')) return 2;
+    return detail.startsWith('timeout:') ? 8 : 0;
+  }
+  if (state === 'error') return detail.startsWith('StoreClosedError') ? (detail.includes('newer version') ? 2 : 1) : 0;
+  if (s?.refused) return s.asideRefused ? 4 : exportedName ? 5 : 0;
+  if (state === 'saved' || state === 'pending') {
+    if (s?.notice) return 6;
+    if (s?.asideKey) return 3;
+    if (s && !s.journalOk) return 7;
+  }
+  return 0;
+}
 
 function paintWorldHud(): void {
   const sec = world ? Math.floor(world.tick / TICK_HZ) : -1;
@@ -2189,19 +2228,25 @@ function paintWorldHud(): void {
     hudWorld.roster.textContent = roster < 0 ? '—' : String(roster);
   }
   const s = save;
-  const state: SaveState | 'loading' = s ? s.state : world ? 'unavailable' : 'loading';
+  const raw: SaveState | 'loading' = s ? s.state : world ? 'unavailable' : 'loading';
+  // "saved" only when the newest change is durable — in IndexedDB or the journal.
+  const state: SaveState | 'loading' = raw === 'saved' && s && !s.durable ? 'pending' : raw;
   const ago = state === 'saved' && s?.lastSavedAt != null
     ? Math.max(0, Math.floor((Date.now() - s.lastSavedAt) / 1000)) : -1;
-  const kind = state === 'error' && s
-    ? (s.detail.startsWith('StoreClosedError') ? (s.detail.includes('newer version') ? 2 : 1) : 0)
-    : state === 'saved' && s?.asideKey ? 3 : 0;
+  const kind = noteKind(s, state);
   if (state === shownState && ago === shownAgo && kind === shownKind) return;
   shownState = state;
   shownAgo = ago;
   shownKind = kind;
   const [value, base] = SAVE_TEXT[state];
   const note = kind === 1 ? ERROR_CLOSED : kind === 2 ? ERROR_NEWER_DB
-    : kind === 3 ? `the old save is kept aside, untouched (${s?.asideKey ?? ''})` : base;
+    : kind === 3 ? `the old save is kept aside, untouched (${s?.asideKey ?? ''})`
+    : kind === 4 ? s?.detail ?? ''
+    : kind === 5 ? `${base} · exported ${exportedName ?? ''}`
+    : kind === 6 ? s?.notice ?? ''
+    : kind === 7 ? JOURNAL_OFF
+    : kind === 8 ? READ_TIMEOUT
+    : kind === 9 ? WAITING : base;
   if (hudWorld.save) {
     hudWorld.save.textContent = ago < 0 ? value : `${value} ${ago < 60 ? `${ago}s` : `${Math.floor(ago / 60)}m`} ago`;
     hudWorld.save.classList.toggle('off', value !== 'saved' && value !== 'saving' && value !== 'loading');
@@ -2211,16 +2256,20 @@ function paintWorldHud(): void {
     hudWorld.note.hidden = note === '';
   }
   const refused = s?.refused ? s.refused : null;
-  if (hudWorld.actions) hudWorld.actions.hidden = !refused && state !== 'conflict' && kind !== 2;
+  // Every button shown can do something: start-fresh is withdrawn once the slot has changed
+  // under it (kind 4), and reload is offered wherever reloading is the way on.
+  const showFresh = refused !== null && kind !== 4;
+  const showReload = state === 'conflict' || state === 'newer' || kind === 2 || kind === 4 || kind === 8;
+  if (hudWorld.actions) hudWorld.actions.hidden = !showFresh && !refused && !showReload;
   if (hudWorld.fresh) {
-    hudWorld.fresh.hidden = !refused;
+    hudWorld.fresh.hidden = !showFresh;
     const n = refused?.salvage.length ?? 0;
     hudWorld.fresh.textContent = n > 0
       ? `start fresh with the ${n} readable dragon${n === 1 ? '' : 's'}, keep the old save aside`
       : 'start fresh, keep the old save aside';
   }
   if (hudWorld.exportBtn) hudWorld.exportBtn.hidden = !refused;
-  if (hudWorld.reload) hudWorld.reload.hidden = state !== 'conflict' && state !== 'newer' && kind !== 2;
+  if (hudWorld.reload) hudWorld.reload.hidden = !showReload;
 }
 
 /** The `?test` hook's view of the world: a deep copy, never the live object. */
@@ -2562,6 +2611,10 @@ function frame(now: number): void {
   frameMs = now - last;
   last = now;
 
+  // Taken before the sim step, so `cpuFrameMs` charges the sim to the frame it runs in
+  // (perf-critic, M8a cycle 2): from M8b the step does real work.
+  const startedAt = performance.now();
+
   // The fixed 20 Hz sim, before the context check: the world's clock does not stop for a
   // GPU reset. Allocation-free — `step` mutates the world in place.
   // A paused tab (another tab took over saving) stops its world: see `worldPaused`.
@@ -2589,7 +2642,6 @@ function frame(now: number): void {
   msSinceSample += frameMs;
   presentIntervalMs.push(frameMs);
 
-  const startedAt = performance.now();
   resize();
   applyOrbit();
   const sceneNow = sceneFrozenAt ?? now;

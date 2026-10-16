@@ -48,7 +48,12 @@ export interface StoredSave {
 export type WriteResult =
   /** Landed, or (`skipped`) a newer write from the same session was already stored. */
   | { ok: true; gen: number; skipped: boolean; putMs: number }
-  | { ok: false; gen: number };
+  /**
+   * Refused. `emptied`: the slot is empty although the session loaded a record — the
+   * database was deleted or cleared under it. Nothing was overwritten; the caller may
+   * rebase on the empty slot.
+   */
+  | { ok: false; gen: number; emptied?: boolean };
 
 export interface WriteRequest {
   text: string;
@@ -63,20 +68,29 @@ export interface WriteRequest {
   seq: number;
   /** When set, a main record this session did not write is copied here first. */
   backupKey?: string;
+  /** The session has landed a write before: an empty slot now means it was emptied under it. */
+  landed?: boolean;
 }
 
 export interface SaveStore {
   readonly kind: 'indexeddb' | 'memory';
-  /** The raw value under `key`, or `undefined`. Raw: the caller validates it. */
-  get(key: string): Promise<unknown>;
+  /**
+   * The raw value under `key`, or `undefined`. Raw: the caller validates it. With
+   * `timeoutMs`, rejects with `StoreTimeoutError` if the read has not answered by then
+   * (another tab holding the store), so a load never hangs silently.
+   */
+  get(key: string, timeoutMs?: number): Promise<unknown>;
   /** One atomic transaction; see the header. Rejects only on a storage error. */
   write(w: WriteRequest): Promise<WriteResult>;
   /**
    * Move the main record, as stored, to the first free `refused.<n>` and clear main — only
-   * if main still reports gen `expectGen` (-1 for a value that is not a StoredSave). One
-   * transaction. Resolves the key it was moved to, or null when main had changed.
+   * if main is still exactly `expected`, the value the caller read and refused (compared
+   * whole: gen, writer, seq, savedAt and text for a save; the value itself otherwise). Gen
+   * alone is not an identity — it repeats after a set-aside — and matching on it once moved
+   * another tab's live save aside (M8a cycle 2, D1). One transaction. Resolves the key it
+   * was moved to, or null when main is no longer that value.
    */
-  setAside(expectGen: number): Promise<string | null>;
+  setAside(expected: unknown): Promise<string | null>;
   close(): void;
 }
 
@@ -132,9 +146,48 @@ function decide(current: unknown, w: WriteRequest): Decision {
   if (mine && (cur.seq ?? 0) >= w.seq) {
     return { put: null, backup: false, result: { ok: true, gen: found, skipped: true, putMs: 0 } };
   }
-  if (!mine && !isRecord(cur, w)) return { put: null, backup: false, result: { ok: false, gen: found } };
+  // A session that has written before finds the slot empty: deleted or cleared under it.
+  if (cur === undefined && w.landed) return { put: null, backup: false, result: { ok: false, gen: 0, emptied: true } };
+  if (!mine && !isRecord(cur, w)) {
+    const emptied = cur === undefined;   // the session's base exists no longer: deleted or cleared
+    return { put: null, backup: false, result: emptied ? { ok: false, gen: 0, emptied } : { ok: false, gen: found } };
+  }
   const put: StoredSave = { gen: found + 1, savedAt: w.savedAt, text: w.text, writer: w.writer, seq: w.seq };
   return { put, backup: w.backupKey !== undefined && cur !== undefined && !mine, result: { ok: true, gen: put.gen, skipped: false, putMs: 0 } };
+}
+
+/**
+ * Whether two stored values are the same record. Structured clones of one stored value
+ * stringify identically (property order is kept); a value JSON cannot express never matches,
+ * so it is never moved by mistake — it stays where it is.
+ */
+export function sameStored(a: unknown, b: unknown): boolean {
+  if (a === undefined || b === undefined) return false;
+  try {
+    const sa = JSON.stringify(a);
+    return sa !== undefined && sa === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
+/** Raised when a read does not answer within its timeout. */
+export class StoreTimeoutError extends Error {
+  constructor(ms: number) {
+    super(`the save store did not answer within ${ms} ms (another tab may be holding it)`);
+    this.name = 'StoreTimeoutError';
+  }
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number | undefined): Promise<T> {
+  if (ms === undefined) return p;
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new StoreTimeoutError(ms)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e: unknown) => {
+      clearTimeout(t);
+      reject(e instanceof Error ? e : new Error(String(e)));
+    });
+  });
 }
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : 0);
@@ -174,7 +227,7 @@ export function memoryStore(opts: { beforeCommit?: () => void } = {}) {
     hold: () => { held ??= []; },
     release: () => { const q = held ?? []; held = null; for (const go of q) go(); },
     unload: () => { const n = held?.length ?? 0; held = null; return n; },
-    get: (key) => run(() => structuredClone(data.get(key))),
+    get: (key, timeoutMs) => withTimeout(run(() => structuredClone(data.get(key))), timeoutMs),
     write: (w) => run(() => {
       const d = decide(data.get(MAIN_KEY), w);
       if (!d.put) return d.result;
@@ -185,9 +238,9 @@ export function memoryStore(opts: { beforeCommit?: () => void } = {}) {
       for (const [k, v] of staged) data.set(k, v);
       return d.result;
     }),
-    setAside: (expectGen) => run(() => {
+    setAside: (expected) => run(() => {
       const cur = data.get(MAIN_KEY);
-      if (cur === undefined || genOf(cur) !== expectGen) return null;
+      if (!sameStored(cur, expected)) return null;
       const key = nextRefusedKey(data.keys());
       opts.beforeCommit?.();
       data.set(key, cur);
@@ -307,10 +360,10 @@ function idbStore(first: IDBDatabase, timeoutMs: number): SaveStore {
 
   return {
     kind: 'indexeddb',
-    get: (key) => tx<unknown>('readonly', (os, set) => {
+    get: (key, timeoutMs) => withTimeout(tx<unknown>('readonly', (os, set) => {
       const r = os.get(key);
       r.onsuccess = () => set(r.result as unknown);
-    }),
+    }), timeoutMs),
     write: (w) => tx<WriteResult>('readwrite', (os, set) => {
       const cur = os.get(MAIN_KEY);
       cur.onsuccess = () => {
@@ -326,11 +379,11 @@ function idbStore(first: IDBDatabase, timeoutMs: number): SaveStore {
         set(d.result);
       };
     }),
-    setAside: (expectGen) => tx<string | null>('readwrite', (os, set) => {
+    setAside: (expected) => tx<string | null>('readwrite', (os, set) => {
       const cur = os.get(MAIN_KEY);
       cur.onsuccess = () => {
         const current = cur.result as unknown;
-        if (current === undefined || genOf(current) !== expectGen) { set(null); return; }
+        if (!sameStored(current, expected)) { set(null); return; }
         const keys = os.getAllKeys();
         keys.onsuccess = () => {
           const key = nextRefusedKey(keys.result);
