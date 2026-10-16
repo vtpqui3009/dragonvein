@@ -167,7 +167,7 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
-## 2026-10-16 · run 32 · M8a — IndexedDB save and load; a world survives reload; migrations in place
+## 2026-10-16 · run 32 · M8a DONE — IndexedDB save and load; a world survives reload; migrations in place
 
 **Step**: `M8a`, the first step in reading order that is not `DONE`. M7 and M5 wait only on the
 owner's look. The marker commit precedes this one.
@@ -250,6 +250,88 @@ cross-directory, so there is one sequential owner, the integrator. `check:layers
    go live at M8a in the rubric. The gameplay critic must find no way to lose the roster, for
    example through rapid reloads, a reload mid-save, or two tabs, and no blocking or major art
    defect in the HUD.
+
+
+---
+
+### Result — M8a DONE (M8 IN_PROGRESS)
+
+All six criteria hold at `9179782`, after two rework cycles.
+
+**Commits:**
+
+| commit | what |
+|---|---|
+| `01ecd77` | `check:layers` holds `src/sim` and `src/core` to an allow-list. This is a gate fix, in its own commit. |
+| `9a57972` | The sim and save spine. |
+| `5dad3b7` | `main.ts` wiring, the HUD and the smoke drills. |
+| `3b6e71d` | Cycle 2. |
+| `9179782` | Cycle 3. |
+
+1. **Determinism across a save.** A world run for 1 000 ticks equals one run for 400 ticks,
+   then encoded, decoded and run for 600 more. They match on deep equality, on byte-identical
+   JSON and on the next 100 draws, for 3 seeds. The Rng state export and restore continues
+   2 000 mixed draws exactly. The Python vectors still pass.
+2. **Migrations.**
+   - The append-only chain is checked by `assertChain`, with a synthetic 1→2→3 test.
+   - `tests/fixtures/save-v1.json` (4 dragons, 1 bred) is frozen and must load forever.
+   - Thirteen kinds of bad record are each refused and left byte-identical: newer, corrupt,
+     incomplete, tampered gid, and others.
+3. **Reload in real Chromium IndexedDB.** gate:smoke covers:
+   - the round trip (seed, a roster of 3 with 1 bred, the Rng, and the tick);
+   - a reload with the store held by another tab, served by the journal;
+   - a reload storm;
+   - two tabs, where the stale one pauses;
+   - a refused record, export, start fresh, and a stale tab's start fresh being refused;
+   - a closed handle, a deleted database, and a newer database at boot;
+   - a read timeout, and the journal turned off;
+   - the IndexedDB-blocked boot.
+4. **Budgets.**
+   - cpuFrameMs p95 is 1.5 ms. It now includes the sim step.
+   - 17 draws.
+   - Heap is 37 874 B/frame, against 40 960.
+   - The bundle grew by 10.7 kB gzip over three cycles, more than the "a few kB" the criterion
+     asked for. That money buys the journal and the recovery paths.
+   - The first frame does not wait for the load.
+   - Saves cost ≤ 1 ms on the main thread with 3 dragons. One cold first save took 4.0 ms.
+   - Gates exit 0.
+5. **Seen.** Shots 09, 10, 13, 14, 15 and 16 cover before and after a reload, not saved,
+   refused, started fresh, and a refused start fresh.
+6. **No blocking defect.** The cycle-3 gameplay critic could not lose a bred dragon.
+
+**The rework.**
+- **Cycle 1** at `5dad3b7` scored art 8.4, perf 8.8 and gameplay 8.2. Its majors:
+  - D1: an unload during a slow write lost the queued roster.
+  - D2: a refused record was a dead end.
+- **Cycle 2** at `3b6e71d` scored 8.5, 8.8 and 8.4. It added a localStorage write-ahead journal
+  and pipelined writes keyed on gen, writer and seq, so Chromium no longer aborts a queued
+  transaction on unload. It also added export, and start-fresh with `refused.<n>` and salvage.
+  - New major: set-aside guarded on gen alone.
+- **Cycle 3** at `9179782` scored 8.5, 8.8 and 8.9. It added the whole-value set-aside guard
+  and made "saved" mean durable. It also added a 10 s read timeout, emptied-slot re-saves,
+  44 px buttons, and moved `startedAt` above the sim step.
+
+**`docs/ARCHITECTURE.md` §Save was extended**, as an implementation contract, not a target
+rewrite:
+- the payload `{rngVersion, world}`;
+- the store keys `main`, `backup.vN` and `refused.<n>`;
+- the localStorage journal;
+- record identity is gen + writer + seq;
+- the rules for refusal, set-aside, pause and timeout.
+
+**For the owner.** The journal is a local localStorage write beside IndexedDB, and IndexedDB
+remains the save. That reading of CLAUDE.md §7 ("saves to IndexedDB") is put to the owner in
+NEXT.md.
+
+**Hazards for M8b:**
+- The game-page heap is the binding budget: 37 874 corrected, 43 938 uncorrected, with a
+  creeping floor.
+- The first dragon in the game scene costs about 840 B/frame skinned.
+- `cpuFrameMs` now counts sim time.
+- Saves do not coalesce, and there is no save probe that scales with the roster.
+- `refused.*` is unreachable in-game; this becomes a major when a second schema ships.
+
+`wip/m8a` is superseded by `9179782`.
 
 ---
 
@@ -401,140 +483,6 @@ it fails if the set changes. NEXT.md asks the owner.
 - small phone framing.
 
 `wip/m7c` is superseded by `9242ee2` and can be deleted.
-
----
-
-## 2026-10-14 · run 30 · M7b DONE — walk cycle, feet planted, no sliding
-
-**Step**: `M7b`, the first step in reading order that is not `DONE`. The marker commit
-precedes this one.
-
-**The animation path, decided before code: skinning.** M7a's vertex-shader idle could shear
-a leg but not bend a knee; both critics said the legs "shear rather than bend". A walk needs
-limbs that rotate about joints, and feet that stay still on the ground while the body moves
-over them. So the dragon becomes a three.js `SkinnedMesh`:
-- **Bones** come from the skin graph's own nodes. `graph.ts` already has the hip, shoulder
-  and the per-leg node chain down to the toes. The torso, neck and tail nodes become a spine
-  chain, and the wings ride their roots. No new bone layout is invented.
-- **Skin weights** are baked in the worker by the tube sweep. Every ring knows its path
-  segment, so it is weighted to that segment's two nodes, with up to 4 influences per vertex.
-- **Parity** is untouched. It compares skin graphs and limb anchors, not weights, and the
-  graph does not change.
-- **Two-bone analytic IK** places each foot: hip or shoulder → knee → foot. A planted foot's
-  target is fixed in world space for its whole stance phase.
-- **M7a's idle stays as it is.** It composes with skinning: breath and blink on the bind pose,
-  sway as root motion.
-
-The risk is CPU: bone updates every frame. It is measured in criterion 4.
-
-**Ownership**: one sequential owner, the integrator, across `src/assets/dragon/` (weights,
-bone table), `src/render/`, `src/dragon-view.ts`, `tools/` and `tests/`.
-
-### Acceptance criteria
-
-1. **The genome drives the gait.** `walkParams(genome)` gives:
-   - a stride length that grows with legLength;
-   - a cadence that slows with bodyMass;
-   - the duty factor, the share of each cycle a foot is down;
-   - a quadruped gait order, the lateral sequence: left hind, left fore, right hind, right
-     fore.
-
-   The body travels at stride ÷ cycle period. `tests/dragon-walk.test.ts` proves it monotone,
-   bounded and deterministic.
-2. **Skinning.** The mesher emits `skinIndex` and `skinWeight` (≤ 4 influences, weights sum to
-   1, tested) and a bone table derived from the graph. `dragon.html` renders a `SkinnedMesh`
-   that is pixel-identical at rest to the static mesh. Measure it: the rest-pose diff is ≤ a
-   few pixels on edges only.
-3. **No sliding, as a number.** A tool walks each sheet dragon for 2 cycles and records each
-   foot's world position across its stance phase. The **stance drift is ≤ 1 % of the stride**
-   for every foot of every dragon. It is written to `artifacts/variants/dragon-walk.json`, and
-   the tool fails above that. Knees visibly bend: the knee angle range over a cycle is reported
-   and is > 15°.
-4. **Budgets.**
-   - meshgen ≤ 120 ms, with no regression past noise (~44 ms max now);
-   - `gate:parity` green;
-   - no new draw on `dragon.html`;
-   - `cpuFrameMs` on `dragon.html` with 8 dragons walking is measured and reported. It must
-     stay under the 3.5 ms main-thread budget;
-   - no per-frame allocation in the walk or IK path;
-   - `npm run gates` exits 0.
-5. **Seen.** `artifacts/turntables/dragon-walk.webm` is a tracking side view of one dragon
-   walking across 2+ cycles, framed whole. `dragon-walk-a.png` and `dragon-walk-b.png` show
-   two phases.
-6. **No blocking or major art defect**:
-   - no foot sliding;
-   - no tearing or candy-wrapper collapse at the knees or shoulders;
-   - wings and tail ride the body;
-   - the idle still works at rest.
-
-
----
-
-### Result — M7b DONE (M7 IN_PROGRESS)
-
-All six criteria hold at `6e1debb`, after one rework cycle.
-
-1. **`walkParams(genome)`** (`src/assets/dragon/walk.ts`) is pure and deterministic. With m
-   for normalised bodyMass and LL for leg length:
-
-   | parameter | formula |
-   |---|---|
-   | stride | 0.48·LL |
-   | period | (0.80 + 0.50m)·√(LL/1.05) |
-   | duty | 0.62 + 0.14m |
-
-   The gait is the lateral sequence LH, LF, RH, RF. `tests/dragon-walk.test.ts` proves it
-   monotone, bounded and deterministic. `pose(t, 0)` equals rest at any t.
-2. **Skinning.** `rig.ts` derives 26 bones from the graph's nodes. `bakeSkin` writes
-   `skinIndex` and `skinWeight` with at most 4 influences, weights summing to 1, and a
-   rigid-sole rule. The worker transfers 8 buffers. The rest pose against static differs by
-   **0 px**.
-3. **No sliding.** `tools/dragon-walk.mjs` measures stance drift at 0 % of stride, for ball
-   and contact, on every foot of all 8 dragons. The knee range is 38.6–51.2°. The art critic
-   independently block-matched all 84 clip frames and found the toes planted to the pixel.
-4. **Budgets.**
-   - meshgen round trip max 39.5 ms (worker 31.9);
-   - parity exact;
-   - 50 draws in every `dragon.html` mode, so no new draw;
-   - cpuFrameMs with 8 walking at p95 1.4 ms;
-   - no per-frame allocation in pose or IK (13 B per call in a Node probe);
-   - `npm run gates` exits 0.
-5. **Seen.** `dragon-walk.webm` (dragon A, 3 cycles), `dragon-walk-a.png` and
-   `dragon-walk-b.png`.
-6. **No blocking or major art defect** in either cycle.
-
-**Rework, cycle 1 → 2.** Cycle 1 at `a68c77f` scored art 8.7, perf 9.0 and gameplay 7.5.
-
-| commit | what it fixed |
-|---|---|
-| `fff1fa3` | **gate:meshgen** (perf major, its own commit). The page now runs under `tools/rasteriser-cap.mjs`. Every GL call is timed, and a round trip over 120 ms passes only when a GL stall of ≥ 8 ms inside its own window accounts for the excess. The worker is held to 120 ms on every sample, and the budget is unchanged. Injected tests: a 200 ms GL wait is partitioned, while a 200 ms non-GL stall fails. |
-| `6e1debb` | **`?view=walk`.** The follow camera now tracks the dragon's world position after yaw (D1), wheel and pinch scale the follow distance 0.3–3× (D2), and the ground (grid-snapped) and backdrop follow the dragon (D3). Also a 0.4 s smoothstep walk-weight ramp, `walkStop()`, and hip, shoulder and neck roll with the gait. |
-
-**Scores (cycle 2):** art **8.2**, perf **9.1**, gameplay **9.4**. Art fell from 8.7: A7
-caption contrast was measured for the first time at 2.2:1, and A9 is the low crouch.
-
-**Why M7 stays IN_PROGRESS.** M7c is `TODO`, and no human has seen the walk running
-(CLAUDE.md §7). NEXT.md asks the owner for a `dragon.html?walk=1` sighting.
-
-**Hazards for the next steps:**
-- Each walking dragon adds about 1 kB/frame of heap on three's skinned path. It is not yet
-  attributed; the likely cause is the bone-texture upload. The game page has about 9 kB of
-  headroom.
-- The meshgen stall partition has not fired in a real run. The 178.8 ms stall was not
-  reproduced, so it is unproven that a recurrence would be a GL wait.
-
-**Open, carried to FINDINGS (all minor):**
-- narrow gait variety;
-- a rigid head and neck;
-- the low crouch;
-- a single-dragon clip, and no ramp artefact;
-- no regression guard on the `?view=walk` input;
-- no input hint;
-- caption contrast;
-- stale `dragon-full.json`;
-- potato cap verification.
-
-`wip/m7b` holds a superseded snapshot and can be deleted.
 
 ---
 

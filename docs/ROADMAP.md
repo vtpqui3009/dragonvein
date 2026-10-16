@@ -280,8 +280,8 @@ They meet §Definition of done:
 
 | step | done when | status |
 |---|---|---|
-| **M8a** | **IndexedDB save and load; a world survives reload; migrations in place** | **TODO** |
-| M8b | approach and calm — a wild dragon reacts to the player | TODO |
+| M8a | IndexedDB save and load; a world survives reload; migrations in place | DONE |
+| **M8b** | **approach and calm — a wild dragon reacts to the player** | **TODO** |
 | M8c | taming completes and the dragon joins the roster | TODO |
 | M8d | roster UI — list, select, inspect | TODO |
 
