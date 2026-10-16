@@ -167,6 +167,110 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-16 · run 33 · M8b — approach and calm: a wild dragon reacts to the player
+
+**Step**: `M8b`, the first step in reading order that is not `DONE`. M7 and M5 wait only on
+the owner's look. The marker commit precedes this one.
+
+**What exists.** No dragon is drawn in the game scene yet; the HUD counts a roster nobody
+sees. `src/sim/` holds the world and the save, but `step` only advances `tick`. The dragon
+runtime exists in `dragon.html`: a skinned mesh, idle, walk and flight. GDD: "find a wild
+dragon → tame it ← reading its behaviour, not throwing a ball".
+
+**Decisions, made before code.**
+- **The player is a small keeper avatar on the hero island.** The player moves it by tapping
+  or clicking a spot on the island deck, which works on touch and mouse alike, and the
+  keeper walks there. It is deliberately simple and cheap: one draw, plus a soft lantern that
+  is emissive only and adds no light. The camera keeps orbiting the island as it does today.
+  A bare cursor would not give the dragon a body to react to, so it was not chosen.
+- **One wild dragon lives on the hero island.** Its genome comes from the world's `Rng`
+  (`wild(seed)`).
+  - It is built through the existing worker mesher and drawn with the M7 runtime: idle, then
+    walk, then flight when it flees.
+  - It is placed on the deck at the deck height, read from a precomputed height grid. No
+    per-frame raycast.
+- **The reaction is sim state, deterministic in `src/sim/`** (`wild.ts`).
+  - The dragon carries a position, a heading, a behaviour state and a `calm` value in [0, 1].
+    The states are:
+    - **wander or graze**, when the keeper is far;
+    - **alert**, when the keeper enters its notice radius: head up, facing the keeper;
+    - **wary**, when the keeper is closing: it backs away or circles;
+    - **flee**, when the keeper rushes or comes too close: it takes off, lands elsewhere
+      on the island, and loses calm;
+    - **settle**, when the keeper is near and still: calm rises.
+  - Calm rises only while the keeper stands still or moves slowly inside the dragon's
+    comfort ring. It decays with distance and time.
+  - M8b ends at the reaction and the calm meter. Taming completes in M8c.
+- **The genome drives temperament** (CLAUDE.md §0, so the genetics are visible). Temperament
+  is a pure function of existing genes, with no new gene: notice radius, flight distance and
+  calm rate come from body mass, element, wing span and head size. It is tested to be
+  monotone, and two sheet genomes behave measurably differently.
+- **The render shows the tells, not a number first.**
+  - Alert lifts the head and points it at the keeper.
+  - Wary lowers the stance and turns the tail toward the keeper.
+  - Flee is the M7c flap.
+  - Settle eases back into the idle.
+  - A small calm indicator near the dragon may supplement the tells but must not replace
+    them.
+- **The save** gains the wild dragon and the keeper's position, so this is **schema 2**. It
+  gets the first real migration, 1 → 2, appended to the chain. `tests/fixtures/save-v1.json`
+  must still load, migrated, and a new frozen `save-v2.json` is added.
+
+**Ownership**: `src/sim/` (wild.ts, world, migrate), `src/assets/dragon/` (only if a
+temperament helper belongs there), `src/render/` (dragon in scene, keeper, tells),
+`src/main.ts` (input, wiring), `tools/` and `tests/`. Cross-directory, so one sequential
+owner: the integrator.
+
+### Acceptance criteria
+
+1. **Temperament from genes.** `temperament(genome)` is pure and deterministic, and
+   `tests/wild.test.ts` proves it monotone and bounded in the genes it names. Across the
+   8 sheet genomes the notice radius and calm rate each spread by ≥ 30 %.
+2. **Deterministic reaction.** A scripted keeper path stepped through `src/sim/` produces the
+   expected state sequence, and the same seed and path produce identical worlds:
+   - far → wander;
+   - approach → alert → wary;
+   - rush → flee;
+   - slow approach and stillness → settle, with calm rising monotonically while still.
+
+   The cases are covered by tests, including save mid-sequence and resume. `check:determinism`
+   passes, and the sim imports only `core`.
+3. **Schema 2 with a real migration.** `MIGRATIONS` gains 1 → 2. `save-v1.json` loads through
+   it, its roster intact and a wild dragon added. `save-v2.json` is frozen. A reload
+   mid-approach restores the dragon's state, position and calm, asserted in `gate:smoke` in
+   real Chromium.
+4. **Seen in the game.**
+   - New shots:
+     - `artifacts/shots/17-wild-wander.png`, the dragon on the island with the keeper far;
+     - `18-wild-alert.png`, head up and facing the keeper;
+     - `19-wild-settle.png`, the keeper near and still, calm visibly risen;
+     - `20-wild-flee.png`, mid-takeoff after a rush.
+   - A turntable or clip, `artifacts/turntables/m8b-approach.webm`, covering one approach
+     from wander through alert to settle, and one rush to flee.
+   - The tap-to-move input works under mouse and `hasTouch`, drilled in `gate:smoke`.
+5. **Budgets.**
+   - Game-page heap ≤ 40 960 B/frame. It is now 37 874, so this step must pay for the
+     dragon. Attribute and cut the skinned-path cost if needed; **never raise the budget**.
+   - `cpuFrameMs` p95 < 3.5 ms, including the sim step.
+   - Draw calls ≤ 180, and the dragon and keeper add only a handful.
+   - meshgen ≤ 120 ms. The wild dragon's mesh is built off the main thread and must not
+     delay the first frame.
+   - `npm run gates` exits 0.
+6. **No blocking or major defect.**
+   - The dragon must not float, sink or slide on the deck.
+   - It must not interpenetrate the keeper or the flora.
+   - It must not leave the island or get stuck.
+   - The reaction must read without the indicator: the gameplay critic tries to calm it and
+     to spook it, under mouse and touch.
+
+**If this proves too big for one run** (§4b.4), the split is:
+- **M8b-1:** the dragon and keeper in the scene, with the sim state machine and the save.
+- **M8b-2:** the tells and the temperament tuning.
+
+The run says so in STATE.md rather than half-landing both.
+
+---
+
 ## 2026-10-16 · run 32 · M8a DONE — IndexedDB save and load; a world survives reload; migrations in place
 
 **Step**: `M8a`, the first step in reading order that is not `DONE`. M7 and M5 wait only on the
@@ -806,4 +910,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-16T11:07Z

@@ -10,8 +10,10 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-16** · at commit `9179782`, the last code commit of run 32. The
-close-out docs commits follow it. **Run 32 closed M8a.** No run is in flight. The daily
+Last updated: **2026-10-16** · at commit `9179782`. **Run 33 is in flight on M8b** in the owner's
+main session (criteria in STATE.md run 33). **Do not start M8b from a second session while this
+line stands.** If no `feat` commit for M8b lands hours later, run 33 died: take M8b from the
+STATE.md run 33 criteria. Run 32 closed M8a. The daily
 routine is disabled (`3724d5e`), so runs start by hand.
 
 ---
