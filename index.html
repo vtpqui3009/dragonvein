@@ -57,7 +57,8 @@
       #hud .a{flex-basis:100%;display:flex;flex-wrap:wrap;gap:6px;pointer-events:auto}
       #hud .a button{font:inherit;font-size:12px;letter-spacing:.06em;color:#ffd479;cursor:pointer;
         background:rgba(11,36,48,0.95);border:1px solid rgba(255,212,121,.6);border-radius:6px;
-        padding:5px 9px;text-align:left;white-space:normal}
+        padding:5px 9px;text-align:left;white-space:normal;
+        min-height:44px}  /* a touch target: 44 px, as at 360 and 320 px wide (cycle 2, D8) */
       #hud .a button:hover{background:rgba(255,212,121,.12)}
       #hud .a button:focus-visible{outline:2px solid #ffd479;outline-offset:1px}
       #hud [hidden]{display:none}

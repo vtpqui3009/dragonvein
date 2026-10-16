@@ -103,6 +103,12 @@ export class SaveSession {
   refused: { gen: number; raw: unknown; salvage: GenomeJson[] } | null;
   /** Where `setAside` put the refused record. */
   asideKey: string | null = null;
+  /** True once `setAside` was refused because the stored save changed: reload to see it. */
+  asideRefused = false;
+  /** A one-line account of something the session did on its own (re-saving an emptied slot). */
+  notice = '';
+  /** False when the journal is missing, or its latest write failed (blocked or full). */
+  journalOk: boolean;
   private seq = 0;
   private landedSeq = 0;
   private journaledSeq = 0;
@@ -124,6 +130,15 @@ export class SaveSession {
     this.refused = init.refused ?? null;
     this.sweep = init.sweep ?? [];
     this.clock = init.clock ?? (() => 0);
+    this.journalOk = this.journal !== null;
+  }
+
+  /**
+   * Whether the newest save this session asked for is durable — landed in IndexedDB, or in
+   * the journal. "saved" on screen means this, and nothing less (M8a cycle 2, D4).
+   */
+  get durable(): boolean {
+    return this.landedSeq >= this.seq || this.journaledSeq >= this.seq;
   }
 
   /** False while the session must not write: no store, a refused record, or a conflict. */
@@ -136,24 +151,45 @@ export class SaveSession {
    * has answered for this write. Never rejects.
    */
   save(world: object, now: number): Promise<void> {
-    const store = this.store;
-    if (!this.writable || !store) return Promise.resolve();
+    if (!this.writable || !this.store) return Promise.resolve();
     const t0 = this.clock();
     const text = encodeSave(world);
-    const t1 = this.clock();
-    const seq = ++this.seq;
+    return this.issue(text, now, ++this.seq, t0, this.clock());
+  }
+
+  private issue(text: string, now: number, seq: number, t0: number, t1: number): Promise<void> {
+    const store = this.store;
+    if (!this.writable || !store) return Promise.resolve();
     const ref: BaseRef = { base: this.base, baseWriter: this.baseWriter, baseSeq: this.baseSeq };
-    if (this.journal?.write({ ...ref, writer: this.writer, seq, savedAt: now, text })) this.journaledSeq = seq;
+    if (this.journal) {
+      const ok = this.journal.write({ ...ref, writer: this.writer, seq, savedAt: now, text });
+      this.journalOk = ok;
+      if (ok && seq > this.journaledSeq) this.journaledSeq = seq;
+    }
     const t2 = this.clock();
     this.inflight++;
     return store.write({
-      ...ref, text, savedAt: now, writer: this.writer, seq,
+      ...ref, text, savedAt: now, writer: this.writer, seq, landed: this.landedSeq > 0,
       ...(this.backup !== undefined ? { backupKey: this.backup } : {}),
     }).then((r) => {
       this.lastTiming = {
         serialiseMs: t1 - t0, journalMs: t2 - t1, putMs: r.ok ? r.putMs : 0,
         roundTripMs: this.clock() - t0, bytes: text.length,
       };
+      if (!r.ok && r.emptied && this.writable) {
+        // The record this session loaded is gone and the slot is empty: the database was
+        // deleted or cleared under the tab. Nothing can be overwritten, so start again on the
+        // empty slot and write this world there (M8a cycle 2, D6).
+        if (this.base !== 0 || this.baseWriter !== '' || this.baseSeq !== 0 || this.landedSeq > 0) {
+          this.base = 0;
+          this.baseWriter = '';
+          this.baseSeq = 0;
+          this.gen = 0;
+          this.landedSeq = 0;
+          this.notice = 'the save storage was emptied under this tab (cleared or deleted) — saved again from this tab';
+        }
+        return this.issue(text, now, seq, t0, t1);
+      }
       if (!r.ok) {
         this.state = 'conflict';
         this.detail = r.gen < 0
@@ -200,13 +236,14 @@ export class SaveSession {
     if (!r || !this.store) return null;
     let key: string | null;
     try {
-      key = await this.store.setAside(r.gen);
+      key = await this.store.setAside(r.raw);
     } catch (e) {
       this.detail = `could not set the save aside (${e instanceof Error ? e.message : String(e)})`;
       return null;
     }
     if (!key) {
-      this.detail = 'the stored save changed before it could be set aside; nothing was moved';
+      this.asideRefused = true;
+      this.detail = 'the stored save changed since this tab read it (another tab?) — nothing was moved; reload to see it';
       return null;
     }
     this.asideKey = key;
@@ -224,7 +261,11 @@ export class SaveSession {
 /** Fallback writer ids, unique within this module's lifetime; the page passes a random one. */
 let sessions = 0;
 
+/** How long a load waits for the stored record before giving up on it (unwritably). */
+export const READ_TIMEOUT_MS = 10_000;
+
 export interface OpenOptions<W> {
+  readTimeoutMs?: number;
   chain?: Chain<W>;
   unavailable?: string;
   journal?: Journal | null;
@@ -255,10 +296,12 @@ export async function openWorld<W = World>(
   }
   let raw: unknown;
   try {
-    raw = await store.get(MAIN_KEY);
+    raw = await store.get(MAIN_KEY, opts.readTimeoutMs ?? READ_TIMEOUT_MS);
   } catch (e) {
-    // Could not even read: writing blind could replace a record we never saw.
-    const detail = `read failed (${e instanceof Error ? e.message : String(e)})`;
+    // Could not even read (or not in time): writing blind could replace a record we never
+    // saw, so this session never writes. The record stays exactly as it is.
+    const detail = e instanceof Error && e.name === 'StoreTimeoutError'
+      ? `timeout: ${e.message}` : `read failed (${e instanceof Error ? e.message : String(e)})`;
     return {
       world: fresh(),
       session: new SaveSession(null, { ...base, state: 'unavailable', detail, base: 0 }),

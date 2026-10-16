@@ -129,7 +129,10 @@ The rules every future schema keeps:
 - **A refusal is never a dead end, and the way out deletes nothing.** The HUD offers
   *export the old save* (a local file download of the stored value; no network) and *start
   fresh, keep the old save aside*: one transaction moves the record, as stored, to the first
-  free `refused.<n>` and empties `main`. The genomes in a refused record of this schema that
+  free `refused.<n>` and empties `main` — only if `main` is still exactly the value this
+  session read and refused (compared whole, never by gen alone: gen repeats after a
+  set-aside, and matching on it once moved another tab's live save aside). If it changed,
+  nothing moves and the HUD says so and offers a reload. The genomes in a refused record of this schema that
   still validate (gid included) join the fresh world under new ids. `refused.*` and
   `backup.*` are never deleted by the game.
 - **Back up before migrating.** The write that first replaces a schema-N < current record
@@ -153,9 +156,18 @@ The rules every future schema keeps:
   than it is *promoted*: the world comes from it, and the first landed write puts it in
   IndexedDB and clears the journal. The journal is a write-ahead log; IndexedDB stays the
   save. If `localStorage` is unavailable or full, saves still go to IndexedDB unjournalled.
+- **"saved" means durable.** The HUD shows "saved" only when the newest save is in IndexedDB
+  or in the journal; otherwise "saving". With the journal off (storage blocked or full) the
+  HUD says so.
+- **A load read times out.** `main` is read with a 10 s timeout; while it waits the HUD says
+  "waiting for another tab's save…", and on timeout the session never writes (it cannot know
+  what it would overwrite) and offers a reload.
+- **An emptied slot is re-saved.** A session that finds `main` gone after it has saved, or
+  gone from under the record it loaded (database deleted or cleared), writes its world to
+  the empty slot again and says so — it is not "another tab".
 - **A closed handle is reopened.** On `versionchange` (a newer build upgrading) or `close`,
   the next call reopens; if it cannot ("a newer version of the game upgraded the save"),
-  the HUD says so.
+  the HUD says so and offers a reload — mid-session and at boot alike.
 - **No IndexedDB** (missing, throwing, failing or not opening in 4 s): the game runs
   unsaved and the HUD says "not saved".
 - `tests/fixtures/save-v1.json` is a frozen schema-1 save (one bred dragon). Every build
