@@ -3,6 +3,110 @@
 Critic reports, newest at the top. Written by the critics, read by the builders.
 Cleared only when the defect it names is fixed and the fix is committed.
 
+# M8a — run 32, 2026-10-16 — cycle 1, at `5dad3b7`
+
+**Scores: art-critic 8.4 · perf-critic 8.8 · gameplay-critic 8.2.** No blocking defect. There are two
+**gameplay majors** in the save path, so the step goes to rework cycle 2.
+
+## perf-critic — 8.8 (all six lines)
+
+P1 1.8 · P2 1.8 · P3 1.8 · P4 1.1 · P5 1.2 · P6 1.1.
+
+Measured:
+- **Game page:** cpuFrameMs p95 1.3 ms (cap verified), 17 draws, heap 34 828 B/frame against
+  40 960 (42 831 uncorrected).
+- **Bundle:** 232 239 B gzip, +6 263 B for the save spine.
+- **Boot:** bootMs 255. First frame at 215 ms, world ready at 264 ms, so load does not block
+  the first frame.
+- **meshgen:** max 53.5 ms.
+
+By code read, nothing new allocates per frame:
+- `step` is `tick++`;
+- serialisation happens only on save;
+- the HUD strings rebuild on the 250 ms timer only when they change.
+
+Defects:
+- [minor] There is no real-GPU row since `6b06392`, which is two milestones stale.
+- [minor] The heap pass depends on the idle-baseline subtraction: 42 831 uncorrected.
+- [minor] No artefact shows whether the 10 s autosave's allocation lands in the idle window or in
+  the per-frame figure.
+- [minor] Nothing times a save. The autosave payload grows with the roster, and the IndexedDB
+  structured clone runs on the main thread. Record `saveMs`.
+- [minor] `new DragonFlight` setup is untimed (carried).
+
+SCORE_MACHINE: 8.8
+
+## art-critic — 8.4 (all nine lines)
+
+A1 1.1 · A2 0.9 · A3 1.1 · A4 1.4 · A5 1.0 · A6 0.9 · A7 0.8 · A8 0.7 · A9 0.5.
+
+The HUD is on-palette and is the most legible element in the frame. The pixel-measured contrast
+ratios are:
+- labels 11.4:1;
+- values 14.8:1;
+- the orange "not saved" text 7.1:1.
+
+It wraps cleanly at 360 and 320 px.
+
+Defects:
+- [minor] A6/A9: shots 09 and 10 read "DRAGONS 3", but no dragon is drawn. Concept 03's subject,
+  a dragon on the island, is still missing from the game frame.
+- [minor] A7: the storage-blocked HUD widens to 1266×58 px and covers the hanging island (13), and
+  the 3-row panel at 360 px does the same (06). This is occlusion, not contrast.
+- [minor] A6: the frame outside the hero island is bare sky and void (01, 03).
+- [minor] A5/A8: thin black slivers float in the sky at about (290,167) and (720,100) in 01. This
+  is not new.
+- [minor, carried] The dragon sheet's captions are below 4.5:1; C and G's sails show facets; the
+  flap kinematics vary only narrowly.
+
+SCORE_MACHINE: 8.4
+
+## gameplay-critic — 8.2
+
+G1 2.0 · G2 1.4 · G3 1.2 · G4 1.0 · G5 1.1 · G6 1.5.
+
+*Builder note:* the gameplay critic scored G2, which `docs/RUBRIC.md` makes live only at M9b. It
+does not change the decision, because the majors below decide it.
+
+What held:
+- the round trip;
+- 14 rapid reloads, including some during boot;
+- closing a stale tab;
+- two tabs, where the older one stops on the broadcast;
+- blocked storage.
+
+Each refused record left the store byte-identical.
+
+Defects:
+- **[major] D1 (G4): a reload during a slow in-flight save loses the unsaved roster, bred dragon
+  included, and the next HUD says "saved".** `SaveSession.drain` (`src/sim/persist.ts:98-129`)
+  holds the newest world in `queued` until the in-flight write completes, and `pagehide` and the
+  roster save only queue (`main.ts:2063-2079`). If the page unloads first, the queued write never
+  starts.
+  - Repro: hold a readwrite transaction for 2.5 s from a second page, then call
+    `save(); seedRoster();` and reload after 300 ms. The roster comes back as 0.
+  - It did not reproduce in 8 natural-timing trials.
+  - `tests/save.test.ts:455` locks in the coalescing behaviour, and no test covers unload with a
+    write in flight.
+- **[major] D2 (G5): a refused record is a dead end.** The trigger can be:
+  - a corrupt record;
+  - a newer schema;
+  - a non-envelope value;
+  - one tampered `gid` among 4 good dragons.
+
+  In every case the session can never save again: "unreadable save kept, not overwritten". There
+  is no start-fresh, export or retry, and nothing tells the player what to do. The refusal is
+  all-or-nothing, with no per-dragon salvage.
+- [minor] D3: "the last save failed — retrying" is false once the DB handle is closed.
+  `onversionchange` closes it (`src/core/save.ts:152`) and nothing reopens it; `onclose` is not
+  handled.
+- [minor] D4 (major once M9 lands): a stale tab keeps accepting play and silently discards it.
+  Block world changes while the tab is in conflict.
+
+SCORE_MACHINE: 8.2
+
+---
+
 # M7c — run 31, 2026-10-15 — cycle 2, at `9242ee2`
 
 **Scores: art-critic 8.1 · perf-critic 8.9 · gameplay-critic 9.3.** No blocking or major defect,
