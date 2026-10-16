@@ -131,6 +131,16 @@ Then one line, which is the same thing the cloud dispatcher sends:
 
 `ops/build-prompt.md` is kept current in git precisely so this line never goes stale.
 
+### To run many steps in one sitting
+
+The line above takes **one** step and stops, per `CLAUDE.md` §3.1. To have the session keep
+going — step after step, each one fully gated, scored and pushed before the next is read —
+paste `ops/local-continuous-prompt.md` instead. `CLAUDE.md` §3.1 §Continuous mode is what
+authorises it and what forbids merging two steps into one plan or one critic round.
+
+It stops on its own at the ▲ playable checkpoint, at anything needing the owner, after three
+failed rework cycles, on a usage limit, or on a missing tool such as Blender.
+
 ### To run a step unattended, on a schedule
 
 ```bat

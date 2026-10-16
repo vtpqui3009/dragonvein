@@ -85,6 +85,23 @@ Each scheduled run executes exactly this:
    second step because the first went quickly: a run that ends early with budget left is a
    signal the steps are the right size, not an invitation to spend it. If `NEXT.md` disagrees with `STATE.md`, `STATE.md` is the record of fact and
    `NEXT.md` is stale — fix it as you go.
+
+   **Continuous mode** (owner decision, 2026-10-16). A run told to keep going may take the
+   next step after finishing one, and then the next, until a stop below. What it may **not**
+   do is merge them: step N completes §§2–7 of this loop entirely — criteria written, gates
+   green, three critics scored in fresh context, `NEXT.md` rewritten, `STATE.md` updated,
+   **committed and pushed** — before step N+1 is read. Two steps in one plan, one critic
+   round covering both, or one close-out for the pair is the defect this rule has always
+   been about: M0 was four things at once and cost five runs. A sequence of fully closed
+   steps is not that.
+
+   It stops, and writes why into `NEXT.md`, at the first of:
+   - **the ▲ playable checkpoint** in `docs/ROADMAP.md`, which no run passes;
+   - a step whose criteria need the owner — a §7 sighting, or a question only they can answer;
+   - three rework cycles on one step without reaching the bar (§3.6);
+   - a usage or rate limit (§5);
+   - a tool the machine does not have, such as Blender for a generator step;
+   - any step it has already closed in this run failing to push.
 2. **Plan.** Write that milestone's acceptance criteria into `STATE.md` under a new run
    heading *before* writing code. Each criterion must be checkable by a command or a
    named screenshot.
