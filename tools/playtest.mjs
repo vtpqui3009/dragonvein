@@ -1398,6 +1398,19 @@ try {
       await pg.waitForTimeout(100);
     }
   };
+  /*
+   * **Gestures are dispatched as a burst, not one event at a time.** Each CDP dispatch waits
+   * for the page, and on a loaded machine running this island that round trip is 1-2 seconds:
+   * a press, three 1-pixel moves and a release, sent one awaited call at a time, arrived with
+   * `pointerdown` and `pointerup` **5.1 s apart**, and two taps meant as a double tap arrived
+   * 2.1 s apart (measured in this container, 2026-10-17). The page is right to refuse both —
+   * TAP_MS is 450 ms and DOUBLE_TAP_MS 380 ms, and no human holds a 3-pixel press for five
+   * seconds — so what was being tested was the harness's latency, not the input. Sending the
+   * events of one gesture without awaiting between them puts them microseconds apart, which is
+   * the gesture a player makes. Same events, same path, same assertions.
+   */
+  const burst = async (...sends) => Promise.all(sends);
+
   /** A deck point `ahead` units from the keeper toward `to`, as page pixels, with the spin pinned. */
   const aimFromKeeper = async (pg, to, ahead) => pg.evaluate(([tx, tz, a]) => {
     const h = globalThis.__dragonveinWild;
@@ -1422,6 +1435,9 @@ try {
       await p.goto(wildUrl, { waitUntil: 'load', timeout: 30_000 });
       const r0 = await wildReady(p);
       if (!r0.dragon.ready) throw new Error(`the wild dragon was not built: ${r0.dragon.error}`);
+      const mouseCdp = await ctx.newCDPSession(p);
+      const mouse = (type, x, y, buttons) => mouseCdp.send('Input.dispatchMouseEvent',
+        { type, x, y, button: 'left', buttons, clickCount: 1 });
       const boot = await p.evaluate(() => globalThis.__dragonveinSave.read());
       say(`wild: seed ${WILD_SEED} — dragon ${r0.dragon.gid} (${r0.wild.element.join('/')}), ${r0.dragon.triangles} tris, ` +
         `built through the worker in ${r0.dragon.buildMs.toFixed(0)} ms; first frame at ${boot.bootMs.toFixed(0)} ms, ` +
@@ -1465,15 +1481,22 @@ try {
       // A press that jitters 4 px is still a click, and still does not move the camera.
       const c = await aimFromKeeper(p, to, 0.5);
       await p.mouse.move(c.px[0], c.px[1]);
-      await p.mouse.down();
-      await p.mouse.move(c.px[0] + 3, c.px[1] - 2, { steps: 3 });
-      await p.mouse.up();
+      await burst(
+        mouse('mousePressed', c.px[0], c.px[1], 1),
+        mouse('mouseMoved', c.px[0] + 1, c.px[1] - 1, 1),
+        mouse('mouseMoved', c.px[0] + 2, c.px[1] - 2, 1),
+        mouse('mouseMoved', c.px[0] + 3, c.px[1] - 2, 1),
+        mouse('mouseReleased', c.px[0] + 3, c.px[1] - 2, 0),
+      );
       const r4 = await wildRead(p);
       const pose3 = await p.evaluate(readPose);
       say(`wild: mouse press with 4 px of jitter -> taps ${r3.taps.count} -> ${r4.taps.count}, camera ${poseText(pose3)}`);
       if (r4.taps.count !== r3.taps.count + 1) errors.push('wild: a click with 4 px of jitter was not taken for a tap');
       if (Math.abs(pose3.azimuthDeg - pose2.azimuthDeg) > 1e-6) errors.push('wild: a jittery click moved the camera');
-      // A double click runs.
+      // A double click runs. The wait is DOUBLE_TAP_MS and more after the jittery press above,
+      // so the first click of the pair cannot pair with *that* tap instead — which is what it
+      // did once the press above started registering, leaving the second click a lone walk.
+      await p.waitForTimeout(600);
       const d = await aimFromKeeper(p, to, 0.9);
       await p.mouse.dblclick(d.px[0], d.px[1]);
       const r5 = await wildRead(p);
@@ -1509,7 +1532,7 @@ try {
       const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', {
         type, touchPoints: points.map(([x, y], id) => ({ x, y, id })),
       });
-      const tap = async (x, y) => { await touch('touchStart', [[x, y]]); await touch('touchEnd', []); };
+      const tap = async (x, y) => burst(touch('touchStart', [[x, y]]), touch('touchEnd', []));
       const staged = await p.evaluate((d) => globalThis.__dragonveinWild.stage(d), r0.temperament.notice + 2.2);
       if (!staged) throw new Error('no open approach to the dragon to stage the keeper on');
       const to = r0.wild.pos;
@@ -1532,9 +1555,10 @@ try {
       if (r2.taps.count !== r1.taps.count) errors.push('wild: a touch drag was taken for a tap');
       if (Math.abs(pose1.azimuthDeg - pose0.azimuthDeg) < 10) errors.push('wild: a touch drag from the deck did not orbit');
       const c = await aimFromKeeper(p, to, 0.9);
-      await tap(c.px[0], c.px[1]);
-      await p.waitForTimeout(120);
-      await tap(c.px[0] + 3, c.px[1] + 2);
+      await burst(
+        touch('touchStart', [[c.px[0], c.px[1]]]), touch('touchEnd', []),
+        touch('touchStart', [[c.px[0] + 3, c.px[1] + 2]]), touch('touchEnd', []),
+      );
       const r3 = await wildRead(p);
       say(`wild: touch double tap -> run taps ${r3.taps.run}, keeper pace ${r3.keeper.pace.toFixed(2)}`);
       if (!(r3.taps.run >= 1 && r3.keeper.pace >= 2.8)) errors.push(`wild: a double tap did not run: ${JSON.stringify(r3.taps)}`);
@@ -1552,6 +1576,117 @@ try {
       say(`wild: touch drill — ${wildErrors.length} page error(s)`);
     } catch (e) {
       errors.push(`wild touch drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
+    }
+  }
+  await flush();
+
+  /*
+   * **The keeper goes where it is tapped** (criterion 7, STATE.md run 35), through real clicks
+   * on the real island. The numeric bar — 95 % of 48 seeded targets within 0.45 — is held over
+   * the frozen deck by tests/wild-nav.test.ts; this is the end-to-end sample the criterion also
+   * asks for: pixels, through `pointerdown`/`pointerup`, through `tapDeck`, through the sim.
+   *
+   * The targets are seeded, spread over the deck, clear of every obstacle, at least 2.5 from
+   * the dragon (so the answer is the navigation and not a body shouldering another), and
+   * reachable — decided here by this file's own flood fill over the deck the page reports, not
+   * by asking the navigation whether it can do what it is about to be asked to do.
+   */
+  {
+    const ctx = await browser.newContext({ viewport: VIEW });
+    const p = await ctx.newPage();
+    const wildErrors = [];
+    p.on('pageerror', (e) => wildErrors.push(String(e)));
+    try {
+      await p.goto(wildUrl, { waitUntil: 'load', timeout: 30_000 });
+      const r0 = await wildReady(p);
+      if (!r0.dragon.ready) throw new Error(`the wild dragon was not built: ${r0.dragon.error}`);
+      const deck = await p.evaluate(() => globalThis.__dragonveinWild.deck());
+      const KEEPER_R = 0.16, CLEAR = KEEPER_R + 0.02;
+      const clear = (x, z) => {
+        if (Math.hypot(x, z) > deck.radius - CLEAR) return false;
+        for (let i = 0; i < deck.obstacles.length; i += 3) {
+          if (Math.hypot(x - deck.obstacles[i], z - deck.obstacles[i + 1]) < CLEAR + deck.obstacles[i + 2]) return false;
+        }
+        return true;
+      };
+      // Flood fill on a 0.05 grid from where the keeper stands: what a keeper-sized disc can
+      // slide to. Nothing to do with how the page finds its way there.
+      const cell = 0.05, n = Math.ceil((2 * deck.radius) / cell);
+      const idx = (x, z) => {
+        const ix = Math.floor((x + deck.radius) / cell), iz = Math.floor((z + deck.radius) / cell);
+        return ix < 0 || iz < 0 || ix >= n || iz >= n ? -1 : iz * n + ix;
+      };
+      const free = new Uint8Array(n * n);
+      for (let i = 0; i < n * n; i++) {
+        free[i] = clear(-deck.radius + ((i % n) + 0.5) * cell, -deck.radius + (Math.floor(i / n) + 0.5) * cell) ? 1 : 0;
+      }
+      const seen = new Uint8Array(n * n);
+      const queue = [idx(r0.keeper.pos[0], r0.keeper.pos[1])];
+      if (queue[0] >= 0) seen[queue[0]] = 1;
+      for (let head = 0; head < queue.length; head++) {
+        const i = queue[head], ix = i % n, iz = (i - ix) / n;
+        for (const j of [ix + 1 < n ? i + 1 : -1, ix > 0 ? i - 1 : -1, iz + 1 < n ? i + n : -1, iz > 0 ? i - n : -1]) {
+          if (j >= 0 && free[j] && !seen[j]) { seen[j] = 1; queue.push(j); }
+        }
+      }
+      const canReach = (x, z) => {
+        for (let dz = -1; dz <= 1; dz++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const i = idx(x + dx * cell, z + dz * cell);
+            if (i >= 0 && seen[i]) return true;
+          }
+        }
+        return false;
+      };
+      // mulberry32, so the sample is the same every run.
+      let rs = 0x7a9b_1d55;
+      const rnd = () => {
+        rs = (rs + 0x6d2b79f5) >>> 0;
+        let t = rs;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+      const targets = [];
+      for (let guard = 0; guard < 4000 && targets.length < 8; guard++) {
+        const a = rnd() * 2 * Math.PI, d = Math.sqrt(rnd()) * (deck.radius - 0.4);
+        const x = Math.cos(a) * d, z = Math.sin(a) * d;
+        if (!clear(x, z) || !canReach(x, z)) continue;
+        if (Math.hypot(x - r0.wild.pos[0], z - r0.wild.pos[1]) < 2.5) continue;
+        if (targets.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < 1.2)) continue;
+        targets.push([x, z]);
+      }
+      if (targets.length < 8) throw new Error(`only ${targets.length} reachable deck targets to tap`);
+      let arrived = 0;
+      for (const [x, z] of targets) {
+        const px = await p.evaluate(([tx, tz]) => {
+          const h = globalThis.__dragonveinWild;
+          h.pinSpin(h.read().spin);
+          return h.project(tx, tz);
+        }, [x, z]);
+        if (px[0] < 40 || px[0] > VIEW.width - 40 || px[1] < 60 || px[1] > VIEW.height - 60) {
+          throw new Error(`deck target ${fmt([x, z])} projects off the frame at ${fmt(px)}`);
+        }
+        await p.mouse.click(px[0], px[1]);
+        const r = await waitWild(p, (q) => q.keeper.v === 0
+          && Math.hypot(q.keeper.pos[0] - q.keeper.goal[0], q.keeper.pos[1] - q.keeper.goal[1]) < 0.02,
+        30_000, `the keeper to stop walking toward ${fmt([x, z])}`).catch(() => null) ?? await wildRead(p);
+        const off = Math.hypot(r.keeper.pos[0] - x, r.keeper.pos[1] - z);
+        if (off <= 0.45) arrived++;
+        say(`wild: tapped ${fmt([x, z])} at ${fmt(px)} px -> keeper at ${fmt(r.keeper.pos)}, ${off.toFixed(3)} from the mark ` +
+          `(${off <= 0.45 ? 'arrived' : 'MISSED'}); dragon ${r.wild.state} ${r.keeperDistance.toFixed(2)} away`);
+      }
+      say(`wild: tap-to-move reached ${arrived}/${targets.length} seeded deck targets within 0.45 (criterion 7)`);
+      // One miss is allowed: the dragon moves while the drill runs and may stand in the way.
+      // The 95 % bar over 48 targets is tests/wild-nav.test.ts's.
+      if (arrived < targets.length - 1) {
+        errors.push(`wild: tap-to-move reached only ${arrived} of ${targets.length} tapped deck targets`);
+      }
+      for (const e of wildErrors) errors.push(`wild taps: ${e}`);
+    } catch (e) {
+      errors.push(`wild tap-to-move drill failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       await ctx.close();
     }
@@ -1646,12 +1781,15 @@ try {
       await shoot('17-wild-wander.png', 'the keeper far; the dragon wanders, walking', wander);
       if (wander.keeperDistance < T.notice) errors.push('wild: 17 was taken with the keeper inside the notice radius');
       // 18: the keeper walks in to just inside the notice radius and stands: it looks up at it.
+      // Walk in to `gap` from the dragon: `approach` picks a spot at that distance the keeper
+      // can stand on and has a route to, on the bearing nearest the one it is already on. The
+      // straight line from keeper to dragon is not usable as an aim point on a dressed island —
+      // see `approach` in src/main.ts for what that cost the clip below.
       const walkToward = async (gap, run) => p.evaluate(([g, rn]) => {
         const h = globalThis.__dragonveinWild;
-        const r = h.read();
-        const [dx, dz] = r.wild.pos, [kx, kz] = r.keeper.pos;
-        const d = Math.hypot(dx - kx, dz - kz), stop = Math.max(0, d - g);
-        return h.walkTo(kx + ((dx - kx) / d) * stop, kz + ((dz - kz) / d) * stop, rn);
+        const at = h.approach(g);
+        if (!at) throw new Error(`no standing spot ${g.toFixed(2)} from the dragon to walk to`);
+        return h.walkTo(at[0], at[1], rn);
       }, [gap, run]);
       // The dragon has wandered: stage the keeper afresh on an open approach, seen across the screen.
       const restaged = await p.evaluate((d) => globalThis.__dragonveinWild.stage(d), T.notice + 1.4);
@@ -1712,20 +1850,27 @@ try {
       await mark('far');
       const toward = (gap, run) => p.evaluate(([g, rn]) => {
         const h = globalThis.__dragonveinWild;
-        const r = h.read();
-        const [dx, dz] = r.wild.pos, [kx, kz] = r.keeper.pos;
-        const d = Math.hypot(dx - kx, dz - kz), stop = Math.max(0, d - g);
-        return h.walkTo(kx + ((dx - kx) / d) * stop, kz + ((dz - kz) / d) * stop, rn);
+        const at = h.approach(g);
+        if (!at) throw new Error(`no standing spot ${g.toFixed(2)} from the dragon to walk to`);
+        return h.walkTo(at[0], at[1], rn);
       }, [gap, run]);
       await toward(T.comfort + 0.2, false);
       await waitWild(p, (r) => r.keeper.v === 0, 30_000, 'the keeper to stop');
       await mark('stopped at the comfort ring');
-      // Careful steps in: each shorter than SLOW / CAREFUL, a pause between.
-      for (let i = 0; i < 6; i++) {
+      // Careful steps in: each aims 0.45 nearer than the keeper stands, so each is shorter than
+      // SLOW / CAREFUL and creeps, with a pause between. It waits for the keeper to *stop*
+      // before the next step rather than for a fixed 1.6 s, and takes up to twelve of them
+      // rather than six: a step around a bush is longer than the 0.45 it closes, so on a fixed
+      // clock the keeper was still walking when the next step re-aimed it, and the approach
+      // stalled at 3.55 from the dragon — outside its comfort ring of 3.34, where calm cannot
+      // rise, which is what timed this clip out waiting for a settled dragon.
+      for (let i = 0; i < 12; i++) {
         const r = await wildRead(p);
         if (r.keeperDistance < T.flight + 0.6 || r.wild.state === 'settle') break;
-        await toward(r.keeperDistance - 0.4, false);
-        await p.waitForTimeout(1600);
+        await toward(Math.max(T.flight + 0.5, r.keeperDistance - 0.45), false);
+        await waitWild(p, (q) => q.keeper.v === 0, 20_000, 'the keeper to stop between careful steps')
+          .catch(() => null);
+        await p.waitForTimeout(900);
       }
       await waitWild(p, (r) => r.wild.state === 'settle' && r.wild.calm > 0.45, 90_000, 'a settled dragon');
       await mark('settled');
