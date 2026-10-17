@@ -464,6 +464,16 @@ async function measure({
       errors.push('the generated broadleaf never loaded (windInstances stayed 0), so this ' +
         'measured a scene without its trees');
     }
+    // M8b: and the wild dragon, built through the mesh worker once the world has loaded, and
+    // the keeper. A budget read without them would be a budget for a scene that does not ship.
+    const wildReady = await page.waitForFunction(
+      () => globalThis.__dragonveinStats?.().wild?.dragon === true && globalThis.__dragonveinStats?.().wild?.keeper === true,
+      undefined, { timeout: 30_000 },
+    ).then(() => true, () => false);
+    if (!wildReady) {
+      errors.push('the wild dragon or the keeper never appeared (__dragonveinStats().wild), so this ' +
+        'measured a scene without them');
+    }
 
     // The heap is read over CDP, not from inside the page: the measurement must not be
     // part of what it measures.
@@ -813,6 +823,8 @@ try {
     triangles: paced.stats?.triangles ?? null,
     /** Wind-patched instances of the generated tree in the measured scene (M5a). */
     windInstances: paced.stats?.windInstances ?? null,
+    /** M8b: the wild dragon and the keeper were in the measured scene. */
+    wild: paced.stats?.wild ?? null,
     /**
      * RUBRIC.md P6, which ROADMAP.md makes live from M0. A separate pass at 720p with the
      * shadow pass off, reported separately so a critic can cite it without untangling it
