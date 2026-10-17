@@ -3,6 +3,136 @@
 Critic reports, newest at the top. Written by the critics, read by the builders.
 Cleared only when the defect it names is fixed and the fix is committed.
 
+# M8b — run 35, 2026-10-17 — cycle 2, at `f243058`
+
+**Scores: art-critic 8.1 · perf-critic 7.3 · gameplay-critic 8.4.** No blocking defect.
+art rose 7.4 → 8.1 and gameplay fell 8.6 → 8.4; perf fell 7.5 → 7.3 on a strictly better build.
+
+**The finding that decides the step.** Two critics, independently and with numbers, report that
+M8b's tells are not legible **at the camera the player actually has**. gameplay drove the build
+and measured through `__dragonveinWild.screen()`: at the default view the dragon is **97 px**
+wide and the keeper **21 px**; wheel-zoomed to the minimum, **103 px** and 22 px. Cycle 2's
+shots read well because they are framed from 3.3–4.5 units, and `ORBIT_LIMITS` only allows
+15–32 — a framing no player can reach. art says the same in its A9: "valid evidence of the
+tells, but it is not a framing a player gets."
+
+That is cycle 2's own doing. Cycle 1's defect was that the artefacts did not show their
+subject; the fix framed them close, which proved the tells exist but moved the evidence away
+from play. **Run 33's criterion 6 requires no blocking or major defect and that "the reaction
+must read without the indicator". gameplay's D1 and D2 are majors on exactly that, so
+criterion 6 is not met and M8b does not close.** The remaining five criteria are met (see the
+run 35 entry in STATE.md).
+
+## perf-critic — 7.3 (P1 1.3/2.5 · P2 1.8/1.8 · P3 1.4/1.8 · P4 1.0/1.5 · P5 1.2/1.2 · P6 0.6/1.2)
+**Coverage:** `perf.json` and `meshgen.json` in full, `dragon-full.json` in part, ~40 of 122
+lines of `playtest.log` by grep, the STATE.md real-GPU table, the RUBRIC perf table, cycle 1's
+perf section. 0 of 26 shots opened as images; no turntables.
+- [major] P1 — no real-hardware row covers the M8b scene; newest is `6b06392`, 2026-10-13,
+  and every row is a sighting, none a verification.
+- [major] P3 — `meshgen.json` `maxMs` 684.5 for gid `b3511cbd37`, `glStallMs` 641.9 from
+  `getProgramInfoLog` 485.8 + 122.0. Proposed fix: warm the material variants at load so a
+  first breed never links a shader mid-play.
+- [major] P4 — thin and noisy: `bytesPerFrame` 33 947 of 40 960, `uncorrectedBytesPerFrame`
+  47 741, `idleBytesSubtracted` 5 076 149, spread 33 947–39 899 across three runs.
+- [minor] P1 — reproducibility shown for the heap only; one `cpuFrameMs` run in evidence.
+- [minor] P6 — no real-hardware Potato number for the current scene.
+SCORE_MACHINE: 7.3
+
+*Builder note on P3.* Real in that artefact and correctly partitioned by the gate itself:
+`roundTripMs` 684.5 = `workerMs` 47.1 + `glStallMs` 641.9, with **`roundTripHeldMaxMs` 42.6**
+against the 120 ms budget, and `stallPartitioned` naming the four calls. The stall is
+SwiftShader's `getProgramInfoLog`, a CPU-rasteriser artefact of the gate's own GL timing, and
+it is not stable: two `gate:perf`/`gate:meshgen` runs by this session on the same code read
+**2 stalls then 0**, with "0 round trip(s) over budget" both times and round-trip maxima of
+49.7 and 60.1 ms. Not attributable to M8b. The forward risk it names — a bred dragon linking
+an unseen program mid-play — is real and belongs to M9; it is carried into NEXT.md.
+
+*Builder note on P4.* Profiled rather than argued, with `HeapProfiler.startSampling` and
+`includeObjectsCollectedByMinorGC`/`MajorGC` (without those flags the profiler reports only
+survivors and attributes ~1 % of the churn). Sampled total 41 272 B/frame, agreeing with the
+gate. The bytes are V8 boxing doubles inside `three`'s math — `Quaternion.get x`/`get z`/`get w`
+show self-size — not object literals in this project's code; `updateWild`,
+`WildDragonView.update`, `DragonWalk.pose`/`solveLeg`, `DragonFlight.set`/`locals`,
+`DragonAttitude.update` and `src/sim/wild.ts` `step()` are already allocation-free by
+construction. `docs/PERF_BUDGET.md` predicts this and names draw calls, not reuse, as the
+lever. **The 2.6 % margin cycle 1 scored was largely noise:** three runs on identical per-frame
+code read 39 899, 37 233 and 33 947, a ~15 % spread, because the window averages over whatever
+the dragon happened to be doing. If that spread is unacceptable the fix is in the gate (hold
+the dragon in one state for the heap window, or lengthen it), which is threshold-adjacent and
+was deliberately not done this run.
+
+*Builder note on P1 and P6, which together lock 1.8 points.* No GPU exists in CI or any
+container here — SwiftShader only, a standing hazard in NEXT.md. No run can produce these rows;
+only the owner can. They are carried in NEXT.md §Open items with the exact procedure.
+
+## art-critic — 8.1 (A1 1.0/1.2 · A2 0.6/1.0 · A3 1.1/1.2 · A4 1.3/1.6 · A5 0.9/1.2 · A6 1.1/1.4 · A7 0.9/1.0 · A8 0.8/0.8 · A9 0.4/0.6)
+**Coverage:** 6 of 26 shots opened as images (01, 17, 18, 19, 20, 21); `dragon-full.png` opened,
+`dragon-silhouette.json` and `dragon-full.json` read; greyscale sheet, idle pair and
+`dragon-sweep.json` not opened; no turntables decoded, so art-probe's ambient-motion line was
+not exercised. Scores for unopened shots are inferred, not measured.
+- [major] A4/A5 — `dragon-full.png` A, B, G, H: wings stand as upright panels above the back
+  rather than resting spread to the side, against `docs/ART_BIBLE.md`, M3e and
+  `tests/dragon-wings.test.ts`. The side-on sheet camera may hide some of it.
+- [major] A4 — `dragon-full.png` E and F share a bipedal profile and proportions;
+  `dragon-silhouette.json` names E–F "mostAlike". Variation is real overall (mean IoU 0.523,
+  min 0.292) but body plan is the weak axis: area 7.06–8.06, height 3.2–4.55.
+- [minor] A2 — art-probe on `01-wide.png`: 128 of 720 sky rows (17.8 %) off-palette at dE > 12
+  against a target under 8 %; worst y=145 (#af6a48, dE 34.6).
+- [minor] A1 — `17-wild-wander.png`: the cobalt dragon's tail merges with same-hue shrubs at
+  x400-560, y440-490; `20-wild-flee.png`: the dragon overlaps dark trunks at x500-800, y150-420.
+- [minor] A1/A6 — the keeper is a brown cone-and-ball figure at 55–89 px; crystals dominate the
+  lower-left foreground of 18, 19 and 21.
+- [minor] A6 — every in-game frame holds exactly one creature.
+- [minor] A9 — saturated cobalt and faceted shading against the concept's warmer palette; and
+  the close-up cameras sit 3.3–4.5 units out, outside the `ORBIT_LIMITS` diorama range.
+- [minor] A5 — `21-wild-wary.png`: the log records a crouch (lower 0.289) but the head is
+  raised; the crouch is only subtly readable.
+SCORE_MACHINE: 8.1
+
+*Builder note on both A4/A5 majors.* Both point at the **dragon generator**, not at M8b. The
+resting wing spread is the authored target, not a drift from it: measured on the seeded dragon
+`e35390fdfd`, each wing reaches 4.094 mesh units to the side and 0.687 up (5.9 : 1, ~9.5° above
+horizontal), `DragonFlight.pose(0,0,0)` moves **0 of 36 bones** so the renderer is not posing
+it, and `tests/dragon-wings.test.ts` asserts `reach > 1.6` and under 45° for all 40 genomes as
+M3e criterion 2, with `gate:parity` holding the Blender reference to the same graph. Changing
+it is a dragon step (graph change in both builders, the reference and the `gate:parity` fixed
+set) or a new ground-furl layer in `src/render/flight.ts`; hand-tuning a furl blind risks a
+wing through the flank, a **blocking** defect in place of a minor. Per CLAUDE.md §7 this is a
+target question for the owner, carried into NEXT.md. E–F body-plan similarity is an M3 matter
+on the same footing.
+
+## gameplay-critic — 8.4 (G1 1.7/2.2 · G2 1.2/1.8 · G3 1.3/1.4 · G4 1.3/1.4 · G5 1.4/1.6 · G6 1.5/1.6)
+**Coverage:** all 122 lines of `playtest.log`, all five new shots, the RUBRIC gameplay table.
+**Drove the build itself** with scratch scripts outside the repo: `stage(6.5)` → `approach(3.0)`
+→ a real `mouse.click` on `project()`, polling `read()` for ~30 s; then a `clickCount: 2` rush;
+then the same sequence again under `hasTouch` with `touchscreen.tap`. Did not open the clip or
+`perf.json` in full, and did not repeat the drag/jitter/off-island/pinch drills.
+- [major] D1 — G1/G3, reaction legibility at the camera the player gets. Measured via
+  `screen()`: default view dragon **97 px**, keeper **21 px** (camera distance 18.3); zoomed to
+  minimum, 103 px and 22 px. Posture tells (head up, crouch 0.29, tail to keeper) are not
+  readable at that size. Shots 17-21 are framed from 3.3-4.5 units, which `ORBIT_LIMITS` does
+  not allow. Explicitly **not** a request to change the camera, which is an owner decision;
+  the ask is larger-scale cues, e.g. a ground ring or a mark above the head.
+- [major] D2 — G1/G6, occlusion: dragon and keeper hidden behind trees and crystals; in one
+  capture the settled dragon is not visible at all. The keeper has no through-geometry marker.
+- [minor] D3 — shot 21's caption says "tail to the keeper" but the head is still turned toward
+  the keeper (heading 2.570, keeper at x≈305 px).
+- [minor] D4 — G3/G5, after settling calm saturates at 1.0 with no feedback and nothing to do;
+  that is M8c's subject.
+- [minor] D5 — HUD FPS 2-4 under SwiftShader; left to the perf-critic.
+SCORE_MACHINE: 8.4
+
+*Builder note on G2.* 1.2/1.8, and the critic says itself it is "not live at M8b, because
+breeding arrives at M9". `docs/RUBRIC.md`'s live-from table does not make G2 live here. No fix
+at this step can move it, and it costs 0.6 of the 1.6 points gameplay is short of full marks.
+
+*Builder note on D3.* The caption is the drill's fixed string for the wary shot, not a reading
+of the frame; the frame itself is correct for `wary` (the new assertion added this cycle proves
+the capture is the state the drill waited for — `0 ticks` after it). The caption should describe
+what the pose actually does per-shot. Carried as a `tools/playtest.mjs` fix.
+
+---
+
 # M8b — run 35, 2026-10-17 — cycle 1, at `2901002`
 
 **Scores: art-critic 7.4 · perf-critic 7.5 · gameplay-critic 8.6.** No blocking defect, so no

@@ -10,24 +10,9 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-17** · at commit `49db365`. **Run 34 is in flight on M8b**. It runs from
-the owner's local Windows machine. Perf-heavy fixing is delegated to a **cloud agent working on
-`wip/m8b-r34`**; CI is the gate runner. **Do not start M8b from another session while this line
-stands.**
-
-- **Run 33 died** on the usage limit. Its ungated snapshot is `0846a99` on `wip/m8b-r34`.
-- **Open defects:**
-  - `gate:perf` heap churn is **44 784 B/frame against 40 960** (CI run 38993748999);
-  - `gate:smoke`'s wild drills fail with "no open approach to the dragon to stage the keeper
-    on", with 6 page errors and an M8a stale-tab start-fresh regression.
-- **If `wip/m8b-r34` stops moving for hours, run 34 died.** Take M8b from the head of that
-  branch: re-run `npm run gates` there and continue the two defects above. The STATE.md
-  run 34 entry has the detail, and the criteria are under run 33.
-- **The local machine cannot pass `gate:meshgen` or `gate:perf`.** The rasteriser cap is
-  Linux-only, and clean `main` fails meshgen there. Gate on CI
-  (`gh workflow run ci.yml --ref <branch>`) or in a cloud session.
-
----
+Last updated: **2026-10-17** · at code commit `f243058` (run 35). Close-out doc commits follow
+it. **No run is in flight.** Run 35 took M8b over from run 34 (dead) and gated it properly in a
+Linux container, which no local run can do.
 
 ## The running order changed — read this before taking a step
 
@@ -46,171 +31,221 @@ question into this file and waits for the owner to play it.
 
 ## Current step
 
-**M8b — approach and calm: a wild dragon reacts to the player** · `TODO`. It is the first step in
-reading order that is not `DONE`. M8c (taming completes and the dragon joins the roster), M8d
-(roster UI), M9 and the playable checkpoint follow. M7 and M5 have every step `DONE` and wait
-only on the owner's look (§Open items).
+**M8b — approach and calm: a wild dragon reacts to the player** · `IN_PROGRESS`, and still the
+first step in reading order that is not `DONE`. **It is one owner decision away from closing**
+— see §The single next action. Everything mechanical is done and green; the gap is a measured
+legibility finding, not a bug.
 
-**M8a closed** in run 32 on cycle 3. Cycle 3 scored art **8.5**, perf **8.8** and gameplay
-**8.9**. Cycles 1 and 2 each found a save-path major that was then fixed. What M8a added:
-- **`src/sim/` exists.** `world.ts` holds the world (seed, 20 Hz tick, Rng state, roster,
-  eggs, nextId), and `migrate.ts` is the append-only chain. `check:layers` now holds `src/sim`
-  and `src/core` to an allow-list.
-- **IndexedDB is the save** (`src/core/save.ts`), with a **localStorage write-ahead journal**
-  beside it so a save survives an unload behind another tab's transaction.
-  - A write lands only over the exact record its session loaded (gen + writer + seq).
-  - A refused record is never overwritten. It can be exported, or set aside byte-identical in
-    `refused.<n>` with the readable dragons salvaged.
-  - A stale second tab pauses.
-- **Frozen fixture `tests/fixtures/save-v1.json`.** It has 4 dragons, one of them bred, and
-  must load forever.
-- **`gate:smoke` drills every save failure mode** in real Chromium IndexedDB: reload under a
-  held store, reload storms, two tabs, refused, export, start fresh, deleted DB, newer DB,
-  read timeout and journal off.
+**What run 35 landed** (all pushed; `npm run gates` exits 0, verified twice independently):
+- **The keeper can walk at all.** Before: **2 of 40** seeded taps got it anywhere. Now **46 of
+  47 reachable targets of 48 (97.9 %)** in `tests/wild-nav.test.ts`, 48/48 on an open deck, and
+  **8 of 8** real mouse clicks in `gate:smoke`, each landing 0.000 from the mark. It walks a
+  flow field over a 0.05-unit grid, masked once per deck and swept once per goal. **Nothing is
+  saved for it** — it is a pure function of the `Deck` and `keeper.goal`, so schema 2 did not
+  move and a world saved mid-walk resumes bit-identically.
+- **The deck was the other half of the defect.** It carried each prop's *scatter reservation*,
+  not its collision footprint: 97 circles over **94 % of the deck, 16 % standable, 54
+  disconnected pockets**, with the dragon's home and the keeper's gate *inside* obstacles.
+  Now `SOLID_R` per kind, measured off each committed GLB below the keeper's height — coverage
+  37 %, and 97 % of the walkable deck in one piece. `17-wild-wander.png` is the first wander
+  ever drawn: the dragon's 1.36-wide footprint previously could not step.
+- **Flights land somewhere.** `startFlee` had been discarding all ten drawn spots on this
+  island, so the dragon "flew" from (1.40, 2.50) to (1.40, 2.50). 30 flights over 3 seeds now
+  hop 1.55–9.53.
+- **The heap defect from run 34 is fixed and verified** with the dragon in the scene:
+  **33 947 B/frame against the unchanged 40 960**, `perf.json` recording
+  `wild:{"dragon":true,"keeper":true}`. cpu p95 1.6 ms of 3.5 (sim step included), 21 draws of
+  180, meshgen worker max 47–57 ms of 120, bundle 251 kB of 1400.
+- **Three drill assertions added, all tightening**, plus a sim freeze for captures. These
+  caught **two false captions in cycle 1's own evidence**: `20-wild-flee.png` had been captured
+  after the dragon landed (`settle`, altitude 0.000) and `21-wild-wary.png` as `alert`. A shot
+  now fails if its captured state differs from the state the drill waited for.
+
+**Scores.** Cycle 1 art 7.4 · perf 7.5 · gameplay 8.6. Cycle 2 **art 8.1 · perf 7.3 ·
+gameplay 8.4**. Full defect lists and builder notes in `FINDINGS.md`.
+
 
 ## The single next action
 
-**Take M8b: approach and calm.** Write the criteria into STATE.md first. This is the first step
-that puts a **dragon into the game scene** and gives the sim real work. Decide these before
-writing code:
-- **Who is "the player"?** There is no avatar yet, so pick the smallest honest subject: a
-  pointer or cursor on the island, or a simple avatar. Record the decision.
-- **A wild dragon's reaction, as sim state.** It is deterministic, in `src/sim/`, driven by
-  the `Rng`. For example: wary → flee or approach → calm, with a calm meter. The reaction should
-  read the genome (temperament from body or element genes) so the genetics are visible
-  (CLAUDE.md §0).
-- **The render reads a snapshot** and plays the M7 idle, walk and flight on it.
+**Answer the one question below, then finish M8b.** Do not start M8c. Five of run 33's six
+criteria plus run 35's seventh are met; criterion 6 ("no blocking or major defect", and "the
+reaction must read without the indicator") is not, for one measured reason.
 
-**Hazards:**
-- **The heap is the binding budget.**
-  - The game page reads 37 874 B/frame against 40 960, and the uncorrected figure, 43 938, is
-    already over.
-  - The post-scavenge floor creeps up about 0.8 MB over 300 s.
-  - One skinned dragon costs about 840 B/frame (`dragon-flight.json`).
-  - Attribute and cut the three.js skinned-path cost before or while adding the dragon.
-    **Never raise the budget.**
-- **`cpuFrameMs` now includes the sim step** (`startedAt` moved, run 32). From M8b on, sim cost
-  counts against 3.5 ms.
-- **Saves serialise in full and issue at once.** Coalesce the IndexedDB write before events
-  burst. There is no roster-scaled save probe yet; perf asked for one at 50 and 200 dragons,
-  with a budget.
-- **Save edge cases still open:**
-  - A roster change must bump the save seq before repainting the HUD, or the HUD can say
-    "saved" for one 250 ms window (`seedRoster` in `src/main.ts`).
-  - Nothing in-game reaches `refused.*`. This becomes a major once a second schema ships.
+**The finding.** At the camera the player actually has, the dragon is **97 px** wide and the
+keeper **21 px** (`__dragonveinWild.screen()`, default view, camera distance 18.3; wheel-zoomed
+to the minimum, 103 px and 22 px). The posture tells M8b built — head up on alert, a crouch of
+`lower` 0.289 on wary against 0.063 on wander, tail turned away — do not read at that size.
+Cycle 2's shots read well only because they are framed from 3.3–4.5 units, which `ORBIT_LIMITS`
+(15–32) does not allow. **Two critics measured this independently**: gameplay's D1, and art's
+A9 ("valid evidence of the tells, but it is not a framing a player gets").
 
-**Carried minors (FINDINGS):**
-- **HUD:** the warning panel covers the hanging island; there is no reload after an
-  IndexedDB open timeout; the "backup journal off" line is permanent.
+**Why a run should not just pick a fix.** The three ways out trade against each other, and one
+of them is a decision the owner made today:
+
+1. **Amplify the tells** so posture reads at 97 px — a much deeper crouch, wings folding, a real
+   rear-up on alert. This is the only option that satisfies criterion 6 as written, because the
+   reading stays in the body. It is animation work in `src/render/`, and it carries the same
+   hazard that stopped the ground furl this run: a bigger pose risks a wing through the flank,
+   which is a **blocking** defect in place of a major.
+2. **Add diorama-scale cues** — a ground ring under the dragon, a mark above its head, a
+   through-geometry silhouette for the keeper (gameplay's own suggestion, and its D2 occlusion
+   defect asks for the keeper one regardless). Cheap and safe, but criterion 6 says the reaction
+   must read *without* the indicator, so this arguably answers the wrong question. Run 33 allows
+   a calm indicator to *supplement* the tells, never to replace them.
+3. **Revisit the camera** — ruled out today. `docs/DECISIONS.md` §"The camera stays a diorama"
+   records the owner choosing to keep `ORBIT_LIMITS` over a ground-level follow camera or a
+   wider zoom clamp, with the reasons. **Only the owner reopens it.**
+
+**So: owner, which of 1, 2 or 3?** A run that guesses here spends a cycle on the wrong one. If
+the answer is 1, or 1 and 2 together, M8b closes in one run: the sim, the input, the save, the
+budgets and the drills are all done and green, and only the pose amplitudes and the keeper
+marker remain. **Option 2's keeper marker is worth doing whichever way you answer** — D2 is a
+major in its own right, and a player currently cannot see either actor while approaching
+through the trees and crystals.
+
+**Hazards the next run will meet:**
+- **Heap headroom is real but noisy.** Three `gate:perf` runs on *identical* per-frame code read
+  39 899, 37 233 and **33 947** B/frame — a ~15 % spread, because the window averages over
+  whatever the dragon happened to be doing. Do not read a single run as a margin. The bytes are
+  V8 boxing doubles inside `three`'s math (`Quaternion.get x` shows self-size), **not** object
+  literals in this project's code: every per-frame path was profiled and is already
+  allocation-free, so "reuse more vectors" has nothing left to reuse. `docs/PERF_BUDGET.md`
+  names draw calls as the lever. **Never raise the budget.**
+- **`gate:perf`'s heap window is state-dependent.** If that spread blocks a score, the fix is in
+  the gate — hold the dragon in one state for the heap window, or lengthen it — and it is
+  threshold-adjacent, so it needs its own commit and a stated reason (§2.7).
+- **A shader link can blow the meshgen round trip under SwiftShader.** `meshgen.json` at
+  `f243058` has `maxMs` 684.5 for gid `b3511cbd37`, of which `glStallMs` is 641.9 from
+  `getProgramInfoLog`. The gate partitions it honestly (`roundTripHeldMaxMs` 42.6 of 120) and it
+  is not stable — two other runs on the same code read 2 stalls then 0. **But the forward risk is
+  real for M9:** a bred dragon linking an unseen material variant mid-play would hitch on real
+  drivers too. Warming the variants at load (`renderer.compileAsync`) is the cheap preventative.
+- **`tests/fixtures/hero-deck.json` is a snapshot** of the live deck. Re-dump it with
+  `__dragonveinWild.deck()` if the island is re-dressed; `gate:smoke`'s tap drill catches a stale
+  one.
+- **The rasteriser cap failed to verify on 2 of 3 `gate:perf` runs** in one sitting ("1 of 56
+  threads are not inside their intended cpu set"), which silently demotes p95 enforcement to p50.
+  The reading did not move (p95 1.6 ms either way), but a run that needs the p95 line enforced
+  should check `rasteriserCap.verified` rather than assume it.
+- **An evaluate round trip in this container costs ~1 s.** Any drill that captures a moving state
+  must freeze the sim first (`hold(true)` now zeroes the pose dt as well), or it will capture a
+  later state than the one it waited for. That is how cycle 1 shipped two false captions.
+- **`tools/playtest.mjs` shot captions are fixed strings**, not readings of the frame. Shot 21's
+  says "tail to the keeper" where the head is still turned toward it. Make the caption per-shot.
+
+
+## Open items that need the owner, not a run
+
+- **M8b's blocking question: option 1, 2 or 3 in §The single next action.** This is the one that
+  unblocks the current step. Everything else below is older.
+
+- **The dragon's resting wings: is the spread pose still the target?** Two critics report the
+  wings reading as upright sails or flat spread sheets on a grounded dragon. Measured on the
+  seeded dragon: each wing reaches 4.094 mesh units to the side and only 0.687 up (5.9 : 1,
+  ~9.5° above horizontal), and `DragonFlight.pose(0,0,0)` moves **0 of 36 bones** — so the
+  renderer is not posing it and this is the mesh as built. `tests/dragon-wings.test.ts` asserts
+  exactly that spread for all 40 genomes as **M3e criterion 2**, and `gate:parity` holds the
+  Blender reference to the same graph. So the build matches the target; the question is whether
+  the target is right. CLAUDE.md §7 forbids a run rewriting it either way. Three options:
+  leave it; a **ground-furl layer** in `src/render/flight.ts` carried on its own weight, so the
+  sheet dragon and the game dragon would differ at rest; or a **graph change in both builders**
+  plus the reference and the `gate:parity` fixed set, which is a dragon step. A run will not
+  hand-tune a furl blind — the clearance cases (flank, tail, and the known frill-through-wing
+  genomes) make a wing-through-body blocking defect the likely result.
+
+- **A verification-grade real-GPU row is owed, and it now costs perf 1.8 points a cycle.**
+  P1 and P6 together lock that much behind evidence no container can produce: there is no GPU
+  in CI or any build container, SwiftShader only. The newest row is a *sighting* at `6b06392`,
+  2026-10-13, which predates M8 and the first skinned animated dragon. **perf cannot reach 8.0
+  until this exists**, whatever the code does — it scored 7.5 then 7.3 across a cycle that
+  strictly improved the build. To produce one: clone, `npm ci`,
+  `npx playwright install chromium`, `npm run build`, then `npm run gate:perf -- --real-gpu`,
+  and send back `artifacts/perf.json`. Recording the GPU model (`chrome://gpu`, GL_RENDERER)
+  would also help.
+
+- **Please watch the dragons move, so M7 can close (CLAUDE.md §7).** After the Pages deploy of
+  `9242ee2` or later: https://vtpqui3009.github.io/dragonvein/dragon.html?walk=1 (all eight
+  walking); `dragon.html?flap=1` (all eight flapping); `dragon.html?view=flight&i=0` (one
+  dragon, with Flap, Glide and Land buttons; drag to turn, wheel or pinch to zoom). Do the feet
+  stay planted? Do the wings ever pass through the body? Does it feel like a dragon? Tell me
+  what you saw and the FPS.
+
+- **Please look at the dressed island, so M5 can close (CLAUDE.md §7).** Once the Pages deploy
+  of `1bb31e8` or later is live: https://vtpqui3009.github.io/dragonvein/. It should look the
+  same at `?tier=potato` too. 15 generated plant and rock kinds. Say what you saw and the FPS
+  the HUD shows.
+
+- **Confirm a reading of CLAUDE.md §7 ("saves to IndexedDB").** M8a keeps the save in IndexedDB
+  and adds a **localStorage write-ahead journal** beside it, so a reload during a slow write
+  loses nothing; the next load promotes the journal and clears it. Nothing leaves the machine.
+  Is a local journal beside IndexedDB acceptable? If not, a run will remove it at the cost of
+  that reload case.
+
+- **Evidence page links.** The owner's main session republishes to
+  https://claude.ai/artifact/Pgkt22EifnK5hUzmXqssoj. That URL is **not reachable from the
+  account the scheduled runs use** — reading it returns "artifact not found" — so run 23
+  published to **https://claude.ai/artifact/HXPyJnjvcwr5tayAwbpD9a**, which is the standing
+  link. Note that `.claude/skills/run-closeout/SKILL.md` still names the old URL and is stale on
+  this point. Either re-share the original to that account and say so here, or adopt the new
+  link in the skill. **Do not create a third.**
+
+- **`wip/m7b`, `wip/m7c`, `wip/m8a`, `wip/m8b`, `wip/m8b-r34` and `wip/m8b-r35` can be
+  deleted.** All are superseded by `main`. Run 35's work is folded into `main`; `wip/m8b-r35`
+  is kept only as its snapshot.
+
+- **`wip/m5d` can be deleted.** Confirmed to differ from `main` only in `NEXT.md` and
+  `STATE.md`. The push that deletes it is refused from the container.
+
+- If run 7's session on the second account is still set to auto-continue, please archive it.
+
+
+## Carried forward, minor (all in `FINDINGS.md`)
+
+- **The keeper is a brown cone-and-ball figure** at 55–89 px even in the close shots. art calls
+  it out at A1/A6. That is the model (`keeperGeometry`, a 0.11-radius cone), not the framing.
+- **E and F on the dragon sheet share a body plan** (`dragon-silhouette.json` names them
+  "mostAlike"); variation is real overall (mean IoU 0.523, min 0.292) but area spans only
+  7.06–8.06 and height 3.2–4.55, so mass and neck arc vary least. An M3 matter.
+- **Sky haze off-palette**: art-probe on `01-wide.png` reports 128 of 720 rows (17.8 %) over
+  dE 12 against a target under 8 %; worst y=145 (#af6a48, dE 34.6). The deck is flat saturated
+  green between props.
+- **After settling, calm saturates at 1.0 with no feedback and nothing to do.** That is M8c's
+  subject, not a defect here.
+- **M5e must merge the understory into instanced batches** — one `InstancedMesh` per plant type
+  with LOD inside the instance. Four independent perf rounds agree.
+- **A harness bug worth one look:** `shots/05-potato.png`'s HUD disagreed with
+  `perf.json`'s potato counts, suggesting the potato shot is captured before the scene finishes
+  drawing. If so, every potato shot ever scored was of an incomplete frame.
+- No input-latency line in `playtest.log` for G3's 100 ms bound beyond the tap answer (2.7 ms).
+- **Save edge cases still open:** a roster change must bump the save seq before repainting the
+  HUD, or the HUD can say "saved" for one 250 ms window (`seedRoster` in `src/main.ts`);
+  nothing in-game reaches `refused.*`, which becomes a major once a second schema ships.
+- **HUD:** the warning panel covers the hanging island; no reload after an IndexedDB open
+  timeout; the "backup journal off" line is permanent.
 - **Save storage:** the first tab to save after the storage is cleared wins the slot;
   `navigator.storage.persist()` is never called; the journal sweep deletes entries it cannot
   decode.
 - **Scene:** black slivers float in the sky.
-
-## Open items that need the owner, not a run
-
-- **Please watch the dragons move, so M7 can close (CLAUDE.md §7).** After the Pages deploy of
-  `9242ee2` or later, open these three pages:
-  - https://vtpqui3009.github.io/dragonvein/dragon.html?walk=1 (all eight walking);
-  - `dragon.html?flap=1` (all eight flapping);
-  - `dragon.html?view=flight&i=0` (one dragon, with Flap, Glide and Land buttons; drag to
-    turn, wheel or pinch to zoom).
-
-  Do the feet stay planted? Do the wings ever pass through the body? Does it feel like a dragon?
-  Tell me what you saw and the FPS. This is also the first real-GPU reading with skinning.
-
-- **Confirm a reading of CLAUDE.md §7 ("saves to IndexedDB").** M8a keeps the save in
-  IndexedDB and adds a **localStorage write-ahead journal** beside it. Each save also writes
-  there synchronously, so a reload during a slow IndexedDB write loses nothing. The next load
-  promotes the journal into IndexedDB and clears it. Nothing leaves the machine. Is a local
-  journal beside IndexedDB acceptable? If not, say so, and a run will remove it at the cost of
-  that reload case.
-
-- **Decision: the frill-through-wing at rest on 2 of 32 fixture genomes.** Fixtures #13 and #24
-  have a crest frill that pierces a wing before anything moves (−0.034 and −0.048). A stress
-  sweep found it in 30–51 of 288 synthetic genomes, at long necks. Fixing it means changing the
-  skin graph's frill or wing-root geometry in both builders. That moves `gate:parity`'s fixed
-  set and the Blender reference. Should a run take that on as a dragon step, or leave it?
-
-- **Please look at the dressed island, so M5 can close (CLAUDE.md §7).** Once the Pages
-  deploy of `1bb31e8` or later is live, open https://vtpqui3009.github.io/dragonvein/. It
-  should look the same at `?tier=potato` too. The hero island now carries 15 generated plant
-  and rock kinds: conifers, broadleaves, a wind-twisted tree, dead trees, bushes, ferns,
-  flowers, grass, moss, lichen, fallen leaves, boulders, basalt columns and path stones. Say
-  what you saw, and the FPS the HUD shows. The scene changed (17 draws, ~217k triangles), so
-  this also refreshes the real-GPU sighting.
-
-- **Have a fresh look at the dragons (optional; M3 is already closed).** Run 26 changed every
-  dragon's body: mass, legs, neck, head and crown now shape the outline, and there are three
-  wing forms. Open https://vtpqui3009.github.io/dragonvein/dragon.html after the Pages
-  deploy. Do they read as eight different creatures to you? If not, say what still looks the
-  same, and it becomes a dragon step.
-
-- **A verification-grade real-GPU row is still owed before M16.** On 2026-10-13 the owner
-  logged two sightings at `6b06392`: ~60 FPS at Medium (28 draws, 174 012 triangles) and
-  ~60 FPS at Potato (20 draws, 142 800). They cover the current scene, including the first
-  real-hardware Potato reading. A sighting is a ceiling, not a p95. For the
-  verification-grade row, follow NEXT.md history: clone, `npm ci`,
-  `npx playwright install chromium`, `npm run build`, then `npm run gate:perf -- --real-gpu`,
-  and send back `artifacts/perf.json`. Recording the GPU model (`chrome://gpu`,
-  GL_RENDERER) would also help.
-- **The M3 design questions are now M3e's subject, not open questions.** The wings being
-  upright flat sails, the far wing panel crossing the tail, and the head at ~1/8 of body
-  length where the bible asks ~1/5 — the owner's 2026-10-13 decision answers "re-design in
-  the reference, now, rather than wait for M7". Nothing further needed unless you disagree
-  with that reading.
-
-- **Evidence page links.** The owner's main session (runs 28–30) republishes to
-  https://claude.ai/artifact/Pgkt22EifnK5hUzmXqssoj. The old URL (`Pgkt22EifnK5hUzmXqssoj`) is not reachable
-  from the account the scheduled runs use — reading it returns "artifact not found" — so run
-  23 published to **https://claude.ai/artifact/HXPyJnjvcwr5tayAwbpD9a**. Either re-share the
-  original to that account and say so here, or adopt the new link as standing. **Do not create
-  a third.**
-- **`wip/m7b`, `wip/m7c` and `wip/m8a` can be deleted.** They are snapshots of runs 30–32,
-  superseded by `6e1debb`, `9242ee2` and `9179782` on `main`.
-
-- **`wip/m5d` can be deleted.** Confirmed to differ from `main` only in `NEXT.md` and
-  `STATE.md` — no code or asset delta. The push that deletes it is refused from the container.
-
-- If run 7's session on the second account is still set to auto-continue, please archive it.
-
-## Carried forward, minor (all in `FINDINGS.md`)
-
-- **P4 headroom.** The game page churns 37 874 B per frame, 92 % of the 40 960 budget
-  (`perf.json` at `9179782`). The uncorrected figure is 43 938, and the post-scavenge floor
-  creeps. **Never raise the budget.**
-- **M5e must merge the understory into instanced batches** — one `InstancedMesh` per plant
-  type with LOD inside the instance. At 28 draws there are about 2 draws of headroom. Four
-  independent perf rounds now agree.
-- **A harness bug worth one look:** `shots/05-potato.png`'s HUD reads 17 draws / 30 552 tris
-  while `perf.json` has `potato.drawCalls` 20 / `potato.triangles` 142 800. `01-wide.png`
-  matches its own numbers, so the potato shot is probably captured before the scene finishes
-  drawing. If so, every potato shot ever scored was of an incomplete frame.
-- No input-latency line in `playtest.log`, so G3's 100 ms bound has been unverifiable for
-  three rounds. Log event dispatch to first camera-state change.
-- Understory (M5d, all `minor`, none blocking): bush seeds 1/3/6/8 are tall ovoid stacks of one
-  lobe type, so the sheet reads nearer 5 silhouettes than 8, and only 2/4/7 carry blooms; fern
-  leaflets read as stacked chevrons in a two-tone green with pale stiff stems, and seeds 1/3/5
-  may vanish at 25%; grassclump seeds 2/7 are alike and seed 5 is a tiny tuft; reeds seeds 3/8
-  are both tall headless fans and seed 5 is thin; sheet ground shadows are faint and detached.
+- Understory (M5d, all `minor`): bush seeds 1/3/6/8 are tall ovoid stacks of one lobe type, so
+  the sheet reads nearer 5 silhouettes than 8, and only 2/4/7 carry blooms; fern leaflets read
+  as stacked chevrons; grassclump seeds 2/7 are alike and seed 5 is a tiny tuft; reeds 3/8 are
+  both tall headless fans.
 - Trees (M5c): the ancient giant reads as a big broadleaf with no monumental cue; the dead tree
-  is dark clay-brown, not the pale snag it replaces; the sapling has three classes in eight
-  seeds; the seed labels overlap the giant's roots.
-- Trees (M5b): fanpalm seeds 1/4 and windtwisted 2/6 and 1/5 are near-pairs; fanpalm seed 3
-  reads as a banana plant; the flora `triBudget` of 6000/2000/500 differs from the PERF_BUDGET
-  prop row of 4000/1200/300 — reconcile it or record why.
-- Wind and trees (M5a): the sway is very subtle, about 1 px at 720p; the conifers are rigid
-  next to the swaying broadleaves; the generated trunks are near-black in game; a thin orange
-  rim fringe on the canopy lobes; the trees pop in after the boot splash.
-- Landmarks and rocks (M4b–M4d): none of the five rock kinds is placed in the game (M5e);
-  floatshard seeds 1/3 are near-pairs and 6 fuses into one mound; arch seeds 2 and 5 read as
-  rocks with a tunnel; shard reads as copper splinters; eroded has near-pairs and sliver
-  triangles; columnar seeds 1/2/4/5 are flat pavements; stratified reads warm with cloth-like
-  ledge skirts; boulders 2/4 and 6/7 are near-pairs. **M4 is closed — these are polish, not
-  reopenable work.**
-- Island: biome does not read at sheet scale; several seeds are dirt-topped against the
-  concept's green; contour banding on mounds; the game still uses the hand-built island.
+  is dark clay-brown, not a pale snag; the sapling has three classes in eight seeds.
+- Trees (M5b): fanpalm seeds 1/4 and windtwisted 2/6 and 1/5 are near-pairs; the flora
+  `triBudget` of 6000/2000/500 differs from the PERF_BUDGET prop row of 4000/1200/300 —
+  reconcile it or record why.
+- Wind and trees (M5a): the sway is about 1 px at 720p; the conifers are rigid next to the
+  swaying broadleaves; the generated trunks are near-black in game; a thin orange rim fringe on
+  the canopy lobes; the trees pop in after the boot splash.
+- Landmarks and rocks (M4b–M4d): **M4 is closed — these are polish, not reopenable work.**
+  None of the five rock kinds is placed in the game (M5e); floatshard 1/3 are near-pairs;
+  arch 2 and 5 read as rocks with a tunnel; shard reads as copper splinters; columnar 1/2/4/5
+  are flat pavements; boulders 2/4 and 6/7 are near-pairs.
+- Island: biome does not read at sheet scale; contour banding on mounds; the game still uses
+  the hand-built island.
 - G2 preview: children lean towards one parent (H reads as C). Revisit at M9b.
+
 
 ## Standing hazards — every run hits these
 
@@ -277,9 +312,9 @@ writing code:
 
 ```sh
 git log --oneline -8
-grep -E '^\| \*?\*?M3' docs/ROADMAP.md          # step status
-sed -n '1,60p' STATE.md                          # newest journal entry
-grep -hE '^SCORE_MACHINE' FINDINGS.md docs/archive/FINDINGS-*.md | head -6   # latest scores first
-npm ci && npm run gates                          # the ground truth
-node tools/art-probe.mjs                         # the art numbers
+grep -nE '^\| \*?\*?M8b' docs/ROADMAP.md       # step status
+sed -n '1,80p' STATE.md                          # newest journal entry
+grep -hE '^SCORE_MACHINE' FINDINGS.md | head -6  # latest scores first
+npm ci && npm run gates                          # the ground truth, ~20 min
+node -e "const p=require('./artifacts/perf.json');console.log(p.heap.bytesPerFrame,p.cpuFrameMs.p95,p.drawCalls,JSON.stringify(p.wild))"
 ```
