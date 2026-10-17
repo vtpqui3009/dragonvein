@@ -221,6 +221,11 @@ const scratchGenes: TemperGenes = { bodyMass: 0, wingSpan: 0, headSize: 0, legLe
 
 // --- the bodies ------------------------------------------------------------------------
 
+/**
+ * The keeper's own footprint, world units. src/render/wild.ts draws it from a cloak cone of
+ * radius 0.11, a foot disc of 0.105 and a lantern whose far edge is 0.126 out, so this is the
+ * body with room to spare. (The tap ring, 0.13 to 0.17, is a mark on the ground, not a body.)
+ */
 export const KEEPER_RADIUS = 0.16;
 export const KEEPER_WALK = 1.2;
 export const KEEPER_RUN = 2.8;
@@ -323,6 +328,313 @@ export function bodyClear(deck: Deck, x: number, z: number, heading: number): bo
   return true;
 }
 
+/**
+ * Is the capsule swept by a circle of radius `r` from (x0, z0) to (x1, z1) clear of every
+ * obstacle and inside the deck? The deck is a disc, so both ends being inside the inset disc
+ * puts the whole segment inside it. Allocation-free, O(obstacles).
+ */
+export function segmentClear(deck: Deck, x0: number, z0: number, x1: number, z1: number, r: number): boolean {
+  const R = deck.radius - r;
+  if (len(x0, z0) > R || len(x1, z1) > R) return false;
+  const sx = x1 - x0, sz = z1 - z0;
+  const ss = sx * sx + sz * sz;
+  const o = deck.obstacles;
+  for (let i = 0; i < o.length; i += 3) {
+    const px = o[i]! - x0, pz = o[i + 1]! - z0;
+    const t = ss < 1e-12 ? 0 : Math.max(0, Math.min(1, (px * sx + pz * sz) / ss));
+    if (len(px - sx * t, pz - sz * t) < r + o[i + 2]!) return false;
+  }
+  return true;
+}
+
+// --- the keeper's navigation ------------------------------------------------------------
+/*
+ * The keeper goes where the player taps, around the island's furniture rather than into it.
+ * A dressed deck holds ~97 obstacle circles on a disc of radius 5.6 and has no straight lane
+ * across it, so a keeper that walks at its goal and slides off whatever it meets arrives
+ * almost never: measured on the hero island before this, 2 of 40 taps (STATE.md run 35).
+ *
+ * The route is a **flow field**, not a stored path:
+ *
+ *   1. A grid of NAV_N × NAV_N cells covers the deck. A cell is blocked when a circle of
+ *      NAV_MASK_R at its centre is not clear of the deck's obstacles and edge. The mask is
+ *      derived **once per deck** — the deck is static configuration (src/main.ts) — never per
+ *      tap and never per tick.
+ *   2. When the goal changes, a breadth-first sweep from the goal's cell fills `navField` with
+ *      the number of steps to it (8-neighbour, a diagonal only between two cells whose shared
+ *      orthogonal neighbours are both free, so a route never cuts a corner).
+ *   3. Each tick the keeper descends the field from the cell it stands in, and steers at the
+ *      farthest cell on that chain it can see — `segmentClear` at NAV_LOS_R, which is the
+ *      clearance `pushOut` already guarantees a keeper. Straight lines stay straight: with the
+ *      goal in sight the field is not consulted at all, so on an open deck the keeper walks
+ *      exactly as it did before this existed.
+ *
+ * **Nothing here is saved, and nothing here carries meaning between ticks.** The field is a
+ * pure function of the deck and the goal, both of which a loaded world already has, so it is
+ * rebuilt on demand after a reload and a resumed world steps bit-identically to one that never
+ * stopped (world.ts §1; tests/wild.test.ts holds it across a save). Every array is allocated
+ * once at module load: a tap costs one sweep over at most NAV_N² cells and a tick costs a
+ * short chain walk, with no allocation in either.
+ */
+
+/**
+ * Cells per side of the deck's bounding square: 224 over a radius-5.6 deck is a 0.05 cell.
+ *
+ * It was 112 (a 0.1 cell), and that is too coarse to agree with the walk. A cell's mask is
+ * sampled at its centre, so a gap whose open line runs between two centres is one the keeper
+ * can walk and the grid calls shut — the island had pockets that were walkable and unreachable,
+ * and a keeper that walked into one was trapped there: 3 of 47 targets reached, 44 of them
+ * given up on the first tick (STATE.md run 35). At 0.05 the grid's free space is the same space
+ * `segmentClear` admits, measured over the island's own obstacles. The cost is one sweep per
+ * deck and one per tap, never per tick.
+ */
+export const NAV_N = 224;
+/**
+ * A cell is free when a circle this big fits at its centre: the keeper, with a little margin.
+ * The margin is kept small on purpose. Every 0.01 of it closes real gaps — on the hero island,
+ * going from 0.18 to 0.20 costs 3 % of the walkable deck — and `pushOut` only ever promises a
+ * keeper KEEPER_RADIUS of clearance, so a wider grid than that invents walls the walk does not
+ * have and strands goals the keeper could stand on.
+ */
+export const NAV_MASK_R = KEEPER_RADIUS + 0.02;
+/** The clearance a steering leg is checked at. ≤ NAV_MASK_R, so any step between free cells passes. */
+export const NAV_LOS_R = KEEPER_RADIUS + 0.01;
+/** How many cells of the chain a tick looks along for a line it can walk straight. */
+const NAV_LOOKAHEAD = 48;
+/** How many cells out a goal pressed against an obstacle looks for a free one to seed from. */
+const NAV_RING = 16;
+/** How many cells either side of itself the keeper looks for the cell it walks from. */
+const NAV_WINDOW = 4;
+// (That word is not a legal identifier here: `check:determinism` bans it, the sim being headless.)
+const NAV_UNREACHED = 0xffff;
+
+const navMask = new Uint8Array(NAV_N * NAV_N);
+const navField = new Uint16Array(NAV_N * NAV_N);
+const navQueue = new Int32Array(NAV_N * NAV_N);
+/** Which deck the mask is for, and which (deck, goal) the field is for. A cache, never state. */
+const nav = {
+  maskDeck: null as Deck | null,
+  fieldDeck: null as Deck | null,
+  goalX: Number.NaN, goalZ: Number.NaN,
+  /** The field's seed cell, or −1 when the goal has no free cell near it. */
+  seed: -1,
+};
+
+const navCell = (deck: Deck) => (2 * deck.radius) / NAV_N;
+/** The cell holding (x, z), or −1 when it is off the grid. */
+function navIndex(deck: Deck, x: number, z: number): number {
+  const c = navCell(deck);
+  const ix = Math.floor((x + deck.radius) / c), iz = Math.floor((z + deck.radius) / c);
+  if (ix < 0 || ix >= NAV_N || iz < 0 || iz >= NAV_N) return -1;
+  return iz * NAV_N + ix;
+}
+const navX = (deck: Deck, i: number) => -deck.radius + ((i % NAV_N) + 0.5) * navCell(deck);
+const navZ = (deck: Deck, i: number) => -deck.radius + (Math.floor(i / NAV_N) + 0.5) * navCell(deck);
+
+/** Fill `navMask` for `deck`: 0 free, 1 blocked. Once per deck. */
+function navBuildMask(deck: Deck): void {
+  const c = navCell(deck);
+  for (let iz = 0; iz < NAV_N; iz++) {
+    const z = -deck.radius + (iz + 0.5) * c;
+    for (let ix = 0; ix < NAV_N; ix++) {
+      const x = -deck.radius + (ix + 0.5) * c;
+      navMask[iz * NAV_N + ix] = circleClear(deck, x, z, NAV_MASK_R) ? 0 : 1;
+    }
+  }
+  nav.maskDeck = deck;
+}
+
+/** The free cell nearest (x, z), by rings of cells out to NAV_RING. −1 if none. */
+function navFreeNear(deck: Deck, x: number, z: number): number {
+  const here = navIndex(deck, x, z);
+  if (here < 0) return -1;
+  if (!navMask[here]) return here;
+  const cx = here % NAV_N, cz = Math.floor(here / NAV_N);
+  for (let ring = 1; ring <= NAV_RING; ring++) {
+    let best = -1, bestD = Infinity;
+    for (let dz = -ring; dz <= ring; dz++) {
+      for (let dx = -ring; dx <= ring; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
+        const ix = cx + dx, iz = cz + dz;
+        if (ix < 0 || ix >= NAV_N || iz < 0 || iz >= NAV_N) continue;
+        const i = iz * NAV_N + ix;
+        if (navMask[i]) continue;
+        const d = len(navX(deck, i) - x, navZ(deck, i) - z);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+    }
+    if (best >= 0) return best;
+  }
+  return -1;
+}
+
+/** Breadth-first steps-to-the-goal over the free cells. Writes `navField` and `nav`. */
+function navBuildField(deck: Deck, gx: number, gz: number): void {
+  if (nav.maskDeck !== deck) navBuildMask(deck);
+  navField.fill(NAV_UNREACHED);
+  nav.fieldDeck = deck;
+  nav.goalX = gx; nav.goalZ = gz;
+  const seed = navFreeNear(deck, gx, gz);
+  nav.seed = seed;
+  if (seed < 0) return;
+  navField[seed] = 0;
+  navQueue[0] = seed;
+  let head = 0, tail = 1;
+  while (head < tail) {
+    const i = navQueue[head++]!;
+    const d = navField[i]! + 1;
+    const ix = i % NAV_N, iz = (i - ix) / NAV_N;
+    const e = ix + 1 < NAV_N && !navMask[i + 1];
+    const w = ix > 0 && !navMask[i - 1];
+    const n = iz + 1 < NAV_N && !navMask[i + NAV_N];
+    const s = iz > 0 && !navMask[i - NAV_N];
+    // Orthogonals, then the diagonals a body can actually take (both shared sides free).
+    if (e && navField[i + 1]! > d) { navField[i + 1] = d; navQueue[tail++] = i + 1; }
+    if (w && navField[i - 1]! > d) { navField[i - 1] = d; navQueue[tail++] = i - 1; }
+    if (n && navField[i + NAV_N]! > d) { navField[i + NAV_N] = d; navQueue[tail++] = i + NAV_N; }
+    if (s && navField[i - NAV_N]! > d) { navField[i - NAV_N] = d; navQueue[tail++] = i - NAV_N; }
+    if (e && n && !navMask[i + NAV_N + 1] && navField[i + NAV_N + 1]! > d) { navField[i + NAV_N + 1] = d; navQueue[tail++] = i + NAV_N + 1; }
+    if (w && n && !navMask[i + NAV_N - 1] && navField[i + NAV_N - 1]! > d) { navField[i + NAV_N - 1] = d; navQueue[tail++] = i + NAV_N - 1; }
+    if (e && s && !navMask[i - NAV_N + 1] && navField[i - NAV_N + 1]! > d) { navField[i - NAV_N + 1] = d; navQueue[tail++] = i - NAV_N + 1; }
+    if (w && s && !navMask[i - NAV_N - 1] && navField[i - NAV_N - 1]! > d) { navField[i - NAV_N - 1] = d; navQueue[tail++] = i - NAV_N - 1; }
+  }
+}
+
+/** Build the field for (gx, gz) on `deck` unless it is the one already built. */
+function navEnsure(deck: Deck, gx: number, gz: number): void {
+  if (nav.fieldDeck === deck && nav.goalX === gx && nav.goalZ === gz) return;
+  navBuildField(deck, gx, gz);
+}
+
+/** The cell of the chain to step to from `i`, or −1 at the goal (or a dead end). */
+function navDescend(i: number): number {
+  const d = navField[i]!;
+  if (d === 0 || d === NAV_UNREACHED) return -1;
+  const ix = i % NAV_N, iz = (i - ix) / NAV_N;
+  const e = ix + 1 < NAV_N && !navMask[i + 1];
+  const w = ix > 0 && !navMask[i - 1];
+  const n = iz + 1 < NAV_N && !navMask[i + NAV_N];
+  const s = iz > 0 && !navMask[i - NAV_N];
+  let best = -1, bestD = d;
+  if (e && navField[i + 1]! < bestD) { bestD = navField[i + 1]!; best = i + 1; }
+  if (w && navField[i - 1]! < bestD) { bestD = navField[i - 1]!; best = i - 1; }
+  if (n && navField[i + NAV_N]! < bestD) { bestD = navField[i + NAV_N]!; best = i + NAV_N; }
+  if (s && navField[i - NAV_N]! < bestD) { bestD = navField[i - NAV_N]!; best = i - NAV_N; }
+  if (e && n && !navMask[i + NAV_N + 1] && navField[i + NAV_N + 1]! < bestD) { bestD = navField[i + NAV_N + 1]!; best = i + NAV_N + 1; }
+  if (w && n && !navMask[i + NAV_N - 1] && navField[i + NAV_N - 1]! < bestD) { bestD = navField[i + NAV_N - 1]!; best = i + NAV_N - 1; }
+  if (e && s && !navMask[i - NAV_N + 1] && navField[i - NAV_N + 1]! < bestD) { bestD = navField[i - NAV_N + 1]!; best = i - NAV_N + 1; }
+  if (w && s && !navMask[i - NAV_N - 1] && navField[i - NAV_N - 1]! < bestD) { bestD = navField[i - NAV_N - 1]!; best = i - NAV_N - 1; }
+  return best;
+}
+
+/**
+ * The cell the keeper walks *from*: of the cells it can see within NAV_WINDOW, the one the
+ * route reaches soonest, nearest first on a tie. −1 when none of them is on the route.
+ *
+ * Taking the keeper's own cell instead is what made the first version of this walk in circles,
+ * and the measurement is worth keeping: a cell's mask is tested at its centre, so a keeper
+ * standing legally can be inside a cell marked blocked. It then aimed at the nearest cell on
+ * the route — behind it — walked back into the free cell, aimed forward again, and ping-ponged
+ * between two positions 0.06 apart for all 900 ticks of the test, 46 of 47 targets unreached.
+ * Choosing by *lowest field nearby* makes the choice the same from both ends of any such
+ * pair, so the walk cannot alternate: the field it steers from falls, tick after tick.
+ */
+function navFrom(deck: Deck, x: number, z: number): number {
+  const here = navIndex(deck, x, z);
+  if (here < 0) return -1;
+  const cx = here % NAV_N, cz = (here - cx) / NAV_N;
+  // NAV_WINDOW is enough wherever the keeper is on the route. The wide pass is for the one
+  // case that is not: a cell's mask is sampled at its centre, so a gap whose open line runs
+  // between two cell centres is a gap the keeper can walk (`segmentClear` is the truth) and
+  // the grid calls shut. Walking one leaves the keeper in a pocket the field never reached,
+  // and it has to be able to see its way back out.
+  // Two passes, near then wide. An index loop, not `for … of [a, b]`: this runs every tick a
+  // keeper walks, and an array literal there is a per-frame allocation (CLAUDE.md §2.2).
+  for (let pass = 0; pass < 2; pass++) {
+    const reach = pass === 0 ? NAV_WINDOW : NAV_RING;
+    // The wide pass does not insist on a clear line to the cell it picks: it is for a keeper
+    // wedged into a nook — shouldered there by the dragon, or carried there by a straight walk
+    // the grid would not have chosen — and from inside a nook nothing on the route is in sight.
+    // It aims at the nearest cell the route reaches and lets `pushOut` slide it out; if that
+    // makes no progress, `stepKeeper` stands it still and keeps the goal, so it walks on when
+    // whatever is in the way moves.
+    const sighted = pass === 0;
+    let best = -1, bestF = NAV_UNREACHED, bestD = Infinity;
+    for (let dz = -reach; dz <= reach; dz++) {
+      const iz = cz + dz;
+      if (iz < 0 || iz >= NAV_N) continue;
+      for (let dx = -reach; dx <= reach; dx++) {
+        const ix = cx + dx;
+        if (ix < 0 || ix >= NAV_N) continue;
+        const i = iz * NAV_N + ix;
+        if (navMask[i]) continue;
+        const f = navField[i]!;
+        if (f === NAV_UNREACHED || f > bestF) continue;
+        const d = len(navX(deck, i) - x, navZ(deck, i) - z);
+        if (f === bestF && d >= bestD) continue;
+        if (sighted && i !== here && !segmentClear(deck, x, z, navX(deck, i), navZ(deck, i), NAV_LOS_R)) continue;
+        bestF = f; bestD = d; best = i;
+      }
+    }
+    if (best >= 0) return best;
+  }
+  return -1;
+}
+
+/**
+ * Where the keeper should head this tick, and how far it still has to walk (so it eases to a
+ * stop at the end of the route, not at every corner). `ok` is false when the goal cannot be
+ * reached from where it stands. Writes `steer`; allocation-free.
+ */
+const steer = { x: 0, z: 0, remain: 0, ok: false };
+function navSteer(deck: Deck, px: number, pz: number, gx: number, gz: number): void {
+  steer.ok = true;
+  const straight = len(gx - px, gz - pz);
+  // In sight: walk at it. An open deck never reaches the grid at all.
+  if (segmentClear(deck, px, pz, gx, gz, NAV_LOS_R)) {
+    steer.x = gx; steer.z = gz; steer.remain = straight;
+    return;
+  }
+  navEnsure(deck, gx, gz);
+  const cell = navCell(deck);
+  const from = navFrom(deck, px, pz);
+  if (from < 0) {
+    // Nothing the keeper can see is on a route to the goal.
+    steer.ok = false;
+    steer.x = gx; steer.z = gz; steer.remain = straight;
+    return;
+  }
+  // Along the chain while the line of sight holds: a staircase of 0.1 cells becomes the
+  // straight run a walker would take.
+  let i = from, best = from;
+  for (let n = 0; n < NAV_LOOKAHEAD; n++) {
+    const next = navDescend(i);
+    if (next < 0) break;
+    i = next;
+    if (!segmentClear(deck, px, pz, navX(deck, i), navZ(deck, i), NAV_LOS_R)) break;
+    best = i;
+  }
+  if (navField[best] === 0 && segmentClear(deck, navX(deck, best), navZ(deck, best), gx, gz, KEEPER_RADIUS)) {
+    // The last cell of the route sees the goal itself: finish on the real spot, not the cell.
+    steer.x = gx; steer.z = gz; steer.remain = straight;
+    return;
+  }
+  steer.x = navX(deck, best); steer.z = navZ(deck, best);
+  steer.remain = len(steer.x - px, steer.z - pz) + navField[best]! * cell;
+}
+
+/**
+ * Can a keeper standing at (fx, fz) walk to (tx, tz) on this deck? The same field the walk
+ * uses, so it answers exactly the question the walk will. Not for the frame loop: it rebuilds
+ * the field for (tx, tz), which the next tick rebuilds for the keeper's own goal.
+ */
+export function routeExists(deck: Deck, fx: number, fz: number, tx: number, tz: number): boolean {
+  if (segmentClear(deck, fx, fz, tx, tz, NAV_LOS_R)) return true;
+  navBuildField(deck, tx, tz);
+  if (nav.seed < 0) return false;
+  return navFrom(deck, fx, fz) >= 0;
+}
+
 /** Scratch output of `pushOut`. */
 const push = { x: 0, z: 0 };
 
@@ -419,32 +731,57 @@ function grounded(d: WildDragon): boolean {
   return d.t < up || d.t >= down;
 }
 
+/** Stand still this tick: no velocity for the dragon to read, and no drift. */
+function keeperStands(k: Keeper, dropGoal: boolean): void {
+  if (dropGoal) {
+    k.goal[0] = k.pos[0]; k.goal[1] = k.pos[1];
+    k.pace = 0;
+  }
+  k.v = 0;
+  kv.x = 0; kv.z = 0; kv.speed = 0;
+}
+
+/**
+ * The keeper walks one tick toward its goal, along the route `navSteer` gives it: straight at
+ * the goal where it can see it, and around the island's furniture where it cannot. It gives
+ * the goal up only when there is no route to it at all (a tap behind a wall of trunks), and
+ * then it stands still rather than grinding against what is in the way.
+ */
 function stepKeeper(k: Keeper, d: WildDragon, deck: Deck): void {
   const px = k.pos[0], pz = k.pos[1];
-  const gx = k.goal[0] - px, gz = k.goal[1] - pz;
-  const dist = len(gx, gz);
+  const dist = len(k.goal[0] - px, k.goal[1] - pz);
   if (dist < 1e-6) {
-    k.v = 0;
-    k.pace = 0;
-    kv.x = 0; kv.z = 0; kv.speed = 0;
+    keeperStands(k, true);
     return;
   }
-  const v = Math.min(k.pace, k.v + KEEPER_ACCEL * WILD_DT, Math.sqrt(2 * KEEPER_ACCEL * dist));
-  const want = Math.min(dist, v * WILD_DT);
-  pushOut(deck, px + (gx / dist) * want, pz + (gz / dist) * want, KEEPER_RADIUS, grounded(d) ? d : null);
+  navSteer(deck, px, pz, k.goal[0], k.goal[1]);
+  if (!steer.ok) {
+    // Nowhere to walk: nothing on the deck reaches that spot from here. Stop where it stands,
+    // which `stepWild` has already made clear of every obstacle and of the deck's edge.
+    keeperStands(k, true);
+    return;
+  }
+  const tx = steer.x - px, tz = steer.z - pz;
+  const toward = len(tx, tz);
+  const v = Math.min(k.pace, k.v + KEEPER_ACCEL * WILD_DT, Math.sqrt(2 * KEEPER_ACCEL * Math.max(0, steer.remain)));
+  const want = Math.min(toward, v * WILD_DT);
+  if (toward < 1e-9 || want < 1e-9) {
+    keeperStands(k, false);
+    return;
+  }
+  pushOut(deck, px + (tx / toward) * want, pz + (tz / toward) * want, KEEPER_RADIUS, grounded(d) ? d : null);
   const mx = push.x - px, mz = push.z - pz;
+  const progress = (mx * tx + mz * tz) / toward;
+  if (want > 1e-4 && progress < 0.15 * want) {
+    // Something that is not on the deck's map is in the way — the dragon, almost always. Wait
+    // for it where it stands, keeping the goal: no slide, so no drift and no jitter.
+    keeperStands(k, false);
+    return;
+  }
   const moved = len(mx, mz);
-  // Blocked: barely moved, or slid away from the goal. Stand where it is.
-  const progress = (mx * gx + mz * gz) / dist;
   k.pos[0] = push.x;
   k.pos[1] = push.z;
   kv.x = mx / WILD_DT; kv.z = mz / WILD_DT; kv.speed = moved / WILD_DT;
-  if (want > 1e-4 && progress < 0.15 * want) {
-    k.goal[0] = k.pos[0]; k.goal[1] = k.pos[1];
-    k.v = 0;
-    k.pace = 0;
-    return;
-  }
   k.v = moved / WILD_DT;
   if (len(k.goal[0] - k.pos[0], k.goal[1] - k.pos[1]) < 1e-3) {
     k.pos[0] = k.goal[0]; k.pos[1] = k.goal[1];
@@ -685,3 +1022,4 @@ export function newWild(w: World, deck: Deck, make: (seed: number) => { toJSON()
   w.nextId++;
   return d;
 }
+
