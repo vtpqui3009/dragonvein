@@ -259,12 +259,14 @@ the integrator**, per CLAUDE.md §3.3.
 
 ### Integrator notes — what the fix turned out to require, and one contract change
 
-`npm run gates` **exits 0** on `wip/m8b-r35` at `fb7cc9a`, in this container, with the
-rasteriser cap verified: heap **40 024 B/frame** against 40 960 with `wild: {"dragon":true,
-"keeper":true}`, `cpuFrameMs` **p50 0.9 / p95 1.6 ms** against 3.5 (both enforced), **21**
-draw calls against 180, meshgen worker **max 41.7 ms** against 120, bundle 250.81 kB gzipped,
-and `gate:smoke` **0 page errors** with all five wild drills and `m8b-approach.webm` (32.8 s)
-landing. Five commits: `0a60581`, `c124f8d`, `c7d3956`, `1ee72fb`, `fb7cc9a`.
+`npm run gates` **exits 0** on `wip/m8b-r35` at `dc0df6c`, in this container: heap **40 084
+B/frame** against 40 960 with `wild: {"dragon":true,"keeper":true}`, `cpuFrameMs` **p50 0.9 /
+p95 1.6 ms** against 3.5, **21** draw calls against 180, meshgen worker **max 88.3 ms**
+against 120, bundle 250.81 kB gzipped, 1 514 tests, and `gate:smoke` **0 page errors** with
+all five wild drills, the four shots, the tap drill (8/8) and `m8b-approach.webm` (32.8 s).
+A standalone `gate:perf` with the cap verified read **40 024 B/frame** and p95 1.6 ms
+enforced. Seven commits: `0a60581`, `c124f8d`, `c7d3956`, `1ee72fb`, `fb7cc9a`, `9ff2c1b`
+(the `docs/ARCHITECTURE.md` row), `dc0df6c` (a `gate:meshgen` probe race, below).
 
 **The diagnosis above was right about the sim and incomplete about the deck.** `stepKeeper`
 had no pathfinding, and it now walks a flow field (`src/sim/wild.ts` §the keeper's
@@ -312,9 +314,15 @@ inside a trunk.
 40 960 line; the gate scores the corrected 40 024, which leaves **936 B of headroom**. The
 churn rose from 32 821 because both bodies now actually animate — the dragon's walk, flight
 and attitude paths had never run on this island. Anything that buys it back is in
-`src/render/`, which this run does not own. (2) The rasteriser cap failed to verify on one
-`gate:perf` run of two ("1 of 59 threads are not inside their intended cpu set"), which
-silently demotes the p95 enforcement to p50; it verified on the re-run. (3)
+`src/render/`, which this run does not own. (2) The rasteriser cap failed to verify on two
+`gate:perf` runs of three ("1 of 59 threads are not inside their intended cpu set"), which
+silently demotes the p95 enforcement to p50 — the reading itself did not move (p95 1.6 ms
+either way), but a gate that quietly measures less when the machine is busy is worth a look.
+(2b) `gate:meshgen` had the same kind of race and is fixed in `dc0df6c`: the game page builds
+its own wild dragon through the probe's worker, so a post could land inside the window and
+the gate failed with "saw 33 build posts for 32 builds" on one run of three. It now waits for
+`__dragonveinStats().wild.dragon` before opening the window; the post-for-build check is
+unchanged. (3)
 `tests/fixtures/hero-deck.json` is a snapshot: re-dump it with `__dragonveinWild.deck()` if
 the island is re-dressed, and `gate:smoke`'s tap drill is what catches a stale one.
 
