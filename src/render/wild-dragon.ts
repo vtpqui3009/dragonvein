@@ -144,6 +144,10 @@ export class WildDragonView {
   private constructor(
     mesh: THREE.Mesh, bones: Float32Array, walk: DragonWalk, flight: DragonFlight, gait: WalkParams, fp: FlightParams,
     gid: string, buildMs: number, private readonly scale: number,
+    /** The rest mesh's bounding radius in world units: what a camera has to frame. */
+    readonly bodyRadius: number,
+    /** That sphere's centre in the holder's frame (world units, before the holder's yaw). */
+    private readonly centreLocal: THREE.Vector3,
   ) {
     this.mesh = mesh;
     this.bones = bones;
@@ -195,14 +199,21 @@ export class WildDragonView {
     mesh.name = 'wild-dragon.mesh';
     // Culled by the rest mesh's sphere grown by as far as the legs and wings reach.
     g.computeBoundingSphere();
-    g.boundingSphere!.radius += Math.max(0.6, flight.maxMove + 0.3);
+    const sphere = g.boundingSphere!;
+    // The rest mesh's own sphere, before that growth: what a camera has to frame (./wild-dragon
+    // `bodyRadius`). Kept before the growth, which is a culling margin, not the creature.
+    const bodyRadius = sphere.radius;
+    const centre = sphere.center.clone();
+    sphere.radius += Math.max(0.6, flight.maxMove + 0.3);
     mesh.customDepthMaterial = withBones(withIdle(new THREE.MeshDepthMaterial(), ip), bones);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     // Centre the torso (hip to shoulder) on the holder: the sim's position is the torso's.
     const v = body.graph.v;
     mesh.position.x = -(v[body.idx.hip]![0] + v[body.idx.shoulder]![0]) / 2;
-    return new WildDragonView(mesh, bones, walk, flight, gait, fp, genome.gid, built.roundTripMs, scale);
+    centre.x += mesh.position.x;
+    return new WildDragonView(mesh, bones, walk, flight, gait, fp, genome.gid, built.roundTripMs, scale,
+      bodyRadius * scale, centre.multiplyScalar(scale));
   }
 
   /**
@@ -256,6 +267,21 @@ export class WildDragonView {
     this.lastX = x;
     this.lastZ = z;
     this.lastH = heading;
+  }
+
+  /**
+   * Where the drawn body sits this frame, in the island's frame: the rest sphere's centre
+   * carried by the holder's place and yaw. With `bodyRadius` it is what a close camera frames.
+   * Allocation-free.
+   */
+  centre(out: THREE.Vector3): THREE.Vector3 {
+    const c = this.centreLocal, ry = this.holder.rotation.y;
+    const cos = Math.cos(ry), sin = Math.sin(ry);
+    return out.set(
+      this.holder.position.x + c.x * cos + c.z * sin,
+      this.holder.position.y + c.y,
+      this.holder.position.z - c.x * sin + c.z * cos,
+    );
   }
 
   /** Forget the last frame's place (a load, or a jump), so the next frame does not count it as a step. */

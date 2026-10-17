@@ -4,7 +4,7 @@ import { Rng } from './core/rng';
 import { FloraBatch, batchable } from './render/flora';
 import { bakeWindBend, setWindTime, withWind } from './render/wind';
 import { setIdleTime } from './render/idle';
-import { DeckHeights, KEEPER_UNIFORMS, keeperGeometry, withKeeper } from './render/wild';
+import { DeckHeights, KEEPER_HEIGHT, KEEPER_UNIFORMS, keeperGeometry, withKeeper } from './render/wild';
 import type { WildDragonView } from './render/wild-dragon';
 import { TICK_HZ, TICK_MS, adoptGenomes, createWorld, step, type World } from './sim/world';
 import {
@@ -2745,13 +2745,32 @@ declare global {
      */
     frameAcross: (x: number, z: number) => number;
     /**
-     * A close camera from the orbit's side, `elevDeg` up, on the midpoint of the dragon and the
-     * keeper (or the dragon alone, `withKeeper` false), at least `dist` away and far enough to
-     * hold both. The orbit takes over again on the next input or `__dragonveinShot.release()`.
+     * A close camera from the orbit's side, `elevDeg` up, on the midpoint of the dragon as it
+     * is *drawn* — altitude included — and the keeper, or on the dragon alone (`withKeeper`
+     * false). `dist` is only a floor: the distance is whatever holds the dragon's whole
+     * bounding sphere (and the keeper's height) with headroom under the HUD bar. Called again
+     * as they move, it tracks them. The orbit takes over again on the next input or
+     * `__dragonveinShot.release()`.
      */
     closeUp: (dist: number, elevDeg: number, withKeeper?: boolean) => void;
     /** Set the orbit (degrees, world units), clamped as input is. */
     orbit: (azimuthDeg: number, pitchDeg: number, distance: number) => void;
+    /**
+     * What the camera puts on the page right now, in CSS pixels: the dragon's drawn centre and
+     * the diameter of its bounding sphere there, and the keeper's centre and height. `gate:smoke`
+     * logs it beside every wild shot, so a shot's framing is a number and not an opinion.
+     */
+    screen: () => {
+      viewport: [number, number];
+      dragon: { px: [number, number]; widthPx: number; cameraDistance: number } | null;
+      keeper: { px: [number, number]; heightPx: number } | null;
+    };
+    /**
+     * Is the keeper drawn in the clear from where the camera stands — nothing on the island
+     * between the camera and its hood, chest or hem? Rays, so it answers for what is *drawn*,
+     * not for the deck's collision circles, which stop below the keeper's own height.
+     */
+    keeperSeen: () => boolean;
     /** Hold the sim still (true) or let it run. */
     hold: (on: boolean) => void;
     /** The world exactly as it was loaded, before its first tick. */
@@ -2759,8 +2778,19 @@ declare global {
   } | undefined;
 }
 
+/** `closeUp`'s margin on the extent it has to hold, and the share of the vertical half-angle
+ *  it may use — the rest is headroom, so the subject clears the HUD bar at the top. */
+const CLOSE_UP_PAD = 1.08;
+const CLOSE_UP_HEADROOM = 0.8;
+
 if (TEST_HOOKS) {
   const projected = new THREE.Vector3();
+  const closeUpBody = new THREE.Vector3();
+  const closeUpKeeper = new THREE.Vector3();
+  const closeUpAt = new THREE.Vector3();
+  const sightRay = new THREE.Raycaster();
+  const sightDir = new THREE.Vector3();
+  const sightAt = new THREE.Vector3();
   globalThis.__dragonveinWild = {
     ready: async () => {
       await worldReady;
@@ -2891,7 +2921,9 @@ if (TEST_HOOKS) {
       const rect = canvas.getBoundingClientRect();
       return [rect.left + ((projected.x + 1) / 2) * rect.width, rect.top + ((1 - projected.y) / 2) * rect.height];
     },
-    pinSpin: (rad) => { spinPinned = rad; },
+    // Also turns the island now, not on the next frame: `closeUp` and `keeperSeen` below read
+    // the island's matrix, and both are called from the same evaluate as a pin.
+    pinSpin: (rad) => { spinPinned = rad; if (rad !== null) island.rotation.y = rad; },
     faceCamera: () => {
       const w = world;
       if (!w) return 0;
@@ -2918,17 +2950,47 @@ if (TEST_HOOKS) {
       spinPinned = toward(a) >= toward(b) ? a : b;
       return spinPinned;
     },
+    /*
+     * The distance is *derived* from what has to be in the frame, and the old one was not.
+     *
+     * It framed the two deck *points* and padded by a flat 2.6 world units for the bodies.
+     * That is wrong twice over. A mid-takeoff dragon is drawn above its deck point (altitude
+     * 1.075 in run 35's `20-wild-flee.png`), so aiming at the deck put the one shot whose job
+     * was the take-off half out of the top of the frame, under the HUD. And 2.6 units of
+     * padding on a dragon whose own bounding sphere is about that wide left it a fifth of the
+     * frame, which is the framing defect all three critics reported.
+     *
+     * So: frame the sphere the dragon is actually drawn inside (`WildDragonView.centre` and
+     * `bodyRadius`, the rest mesh's own radius, not the culling margin), and the keeper's own
+     * height when it is wanted; reserve HEADROOM of the vertical half-angle so nothing lands
+     * under the HUD bar; and take `dist` only as a floor. `frameAcross` has laid the pair
+     * across the screen, so their separation is the width to hold and their heights the depth.
+     */
     closeUp: (dist, elevDeg, withKeeper = true) => {
       const w = world;
       if (!w) return;
       island.updateMatrixWorld();
-      const dx = w.wild.pos[0], dz = w.wild.pos[1];
-      const kx = withKeeper ? w.keeper.pos[0] : dx, kz = withKeeper ? w.keeper.pos[1] : dz;
-      const mx = (dx + kx) / 2, mz = (dz + kz) / 2;
-      const at = new THREE.Vector3(mx, deckHeights.at(mx, mz) + 0.4, mz);
+      const v = wildView;
+      if (v) v.centre(closeUpBody);
+      else closeUpBody.set(w.wild.pos[0], deckHeights.at(w.wild.pos[0], w.wild.pos[1]) + 0.6, w.wild.pos[1]);
+      const R = v ? v.bodyRadius : 1;
+      const kx = w.keeper.pos[0], kz = w.keeper.pos[1];
+      closeUpKeeper.set(kx, deckHeights.at(kx, kz) + KEEPER_HEIGHT * 0.7, kz);
+      /** The keeper's own half-extent: its staff and lantern stand above its hood. */
+      const KR = KEEPER_HEIGHT * 0.75;
+      const at = closeUpAt;
+      let halfAcross = R, halfUp = R;
+      if (withKeeper) {
+        at.addVectors(closeUpBody, closeUpKeeper).multiplyScalar(0.5);
+        halfAcross = 0.5 * Math.hypot(closeUpKeeper.x - closeUpBody.x, closeUpKeeper.z - closeUpBody.z) + Math.max(R, KR);
+        halfUp = Math.max(Math.abs(closeUpBody.y - at.y) + R, Math.abs(closeUpKeeper.y - at.y) + KR);
+      } else {
+        at.copy(closeUpBody);
+      }
       island.localToWorld(at);
-      const span = Math.hypot(kx - dx, kz - dz) + 2.6;
-      const d = Math.max(dist, span / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect) * 1.25);
+      const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      const d = Math.max(dist, (halfAcross / (tanV * camera.aspect)) * CLOSE_UP_PAD,
+        (halfUp / (tanV * CLOSE_UP_HEADROOM)) * CLOSE_UP_PAD);
       const az = orbit.azimuth;
       const el = THREE.MathUtils.degToRad(elevDeg);
       camera.position.set(at.x + Math.sin(az) * Math.cos(el) * d, at.y + Math.sin(el) * d, at.z + Math.cos(az) * Math.cos(el) * d);
@@ -2937,6 +2999,66 @@ if (TEST_HOOKS) {
     },
     orbit: (azimuthDeg, pitchDeg, distance) => {
       setOrbit(THREE.MathUtils.degToRad(azimuthDeg), THREE.MathUtils.degToRad(pitchDeg), distance);
+    },
+    /*
+     * What the camera actually puts on the page, in pixels: the measurement a shot's framing
+     * has to be judged on. Run 35's shots were framed by a rule nobody checked the output of,
+     * and three critics measured the result instead — a 25 px keeper, a dragon a fifth of the
+     * frame, a take-off clipped at the top edge. `gate:smoke` now logs this beside every shot.
+     */
+    screen: () => {
+      const v = wildView, w = world;
+      const rect = canvas.getBoundingClientRect();
+      const toPx = (p: THREE.Vector3): [number, number] => {
+        p.project(camera);
+        return [rect.left + ((p.x + 1) / 2) * rect.width, rect.top + ((1 - p.y) / 2) * rect.height];
+      };
+      island.updateMatrixWorld();
+      const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      /** How many pixels a length `len` across the view covers at distance `d`. */
+      const across = (len: number, d: number) => (len / (2 * d * tanV)) * rect.height;
+      let body: { px: [number, number]; widthPx: number; cameraDistance: number } | null = null;
+      if (v) {
+        const d = island.localToWorld(v.centre(projected)).distanceTo(camera.position);
+        body = { px: toPx(projected), widthPx: 2 * across(v.bodyRadius, d), cameraDistance: d };
+      }
+      let keeper = null as { px: [number, number]; heightPx: number } | null;
+      if (w) {
+        const [kx, kz] = w.keeper.pos;
+        const d = island.localToWorld(projected.set(kx, deckHeights.at(kx, kz) + KEEPER_HEIGHT / 2, kz))
+          .distanceTo(camera.position);
+        keeper = { px: toPx(projected), heightPx: across(KEEPER_HEIGHT, d) };
+      }
+      /** The drawn body's centre in CSS px and the diameter of its bounding sphere there. */
+      return { viewport: [rect.width, rect.height] as [number, number], dragon: body, keeper };
+    },
+    /*
+     * Is the keeper drawn in the clear, or is a prop in front of it?
+     *
+     * The deck's obstacle circles cannot answer this: they are what a body *collides* with —
+     * each kind's widest geometry below the keeper's own 0.46 height — so a crystal shard is a
+     * 0.15 circle there while it draws as a spire taller than the keeper. Run 35's
+     * `19-wild-settle.png` lost the keeper behind a shrub, and framing it closer put it behind
+     * a shard instead. So this asks the question the critic does, of the thing the critic
+     * sees: one ray from the camera to the hood, against everything drawn on the island.
+     */
+    keeperSeen: () => {
+      if (!keeper.visible) return false;
+      island.updateMatrixWorld(true);
+      // Three heights, not one: hood, chest and hem. A single ray at the hood called the keeper
+      // clear while a crystal shard stood across its body (run 35 cycle 2, `21-wild-wary.png`).
+      for (const share of [0.84, 0.5, 0.15]) {
+        sightAt.copy(keeper.position);
+        sightAt.y += KEEPER_HEIGHT * share;
+        island.localToWorld(sightAt);
+        sightDir.subVectors(sightAt, camera.position);
+        const far = sightDir.length();
+        sightRay.set(camera.position, sightDir.normalize());
+        sightRay.near = 0.05;
+        sightRay.far = far;
+        if (!sightRay.intersectObject(island, true).every((hit) => hit.object === keeper)) return false;
+      }
+      return true;
     },
     hold: (on) => { simHeld = on; },
     loaded: () => (loadedWorld ? JSON.parse(loadedWorld) as World : null),
@@ -3280,7 +3402,15 @@ function frame(now: number): void {
     // The keeper and the wild dragon, between the last two ticks (M8b). Inside the rendered
     // path, so whatever their pose costs is charged to the frame, never to gate:perf's idle
     // baseline.
-    updateWild(now, frameMs < MAX_CATCH_UP_MS ? frameMs / 1000 : MAX_CATCH_UP_MS / 1000,
+    //
+    // A held sim (`__dragonveinWild.hold`, `?test` only) passes dt 0, which freezes the pose
+    // as well as the world: the walk's ramp, the gait clock, the tells' easing and the keeper's
+    // turn all step by dt, so without this they kept moving under a stopped sim. `gate:smoke`
+    // photographs the wild dragon through this: an evaluate round trip in a container costs a
+    // second or more, and in run 35 the take-off shot was captured after the dragon had landed
+    // and the wary shot after it had gone back to alert. Held, the frame that lands is the
+    // moment the drill reached, which is the moment the log line reports.
+    updateWild(now, simHeld ? 0 : frameMs < MAX_CATCH_UP_MS ? frameMs / 1000 : MAX_CATCH_UP_MS / 1000,
       simAccMs / TICK_MS < 1 ? simAccMs / TICK_MS : 1);
     collectGpuTimings();
     const timed = gpuTimer && idleQueries.length > 0 ? idleQueries.pop() ?? null : null;

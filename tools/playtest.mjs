@@ -40,15 +40,16 @@
  *    15-save-started-fresh.png after "start fresh": the readable dragons kept, the old save aside
  *    16-save-aside-refused.png a stale tab's start-fresh refused: why, and a reload (cycle 3)
  *
- *  And for M8b, the wild dragon reading the keeper, on `?test&seed=WILD_SEED`, each a close
- *  camera on the two of them with the island's spin pinned so the approach crosses the screen:
- *    17-wild-wander.png        the keeper far: the dragon wanders, walking
+ *  And for M8b, the wild dragon reading the keeper, on `?test&seed=WILD_SEED`, with the
+ *  island's spin pinned so the approach crosses the screen. Each shot is framed on its own
+ *  subject by `__dragonveinWild.closeUp`, and its pixel size is logged beside it:
+ *    17-wild-wander.png        the dragon alone, walking; the keeper far, outside the frame
  *    18-wild-alert.png         the keeper inside its notice: head up, turned to the keeper
  *    21-wild-wary.png          the keeper walking in: crouched, tail to the keeper, walking off
  *    19-wild-settle.png        the keeper near and still: calm risen, the dragon settled
- *    20-wild-flee.png          mid-takeoff after a rush
+ *    20-wild-flee.png          mid-takeoff after a rush: the dragon alone, altitude framed
  *  and the clip `artifacts/turntables/m8b-approach.webm`: one slow approach from far to settle,
- *  then a rush to flight, in the orbit's own view. Before them, drills: tap-to-move under the
+ *  then a rush to flight, the camera tracking the pair. Before them, drills: tap-to-move under the
  *  mouse and under touch (a tap walks, a drag orbits, a double tap runs), and a reload
  *  mid-approach that must restore the dragon's state, position and calm exactly.
  *
@@ -72,6 +73,9 @@ const TURNTABLE_ATTEMPTS = 2;         // one retry: the capture is a second brow
 const WILD_CLIP = `${TURNTABLES}/m8b-approach.webm`;
 const WILD_SEED = 0x0b8b5eed;
 const VIEW = { width: 1280, height: 720 };
+/** The bottom of the HUD bar at 1280x720 (index.html #hud: 14 px top, ~34 px tall), plus a
+ *  pixel of margin. A wild shot whose subject reaches above this is framed under the HUD. */
+const HUD_BOTTOM_PX = 56;
 const SILHOUETTE_SCALE = 0.25;        // rubric A1 judges the shape at 25% zoom
 const LATE_SHOT_AFTER_MS = 8_500;     // rubric A5 wants ≥ 8 s of running before the diff
 const CONTEXT_RESTORE_WAIT_MS = 4_000;   // the window the gameplay-critic's G5 repro used
@@ -1747,24 +1751,88 @@ try {
   }
   await flush();
 
-  // The reaction, photographed (criterion 4): wander, alert, wary, settle, flee. The island's
-  // spin is pinned so the keeper comes in across the screen and the dragon is seen side on;
-  // each shot is a close camera on the two of them (the orbit's side, 22° up), taken once the
-  // pose has eased in.
+  /*
+   * The reaction, photographed (criterion 4): wander, alert, wary, settle, flee. The island's
+   * spin is pinned so the keeper comes in across the screen and the dragon is seen side on.
+   *
+   * **Each shot is framed on its own subject, and the framing is logged in pixels.** Run 35
+   * framed all five the same way and wide, and all three critics measured the result rather
+   * than the reaction: a dragon a fifth of the frame, a 25 px keeper, and a take-off clipped
+   * off the top edge. `closeUp` now derives its distance from the dragon's drawn bounding
+   * sphere (altitude included) and from the keeper's height when the keeper is part of the
+   * subject, so `dist` below is only a floor. Where the keeper is far — 17, and the take-off
+   * in 20, which is about the dragon leaving the ground — the shot frames the dragon alone
+   * and the log line says how far away the keeper was standing.
+   *
+   * Nothing here stages a prettier moment: every `waitWild` condition, and so every state the
+   * caption claims, is unchanged. Only the camera moved.
+   */
   {
     const ctx = await browser.newContext({ viewport: VIEW });
     const p = await ctx.newPage();
     const wildErrors = [];
     p.on('pageerror', (e) => wildErrors.push(String(e)));
-    const shoot = async (name, what, r) => {
-      await p.evaluate(() => globalThis.__dragonveinWild.closeUp(5.5, 22));
+    /**
+     * `dist` is a floor; `withKeeper` says whether the keeper is part of this shot's subject.
+     *
+     * **The world is held still for the shot, and let go after.** One evaluate round trip in
+     * this container costs a second or more, so between the state a `waitWild` returned and the
+     * frame that lands the dragon has moved on: run 35's take-off was photographed from 7.59
+     * away by a camera asked for 3.33, and with the sim free the capture came a whole flight
+     * later — the dragon had landed. `hold(true)` stops the sim *and* the pose (dt 0, so the
+     * walk ramp, gait clock and tells stop too), so the frame on disk is the moment the drill
+     * reached and the moment the log line reports. `at capture` in that line is read after the
+     * screenshot and must agree with the state the caption claims.
+     *
+     * And where the keeper is part of the subject, the island is turned a few degrees until
+     * nothing is drawn in front of it (`keeperSeen`). A turn moves the camera round the pair
+     * rather than moving either of them, so the shot is still the moment the drill reached.
+     * Up to ±23°, which keeps the keeper-to-dragon line across the screen.
+     */
+    const shoot = async (name, what, r, { dist = 3.0, elev = 24, withKeeper = true } = {}) => {
+      const framed = await p.evaluate(([d, e, k]) => {
+        const h = globalThis.__dragonveinWild;
+        h.hold(true);                       // the world stops here: this frame is the photograph
+        const base = h.read().spin;
+        let turned = 0, seen = false;
+        if (k) {
+          for (const off of [0, 0.08, -0.08, 0.16, -0.16, 0.24, -0.24, 0.32, -0.32, 0.4, -0.4]) {
+            h.pinSpin(base + off);
+            h.closeUp(d, e, k);
+            if (h.keeperSeen()) { turned = off; seen = true; break; }
+          }
+          if (!seen) h.pinSpin(base);
+        }
+        h.closeUp(d, e, k);
+        return { turnedDeg: (turned * 180) / Math.PI, seen };
+      }, [dist, elev, withKeeper]);
       await p.waitForTimeout(250);
       await p.screenshot({ path: `${SHOTS}/${name}` });
-      const at = r ?? await wildRead(p);
+      const sc = await p.evaluate(() => globalThis.__dragonveinWild.screen());
+      // The world is frozen, so this read *is* the frame on disk: the log line describes the
+      // image rather than a state the drill saw a round trip earlier.
+      const at = await wildRead(p);
+      if (r && at.wild.state !== r.wild.state) {
+        errors.push(`wild: ${name} was captured with the dragon in '${at.wild.state}', not the '${r.wild.state}' the drill waited for`);
+      }
       say(`shot: ${SHOTS}/${name}  (${what}) — ${wildLine(at)}; tells: look ${fmt(at.dragon.attitude.look)} neck ${fmt(at.dragon.attitude.neck)} ` +
         `head ${fmt(at.dragon.attitude.head)} lower ${fmt(at.dragon.attitude.lower)} tail ${fmt(at.dragon.attitude.tail)}; walk ${fmt(at.dragon.walkWeight)} ` +
         `flap ${fmt(at.dragon.flap)} glide ${fmt(at.dragon.glide)} altitude ${fmt(at.dragon.altitude)}; calm meter ${at.calmMeter}`);
-      await p.evaluate(() => globalThis.__dragonveinShot.release());
+      say(`  framing: camera ${sc.dragon ? sc.dragon.cameraDistance.toFixed(2) : '?'} from the body at ${elev}° up` +
+        `${withKeeper ? ' on the pair' : ' on the dragon alone'}; in a ${sc.viewport[0]}x${sc.viewport[1]} frame the dragon is ` +
+        `${sc.dragon ? sc.dragon.widthPx.toFixed(0) : '?'} px across centred at ${fmt(sc.dragon?.px ?? [])}, ` +
+        `the keeper ${sc.keeper ? sc.keeper.heightPx.toFixed(0) : '?'} px tall at ${fmt(sc.keeper?.px ?? [])}` +
+        `${withKeeper ? `; island turned ${framed.turnedDeg.toFixed(1)}° for a clear view of the keeper (${framed.seen ? 'clear' : 'NOT clear at any turn'})` : ''}` +
+        `; the world was held still for the frame${r ? `, ${at.tick - r.tick} ticks after the drill's '${r.wild.state}'` : ''}`);
+      if (withKeeper && !framed.seen) errors.push(`wild: ${name} has something drawn in front of the keeper at every turn tried`);
+      if (sc.dragon) {
+        const [cx, cy] = sc.dragon.px, rad = sc.dragon.widthPx / 2;
+        if (cy - rad < HUD_BOTTOM_PX || cx - rad < 0 || cx + rad > sc.viewport[0] || cy + rad > sc.viewport[1]) {
+          errors.push(`wild: ${name} does not hold the whole dragon clear of the HUD: centre ${fmt(sc.dragon.px)}, ` +
+            `${sc.dragon.widthPx.toFixed(0)} px across, frame ${sc.viewport[0]}x${sc.viewport[1]}`);
+        }
+      }
+      await p.evaluate(() => { globalThis.__dragonveinShot.release(); globalThis.__dragonveinWild.hold(false); });
     };
     try {
       await p.goto(wildUrl, { waitUntil: 'load', timeout: 30_000 });
@@ -1778,7 +1846,8 @@ try {
       // 17: far, it wanders. Wait for it to be walking.
       const wander = await waitWild(p, (r) => r.wild.state === 'wander' && r.dragon.walkWeight > 0.6, 60_000, 'the dragon to wander');
       await p.evaluate(() => globalThis.__dragonveinWild.pinSpin(globalThis.__dragonveinWild.read().spin));
-      await shoot('17-wild-wander.png', 'the keeper far; the dragon wanders, walking', wander);
+      await shoot('17-wild-wander.png', 'the dragon wanders, walking; the keeper is far, outside this frame', wander,
+        { dist: 3.0, elev: 20, withKeeper: false });
       if (wander.keeperDistance < T.notice) errors.push('wild: 17 was taken with the keeper inside the notice radius');
       // 18: the keeper walks in to just inside the notice radius and stands: it looks up at it.
       // Walk in to `gap` from the dragon: `approach` picks a spot at that distance the keeper
@@ -1799,19 +1868,20 @@ try {
       await walkToward(T.comfort + 0.45, false);
       const alert = await waitWild(p, (r) => r.wild.state === 'alert' && r.keeper.v === 0 && r.dragon.attitude.neck > 0.3
         && Math.abs(r.dragon.attitude.look) < 1.4, 40_000, 'an alert dragon');
-      await shoot('18-wild-alert.png', 'head up, turned to the keeper', alert);
+      await shoot('18-wild-alert.png', 'head up, turned to the keeper', alert, { dist: 3.0, elev: 26 });
       // 21: the keeper walks on in: it crouches, turns its tail and walks off.
       await walkToward(T.flight + 0.4, false);
       const wary = await waitWild(p, (r) => r.wild.state === 'wary' && r.dragon.attitude.lower > 0.28, 20_000, 'a wary dragon');
-      await shoot('21-wild-wary.png', 'crouched low, tail to the keeper, walking off', wary);
+      await shoot('21-wild-wary.png', 'crouched low, tail to the keeper, walking off', wary, { dist: 3.0, elev: 26 });
       // 19: the keeper stands still inside the comfort ring: calm rises, it settles.
       const settle = await waitWild(p, (r) => r.wild.state === 'settle' && r.wild.calm >= 0.5 && r.keeper.v === 0, 90_000, 'a settled dragon');
-      await shoot('19-wild-settle.png', 'the keeper near and still; calm risen, the dragon settled', settle);
+      await shoot('19-wild-settle.png', 'the keeper near and still; calm risen, the dragon settled', settle,
+        { dist: 3.0, elev: 28 });
       // 20: the keeper runs at it: it takes off.
       const calmBefore = settle.wild.calm;
       await walkToward(0, true);
       const flee = await waitWild(p, (r) => r.wild.state === 'flee' && r.dragon.altitude > 0.25 && r.dragon.flap > 0.5, 20_000, 'a take-off');
-      await shoot('20-wild-flee.png', 'mid-takeoff after a rush', flee);
+      await shoot('20-wild-flee.png', 'mid-takeoff after a rush', flee, { dist: 3.0, elev: 20, withKeeper: false });
       say(`wild: the rush cost calm ${calmBefore.toFixed(3)} -> ${flee.wild.calm.toFixed(3)}; it flies from ${fmt(flee.wild.from)} to ${fmt(flee.wild.goal)}`);
       if (!(flee.wild.calm < calmBefore)) errors.push('wild: fleeing did not cost calm');
       const landed = await waitWild(p, (r) => r.wild.state !== 'flee', 30_000, 'the landing');
@@ -1843,9 +1913,27 @@ try {
       const staged = await p.evaluate((d) => globalThis.__dragonveinWild.stage(d), T.notice + 1.6);
       if (!staged) throw new Error('no open approach to the dragon to stage the keeper on');
       await p.evaluate(([x, z]) => globalThis.__dragonveinWild.frameAcross(x, z), staged);
+      /*
+       * The camera holds the pair for the whole clip instead of watching from the orbit's wide
+       * default. Run 35's clip put the dragon at about 100 px and the keeper at about 15 px, so
+       * neither the tells nor the approach could be read from it (FINDINGS, M8b cycle 1, D2).
+       * `closeUp` re-aims on a timer inside the page: it tracks the midpoint as the keeper walks
+       * in, and pulls back of its own accord when the flee carries the dragon away.
+       */
+      await p.evaluate(([d, e]) => {
+        const h = globalThis.__dragonveinWild;
+        h.closeUp(d, e, true);
+        setInterval(() => h.closeUp(d, e, true), 60);
+      }, [3.0, 24]);
       const t0 = Date.now();
       const marks = [];
-      const mark = async (what) => { const r = await wildRead(p); marks.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${what}: ${r.wild.state} calm ${r.wild.calm.toFixed(2)}`); return r; };
+      const mark = async (what) => {
+        const r = await wildRead(p);
+        const sc = await p.evaluate(() => globalThis.__dragonveinWild.screen());
+        marks.push(`${((Date.now() - t0) / 1000).toFixed(1)}s ${what}: ${r.wild.state} calm ${r.wild.calm.toFixed(2)}, ` +
+          `dragon ${sc.dragon ? sc.dragon.widthPx.toFixed(0) : '?'} px / keeper ${sc.keeper ? sc.keeper.heightPx.toFixed(0) : '?'} px`);
+        return r;
+      };
       await p.waitForTimeout(1500);
       await mark('far');
       const toward = (gap, run) => p.evaluate(([g, rn]) => {
