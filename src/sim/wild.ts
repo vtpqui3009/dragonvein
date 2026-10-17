@@ -593,22 +593,57 @@ export function stepWild(w: World, deck: Deck): void {
   const d = w.wild, k = w.keeper;
   // A footprint on an obstacle (a deck that changed since the save, or a migrated save)
   // moves to the nearest clear spot first.
-  if (grounded(d) && !bodyClear(deck, d.pos[0], d.pos[1], d.heading)) {
-    if (nearestClear(deck, d.pos[0], d.pos[1], d.heading)) { d.pos[0] = push.x; d.pos[1] = push.z; }
-    if (d.state === 'wander') { d.goal[0] = d.pos[0]; d.goal[1] = d.pos[1]; }
+  if (grounded(d) && !footprintKnownClear(deck, d)) {
+    if (!bodyClear(deck, d.pos[0], d.pos[1], d.heading)) {
+      if (nearestClear(deck, d.pos[0], d.pos[1], d.heading)) { d.pos[0] = push.x; d.pos[1] = push.z; }
+      if (d.state === 'wander') { d.goal[0] = d.pos[0]; d.goal[1] = d.pos[1]; }
+    } else {
+      known.deck = deck; known.dx = d.pos[0]; known.dz = d.pos[1]; known.dh = d.heading;
+    }
   }
-  if (!circleClear(deck, k.pos[0], k.pos[1], KEEPER_RADIUS)) {
-    pushOut(deck, k.pos[0], k.pos[1], KEEPER_RADIUS, null);
-    k.pos[0] = push.x; k.pos[1] = push.z;
+  if (!keeperKnownClear(deck, k)) {
+    if (!circleClear(deck, k.pos[0], k.pos[1], KEEPER_RADIUS)) {
+      pushOut(deck, k.pos[0], k.pos[1], KEEPER_RADIUS, null);
+      k.pos[0] = push.x; k.pos[1] = push.z;
+    } else {
+      known.cdeck = deck; known.cx = k.pos[0]; known.cz = k.pos[1];
+    }
   }
   stepKeeper(k, d, deck);
   stepDragon(w, d, k, deck);
   // Wedged between the dragon and an obstacle, the keeper is the one that yields.
-  if (grounded(d)) {
-    pushOut(deck, k.pos[0], k.pos[1], KEEPER_RADIUS, d);
+  if (grounded(d) && !keeperKnownSettled(deck, k, d)) {
+    const kx = k.pos[0], kz = k.pos[1];
+    pushOut(deck, kx, kz, KEEPER_RADIUS, d);
     k.pos[0] = push.x; k.pos[1] = push.z;
+    if (push.x === kx && push.z === kz) {
+      known.pdeck = deck; known.px = kx; known.pz = kz;
+      known.sx = d.pos[0]; known.sz = d.pos[1]; known.sh = d.heading;
+    }
   }
 }
+
+/**
+ * The last "already in place" answer of each of `stepWild`'s three placement checks, so a
+ * tick in which neither body moved does not test the same circles against every obstacle
+ * again: the dragon's footprint at (dx, dz, dh) was clear; the keeper at (cx, cz) was clear;
+ * the closing push left the keeper at (px, pz) exactly where it was, the dragon standing at
+ * (sx, sz, sh). Each check is a pure function of the deck and the positions it reads, so
+ * skipping a repeat changes no outcome: a world stepped with this is bit-identical to one
+ * stepped without. Never saved, keyed by the deck object. Allocation-free.
+ */
+const known = {
+  deck: null as Deck | null, dx: Number.NaN, dz: Number.NaN, dh: Number.NaN,
+  cdeck: null as Deck | null, cx: Number.NaN, cz: Number.NaN,
+  pdeck: null as Deck | null, px: Number.NaN, pz: Number.NaN, sx: Number.NaN, sz: Number.NaN, sh: Number.NaN,
+};
+const footprintKnownClear = (deck: Deck, d: WildDragon) =>
+  known.deck === deck && known.dx === d.pos[0] && known.dz === d.pos[1] && known.dh === d.heading;
+const keeperKnownClear = (deck: Deck, k: Keeper) =>
+  known.cdeck === deck && known.cx === k.pos[0] && known.cz === k.pos[1];
+const keeperKnownSettled = (deck: Deck, k: Keeper, d: WildDragon) =>
+  known.pdeck === deck && known.px === k.pos[0] && known.pz === k.pos[1]
+  && known.sx === d.pos[0] && known.sz === d.pos[1] && known.sh === d.heading;
 
 /**
  * Walk (or, `run`, run) the keeper to (x, z): the player's tap. The spot is pulled onto the

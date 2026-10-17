@@ -267,6 +267,29 @@ describe('a scripted keeper gives the expected reaction (criterion 2)', () => {
     }
   });
 
+  it('stepping two worlds on two decks in turn gives each the world it gets alone', () => {
+    // `stepWild` remembers its last "already in place" answers to skip repeat checks; that
+    // memory must never carry from one world or deck to another.
+    const clutter: Deck = { radius: 5.6, obstacles: [0.4, -0.6, 0.5, -2.2, 0.8, 0.45, 2.6, 2.9, 0.4], home: [1.2, 1.8], gate: [-4.2, -2.4] };
+    const alone = [run(createWorld(SEEDS[0]!), END), run(createWorld(SEEDS[1]!, clutter), END, clutter)];
+    const a = createWorld(SEEDS[0]!), b = createWorld(SEEDS[1]!, clutter);
+    while (a.tick < END || b.tick < END) {
+      if (a.tick < END) run(a, a.tick + 1);
+      if (b.tick < END) run(b, b.tick + 1, clutter);
+    }
+    expect(JSON.stringify(a)).toBe(JSON.stringify(alone[0]));
+    expect(JSON.stringify(b)).toBe(JSON.stringify(alone[1]));
+  });
+
+  it('a keeper set down on an obstacle between ticks is moved off it on the next', () => {
+    const deck: Deck = { radius: 5.6, obstacles: [-3, -3, 0.5], home: [1.2, 1.8], gate: [-4.2, -2.4] };
+    const w = createWorld(SEEDS[0]!, deck);
+    for (let i = 0; i < 40; i++) step(w, deck);
+    w.keeper.pos[0] = -3.1; w.keeper.pos[1] = -3; w.keeper.goal[0] = -3.1; w.keeper.goal[1] = -3;
+    step(w, deck);
+    expect(circleClear(deck, w.keeper.pos[0], w.keeper.pos[1], 0.159)).toBe(true);
+  });
+
   it.each([250, 330, 470, 600])('a save mid-sequence (tick %s) resumes into the same world', (at) => {
     for (const seed of SEEDS) {
       const straight = run(createWorld(seed), END);

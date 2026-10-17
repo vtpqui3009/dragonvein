@@ -135,6 +135,11 @@ export class WildDragonView {
   private lastX = Number.NaN;
   private lastZ = 0;
   private lastH = 0;
+  /**
+   * What the last pose was made from: [1 if it was a standing, flightless one, else 0, then the
+   * attitude's look, neck, head, lower and tail]. `update` skips a pose that would repeat it.
+   */
+  private readonly posedAt = new Float64Array(6);
 
   private constructor(
     mesh: THREE.Mesh, bones: Float32Array, walk: DragonWalk, flight: DragonFlight, gait: WalkParams, fp: FlightParams,
@@ -227,12 +232,25 @@ export class WildDragonView {
     const fp = this.fleeNow;
     if (flee) fleePose(fleeT, fleeDur, takeoff, land, peak, fp);
     else { fp.flap = 0; fp.glide = 0; fp.altitude = 0; }
-    this.flight.set(fleeT, fp.flap, fp.glide);
-    this.attitude.setTargets(state, look);
-    this.attitude.update(dt);
-    this.walk.pose(this.walkW > 0 ? this.gaitT : null, this.walkW);
-    const bones = this.walk.bones, out = this.bones;
-    for (let i = 0; i < bones.length; i++) bones[i]!.matrixWorld.toArray(out, 16 * i);
+    // A flight at weight 0 poses nothing; once it has been set so, setting it again is idle work.
+    if (fp.flap > 0 || fp.glide > 0 || this.flight.active) this.flight.set(fleeT, fp.flap, fp.glide);
+    const att = this.attitude;
+    att.setTargets(state, look);
+    att.update(dt);
+    // The skeleton is a pure function of the walk (clock and weight), the flight and the
+    // attitude. Standing, not flying, and holding the attitude of the last pose, it would come
+    // out exactly as it is: skip the pose and the bone upload's copy. A grazing dragon spends
+    // most of its time so.
+    const still = this.walkW === 0 && !this.flight.active;
+    const p = this.posedAt;
+    if (!(still && p[0] === 1 && p[1] === att.look && p[2] === att.neck && p[3] === att.head
+      && p[4] === att.lower && p[5] === att.tail)) {
+      this.walk.pose(this.walkW > 0 ? this.gaitT : null, this.walkW);
+      const bones = this.walk.bones, out = this.bones;
+      for (let i = 0; i < bones.length; i++) bones[i]!.matrixWorld.toArray(out, 16 * i);
+      p[0] = still ? 1 : 0;
+      p[1] = att.look; p[2] = att.neck; p[3] = att.head; p[4] = att.lower; p[5] = att.tail;
+    }
     this.holder.position.set(x, ground + fp.altitude, z);
     this.holder.rotation.y = -heading;
     this.lastX = x;

@@ -64,6 +64,14 @@ export const LOOK_MAX = 1.35;
 const Y = new THREE.Vector3(0, 1, 0);
 const Z = new THREE.Vector3(0, 0, 1);
 
+/** A channel this close to its target (radians, or share of the drop) is on it: far below a pixel. */
+const SETTLED = 1e-4;
+/** One channel's step toward `goal`: exponential, landing on it once within SETTLED. */
+function ease(value: number, goal: number, rate: number, dt: number): number {
+  const next = value + (goal - value) * (1 - Math.exp(-rate * dt));
+  return Math.abs(goal - next) < SETTLED ? goal : next;
+}
+
 export class DragonAttitude implements AttitudeLayer {
   /** Current (eased) values. */
   look = 0;
@@ -86,14 +94,18 @@ export class DragonAttitude implements AttitudeLayer {
     g.tail = a.tail;
   }
 
-  /** Ease every channel toward its target over `dt` seconds. Allocation-free. */
+  /**
+   * Ease every channel toward its target over `dt` seconds; within SETTLED of it, land on it
+   * exactly, so a held pose stops changing and the dragon's skeleton need not be posed again
+   * (src/render/wild-dragon.ts). Allocation-free.
+   */
   update(dt: number): void {
     const g = this.goal;
-    this.look += (g.look - this.look) * (1 - Math.exp(-RATE.look * dt));
-    this.neck += (g.neck - this.neck) * (1 - Math.exp(-RATE.neck * dt));
-    this.head += (g.head - this.head) * (1 - Math.exp(-RATE.head * dt));
-    this.lower += (g.lower - this.lower) * (1 - Math.exp(-RATE.lower * dt));
-    this.tail += (g.tail - this.tail) * (1 - Math.exp(-RATE.tail * dt));
+    this.look = ease(this.look, g.look, RATE.look, dt);
+    this.neck = ease(this.neck, g.neck, RATE.neck, dt);
+    this.head = ease(this.head, g.head, RATE.head, dt);
+    this.lower = ease(this.lower, g.lower, RATE.lower, dt);
+    this.tail = ease(this.tail, g.tail, RATE.tail, dt);
   }
 
   /** Jump straight to the targets (a load, a first frame). */

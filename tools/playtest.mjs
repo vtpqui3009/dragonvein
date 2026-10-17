@@ -1189,14 +1189,23 @@ try {
       const refused2 = await idbOp(seedPage, 'get', 'refused.2');
       const refused1 = await idbOp(seedPage, 'get', 'refused.1');
       await b.screenshot({ path: `${SHOTS}/16-save-aside-refused.png` });
+      // Tab A keeps playing and autosaves every 10 s, so `main` may move on between the two
+      // reads — by A's own hand. What B must not do is write it: the record is still A's
+      // (same writer, never an older gen) and still A's world, and B wrote nothing at all.
+      const rosterOf = (rec) => { try { return JSON.parse(rec.text).world.roster.length; } catch { return -1; } };
+      const stillA = liveAfter !== null && liveBefore !== null && liveAfter.writer === liveBefore.writer
+        && liveAfter.gen >= liveBefore.gen && rosterOf(liveAfter) === rosterOf(liveBefore);
+      const mainText = JSON.stringify(liveAfter) === JSON.stringify(liveBefore)
+        ? `unchanged (A's gen ${liveAfter?.gen}, ${rosterOf(liveAfter)} dragons)`
+        : stillA ? `A's own autosave since (gen ${liveBefore.gen} -> ${liveAfter.gen}, writer A, ${rosterOf(liveAfter)} dragons)`
+          : `CHANGED (gen ${liveBefore?.gen} -> ${liveAfter?.gen}, writer ${liveBefore?.writer} -> ${liveAfter?.writer})`;
       say(`save: stale start-fresh — tabs A ${ra.state} / B ${rb.state}; A set aside to ${fa.key}, seeded and ` +
-        `saved to gen ${sa.gen}; B's start fresh moved ${rb2.asideKey ?? 'nothing'}; B HUD "${rb2.hud.save} | ` +
-        `${rb2.hud.note}" [${rb2.hud.actions.join(' | ')}]; main ${JSON.stringify(liveAfter) === JSON.stringify(liveBefore)
-        ? `unchanged (A's gen ${liveAfter?.gen}, ${JSON.parse(liveAfter.text).world.roster.length} dragons)` : 'CHANGED'}; ` +
+        `saved to gen ${sa.gen}; B's start fresh moved ${rb2.asideKey ?? 'nothing'}, B wrote ${rb2.writes} record(s); B HUD "${rb2.hud.save} | ` +
+        `${rb2.hud.note}" [${rb2.hud.actions.join(' | ')}]; main ${mainText}; ` +
         `refused.1 ${refused1?.text === 'garbage' ? 'is the garbage' : 'WRONG'}, refused.2 ${refused2 ? 'EXISTS' : 'absent'}`);
       say(`shot: ${SHOTS}/16-save-aside-refused.png  (M8a cycle 3, D1/D2)`);
       if (ra.state !== 'corrupt' || rb.state !== 'corrupt' || fa.key !== 'refused.1' || sa.gen !== 2
-        || JSON.stringify(liveAfter) !== JSON.stringify(liveBefore) || refused2 || rb2.asideKey
+        || !stillA || rb2.writes !== 0 || refused2 || rb2.asideKey
         || !rb2.hud.actions.includes('reload') || rb2.hud.actions.some((t) => t.startsWith('start fresh'))) {
         errors.push('save: start-fresh in a stale tab moved the live save, or left a dead button');
       }
