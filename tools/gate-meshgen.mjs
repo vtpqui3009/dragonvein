@@ -123,6 +123,18 @@ try {
   // As gate:perf: the page's main thread off the rasteriser's cores, applied once the page
   // has spawned its threads, and verified from /proc before the first build.
   cap = await verifyRasteriserCap(await applyRasteriserCap({ rootPid: process.pid, software }));
+  // The game page builds **its own** wild dragon through this same worker (M8b), and that
+  // build starts after the first frame, which is all the wait above gets us. If its post lands
+  // inside the probe's window there is one more post than there are builds and the round trips
+  // cannot be matched to them — "saw 33 build posts for 32 builds", which failed this gate on
+  // one run of three while the budget was being met with room to spare. Waiting for the dragon
+  // to be in the scene closes that race without relaxing anything: the `posts.length !==
+  // runs.length` check below still has to hold exactly.
+  await page.waitForFunction(() => globalThis.__dragonveinStats?.()?.wild?.dragon === true,
+    null, { timeout: 60_000 }).catch(() => {
+    // It can genuinely fail to build; gate:smoke is what judges that. Here it only means the
+    // worker is idle, which is what the window needs.
+  });
   await page.evaluate(() => { globalThis.__meshgenProbe.on = true; });
   runs = await page.evaluate((r) => globalThis.__dragonveinMeshgen(r), recipes);
   ({ posts, stalls, calls: glCalls, maxCallMs: glMaxCallMs } = await page.evaluate(() => {
