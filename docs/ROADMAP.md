@@ -281,9 +281,11 @@ They meet §Definition of done:
 | step | done when | status |
 |---|---|---|
 | M8a | IndexedDB save and load; a world survives reload; migrations in place | DONE |
-| **M8b** | **approach and calm — a wild dragon reacts to the player** | **TODO** |
+| **M8b** | **approach and calm — a wild dragon reacts to the player** | **IN_PROGRESS** |
 | M8c | taming completes and the dragon joins the roster | TODO |
 | M8d | roster UI — list, select, inspect | TODO |
+
+**M8b is `IN_PROGRESS`, one owner decision from closing.** Run 35 landed the sim, the input, the save and the budgets, and `npm run gates` exits 0 (art 8.1, perf 7.3, gameplay 8.4). Criteria 1–5 and 7 are met; criterion 6 is not, because at the camera the player has the dragon is 97 px and the posture tells do not read. The fix is a choice between amplifying the tells, adding diorama-scale cues, and the camera — and the camera was settled as keep today, so `NEXT.md` asks the owner which.
 
 ## M9 — Breeding
 
