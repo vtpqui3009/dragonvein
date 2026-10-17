@@ -167,6 +167,42 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-17 · run 34 · M8b — resumed from run 33's snapshot, gated on CI
+
+**Step**: `M8b`, still the first step in reading order that is not `DONE`. **The acceptance
+criteria are run 33's, below, unchanged.** Run 34 does not rewrite them.
+
+**Where run 33 stopped.** It hit the usage limit at 14:42 UTC. Its last push was
+`origin/wip/m8b` at `e6126e2`, "snapshot at usage limit — gates not yet run": 16 files and
+about 3 100 lines on top of `ce9fe29`, covering `src/sim/wild.ts`, `src/render/wild*.ts`,
+schema 2 with `save-v2.json`, and the playtest shots. Run 34 starts from that snapshot.
+
+**This run is local, on the owner's Windows machine** (`docs/OPERATIONS.md` §Running a build
+from your own machine). Two things about that machine, both measured:
+
+- **Line endings.** The clone had `core.autocrlf=true`, which writes 163 sources to disk as
+  CRLF. Three hash-pinned tests then fail on `genome.py`'s sha (`rng`, `genome`,
+  `dragon-graph`). The fix was `core.autocrlf=false` in this clone only, with the working
+  files put back to LF. The index was LF throughout, so no commit carries a change from this.
+- **`gate:meshgen` and `gate:perf` cannot be passed honestly here.** Both rely on
+  `tools/rasteriser-cap.mjs`, which needs Linux `sched_setaffinity`. On win32, clean `main`
+  (`80e88a6`) fails `gate:meshgen` with a worker max of 1 252 ms and then 1 062 ms; the CI
+  runner measures 52 ms on the same code.
+
+**Owner decision, 2026-10-17: CI is the gate runner for local runs.** Asked, with the
+options shown, and answered "use CI as gate runner". The procedure:
+
+1. The cap-independent gates run locally first: tsc, eslint, vitest, layers, determinism,
+   assets, parity.
+2. Each candidate is pushed to a `wip/` branch, and `.github/workflows/ci.yml` is dispatched
+   on it. That workflow runs `npm run gates` unchanged on `ubuntu-latest`, with the cap
+   verified, which is the environment `CLAUDE.md` §2.2 sets the budget on.
+3. The critics score that run's uploaded `artifacts/`.
+
+No gate, budget or threshold changes.
+
+---
+
 ## 2026-10-16 · run 33 · M8b — approach and calm: a wild dragon reacts to the player
 
 **Step**: `M8b`, the first step in reading order that is not `DONE`. M7 and M5 wait only on
@@ -910,4 +946,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-16T16:22:32Z
