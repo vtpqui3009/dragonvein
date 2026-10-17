@@ -326,6 +326,143 @@ unchanged. (3)
 `tests/fixtures/hero-deck.json` is a snapshot: re-dump it with `__dragonveinWild.deck()` if
 the island is re-dressed, and `gate:smoke`'s tap drill is what catches a stale one.
 
+### What shipped
+
+`npm run gates` exits 0 at `f243058`, verified by two independent full runs in this container.
+Seven commits of code and gate work, all pushed.
+
+| | before | after |
+|---|---|---|
+| seeded taps that reach their target | **2 of 40 (5 %)** | **46/47 reachable of 48 (97.9 %)**; 48/48 open deck; 8/8 real mouse clicks in `gate:smoke`, each 0.000 from the mark |
+| heap B/frame (budget 40 960, unchanged) | 44 784 (CI, run 34) | **33 947**, with `wild:{"dragon":true,"keeper":true}` |
+| `gate:smoke` wild drills | all 4 failed, 6 page errors | **all pass, 0 page errors** |
+| deck standable area | 16 %, 54 disconnected pockets | **63 % obstacle-free, 97 % of the walkable deck in one piece** |
+| flights that move the dragon | 0 (all ten drawn spots discarded) | 30 over 3 seeds, hops 1.55–9.53 |
+
+1. **Keeper navigation** (`src/sim/wild.ts`). A flow field over a 0.05-unit grid, masked once
+   per deck, BFS from the goal once per goal, with line-of-sight shortcutting so the grid
+   staircase becomes straight runs. Allocated once at module load; a tick allocates nothing.
+   **Derived, never saved** — a pure function of the `Deck` and `keeper.goal`, so schema 2 did
+   not move and a world saved mid-walk resumes bit-identically, asserted at four ticks.
+2. **The deck was the other half of the defect, and the larger half.** The `Deck` handed to the
+   sim carried each prop's *scatter reservation* rather than its collision footprint: 97 circles
+   over **94 % of the deck's area, 16 % standable, 54 disconnected pockets**, with the dragon's
+   home and the keeper's gate *inside* obstacles. `SOLID_R` is now measured per kind off each
+   committed GLB below the keeper's height. The glade's middle is kept open (`GLADE_OPEN`)
+   because the dragon's 1.36-wide footprint had a largest pocket of 1.4 m² and literally could
+   not step — `17-wild-wander.png` is the first wander ever drawn.
+3. **`stage()` asks an answerable question.** It had searched for a straight open corridor; the
+   best clearance over 72 bearings was **−0.14** against its own +0.25 bar, because no dressed
+   island has one. It now asks for a standing spot at the asked distance ±0.45 with a route to
+   the dragon and the longest open lane available.
+4. **Flights land somewhere** — `startFlee` had discarded all ten drawn spots, so the dragon
+   "flew" from (1.40, 2.50) to (1.40, 2.50). Drawn spots are snapped with the existing
+   `nearestClear`, so the Rng stream is unchanged.
+5. **Framing, and an evidence-integrity fix.** Shot cameras are derived from the dragon's own
+   bounding sphere, not from deck points padded by a flat 2.6 units (the pad *was* the subject);
+   dragon 280 → 533 px, keeper 15 → 89 px, clip 100 → 478 px. An evaluate round trip here costs
+   ~1 s, so with the sim running captures landed **after** the state they claimed: cycle 1's
+   `20-wild-flee.png` was captured as `settle` with altitude 0.000 (the dragon had landed) and
+   `21-wild-wary.png` as `alert`. `hold(true)` now zeroes the pose dt too, and a shot fails if
+   its captured state differs from the state the drill waited for.
+6. **Three new `gate:smoke` assertions, all tightening**: a wild shot fails if the dragon's
+   sphere is not wholly inside the frame and clear of the HUD; if the captured state is not the
+   awaited one; or if no island turn within ±23° clears all three keeper sight-rays.
+7. **Two gate fixes, each in its own commit per §2.7, neither relaxing anything.**
+   `gate:meshgen` now waits for the page's own wild dragon before opening its probe window — it
+   had been counting that build as a 33rd post for 32 builds and failing on one run in three
+   with the budget met at 41.7 ms of 120; the exact post-for-build check and every budget are
+   unchanged. `gate:perf`'s heap comment and `perf.json` `note` now describe the subtraction the
+   code actually makes (`min(perSecond, perCallback, risingBytes)`) instead of naming only
+   `idleBytesPerSecond`; no budget, threshold or computation moved.
+
+### Criteria: five of six met, plus the new seventh
+
+Run 33's criteria 1–5 and run 35's criterion 7 are met — temperament monotone and spread, the
+full state sequence deterministic and save/resume-exact, schema 2 with its migration and a
+frozen `save-v2.json`, shots 17–21 and a 33.7 s clip, every budget green, and the keeper
+arriving at 97.9 %. **Criterion 6 is not met**, and that is why M8b stays `IN_PROGRESS`.
+
+**Criterion 6 requires "no blocking or major defect" and that "the reaction must read without
+the indicator".** Measured through `__dragonveinWild.screen()` at the camera the player actually
+has: the dragon is **97 px** wide and the keeper **21 px** (default view, distance 18.3; 103 px
+and 22 px wheel-zoomed to the minimum). The posture tells — head up on alert, `lower` 0.289 on
+wary against 0.063 on wander, tail turned away — do not read at that size. Cycle 2's shots read
+well only because they are framed from 3.3–4.5 units, which `ORBIT_LIMITS` (15–32) does not
+allow. **Two critics measured this independently**: gameplay's D1, and art's A9, "valid evidence
+of the tells, but it is not a framing a player gets". gameplay's D2 adds that dragon and keeper
+are both occluded behind trees and crystals, with no through-geometry marker for the keeper.
+
+This was cycle 2's own doing, and worth recording as a lesson: cycle 1's defect was that the
+artefacts did not show their subject, and framing them close proved the tells exist while moving
+the evidence away from play. **Fixing the artefact is not the same as fixing the game.**
+
+### The scores, and why perf cannot reach 8.0 here
+
+| cycle | commit | art | perf | gameplay |
+|---|---|---|---|---|
+| 1 | `2901002` | 7.4 | 7.5 | 8.6 |
+| 2 | `f243058` | **8.1** | **7.3** | **8.4** |
+
+**perf fell on a strictly better build, and 1.8 of its lost points are not reachable by any
+run.** P1 and P6 both want a real-hardware row, and there is no GPU in CI or in any build
+container — SwiftShader only. The newest row is a *sighting* at `6b06392`, 2026-10-13, which
+predates M8 and the first skinned animated dragon. Until the owner produces one, perf is capped
+near 8.2 whatever the code does. Per `.claude/skills/critic-round` §4, re-scoring an unchanged
+tree for a standing deduction is score-fishing, so this run did not attempt a third cycle at it.
+Two of perf's three majors are answered with numbers in `FINDINGS.md`: the meshgen 684.5 ms is
+`glStallMs` 641.9 of SwiftShader `getProgramInfoLog` with `roundTripHeldMaxMs` 42.6 of 120, and
+unstable across runs (2 stalls then 0); and the heap "2.6 % margin" was mostly noise — three
+runs on identical per-frame code read 39 899, 37 233 and 33 947.
+
+**The heap was profiled rather than argued about.** `HeapProfiler.startSampling` with
+`includeObjectsCollectedByMinorGC`/`MajorGC` reports 41 272 B/frame, agreeing with the gate. The
+bytes are V8 boxing doubles inside `three`'s math — `Quaternion.get x`/`get z`/`get w` show
+self-size — not object literals in this project's code. Every per-frame path named in the brief
+was read and is already allocation-free by construction, so there is nothing left to reuse;
+`docs/PERF_BUDGET.md` names draw calls as the lever. No per-frame code was changed for it.
+
+### Decisions this run made, and the one it refused to make
+
+- **The drill was not what was wrong, so the drill was not what changed** (§2.7). The straight-
+  corridor search was failing because the keeper could only walk a straight-ish lane; the fix
+  went into the navigation, and every drill assertion about the approach is still run 33's.
+- **The resting wing spread was left alone.** Two critics read the wings as upright sails or
+  flat sheets on a grounded dragon. Measured: each wing reaches 4.094 mesh units to the side and
+  0.687 up (5.9 : 1, ~9.5° above horizontal), and `DragonFlight.pose(0,0,0)` moves **0 of 36
+  bones**, so the renderer is not posing it — this is the mesh as built, and
+  `tests/dragon-wings.test.ts` asserts exactly it for all 40 genomes as **M3e criterion 2**,
+  with `gate:parity` holding Blender to the same graph. The build matches the target; whether
+  the target is right is a §7 question for the owner, carried in `NEXT.md`. A run will not
+  hand-tune a furl blind: the clearance cases make a wing-through-body **blocking** defect the
+  likely result, which is worse than the minor it would fix.
+- **Criterion 6's fix was left to the owner, and this is why the run stops here** (§3.1). The
+  three ways out trade against each other and one is a decision the owner made today: amplify
+  the tells so posture reads at 97 px (the only option that satisfies criterion 6 as written,
+  but it carries the same wing-clearance hazard); add diorama-scale cues (cheap, and D2's keeper
+  marker is worth doing regardless, but criterion 6 says the reaction must read *without* the
+  indicator); or revisit the camera, which `docs/DECISIONS.md` §"The camera stays a diorama"
+  settled today as keep. Guessing costs a cycle on the wrong one.
+- **Recorded, relayed not witnessed:** the owner's camera decision reached this run through
+  another Claude session, and is written into `docs/DECISIONS.md` §"The camera stays a diorama"
+  with that provenance stated. Both code claims it rests on were verified first — `ORBIT_LIMITS`
+  holds distance 15–32, pitch 6–22°, azimuth −15 to 105°, and run 33's criteria do say the
+  camera keeps orbiting as it does today.
+
+### Open blockers
+
+1. **M8b criterion 6** — the owner's choice of option 1, 2 or 3 in `NEXT.md`.
+2. **A real-hardware perf row** — owner-only, and it caps perf below 8.0 every cycle until it
+   exists.
+3. **The resting-wing target question** — owner-only, §7.
+
+M8 the milestone stays `IN_PROGRESS` regardless: M8c and M8d are both `TODO`.
+
+**Run 33's entry below is deliberately kept in this file, against the two-entry rule in
+`.claude/skills/run-closeout`**: it holds M8b's live acceptance criteria, which `NEXT.md` cites
+and the next run needs. The skill keeps entries that are cited by name for the same reason it
+keeps `decision` entries. It moves to the archive when M8b closes.
+
 ---
 
 ## 2026-10-17 · run 34 · M8b — resumed from run 33's snapshot, gated on CI
