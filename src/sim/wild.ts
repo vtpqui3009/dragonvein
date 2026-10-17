@@ -824,10 +824,17 @@ function startFlee(w: World, d: WildDragon, deck: Deck, T: Temperament): void {
   for (let i = 0; i < LAND_TRIES; i++) {
     const a = 2 * Math.PI * draw(w);
     const r = (deck.radius - 0.6) * Math.sqrt(draw(w));
-    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    // A dragon's footprint is 1.36 across and a dressed island has few places it fits, so a
+    // drawn spot is *snapped* to the nearest one it does rather than thrown away: ten draws on
+    // the hero island found no clear spot at all, and the flight took off and landed where it
+    // stood — "it flies from (1.40, 2.50) to (1.40, 2.50)" in the M8b log. `nearestClear` makes
+    // no draw of its own, so the stream is unchanged.
+    const dx = Math.cos(a) * r, dz = Math.sin(a) * r;
+    const heading = Math.atan2(dz - d.pos[1], dx - d.pos[0]);
+    if (!nearestClear(deck, dx, dz, heading)) continue;
+    const x = push.x, z = push.z;
     const hop = len(x - d.pos[0], z - d.pos[1]);
     if (hop < 1.5) continue;
-    if (!bodyClear(deck, x, z, Math.atan2(z - d.pos[1], x - d.pos[0]))) continue;
     const score = len(x - kx, z - kz);
     if (score > best) { best = score; bx = x; bz = z; }
   }
