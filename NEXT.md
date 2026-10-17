@@ -10,11 +10,22 @@ If the commit stamp below is older than `git log -1`, commits have landed that t
 has not seen. Read the newest `STATE.md` entry and the commits since that stamp before
 trusting anything here.
 
-Last updated: **2026-10-16** · at commit `9179782`. **Run 33 is in flight on M8b** in the owner's
-main session (criteria in STATE.md run 33). **Do not start M8b from a second session while this
-line stands.** If no `feat` commit for M8b lands hours later, run 33 died: take M8b from the
-STATE.md run 33 criteria. Run 32 closed M8a. The daily
-routine is disabled (`3724d5e`), so runs start by hand.
+Last updated: **2026-10-17** · at commit `49db365`. **Run 34 is in flight on M8b**. It runs from
+the owner's local Windows machine. Perf-heavy fixing is delegated to a **cloud agent working on
+`wip/m8b-r34`**; CI is the gate runner. **Do not start M8b from another session while this line
+stands.**
+
+- **Run 33 died** on the usage limit. Its ungated snapshot is `0846a99` on `wip/m8b-r34`.
+- **Open defects:**
+  - `gate:perf` heap churn is **44 784 B/frame against 40 960** (CI run 38993748999);
+  - `gate:smoke`'s wild drills fail with "no open approach to the dragon to stage the keeper
+    on", with 6 page errors and an M8a stale-tab start-fresh regression.
+- **If `wip/m8b-r34` stops moving for hours, run 34 died.** Take M8b from the head of that
+  branch: re-run `npm run gates` there and continue the two defects above. The STATE.md
+  run 34 entry has the detail, and the criteria are under run 33.
+- **The local machine cannot pass `gate:meshgen` or `gate:perf`.** The rasteriser cap is
+  Linux-only, and clean `main` fails meshgen there. Gate on CI
+  (`gh workflow run ci.yml --ref <branch>`) or in a cloud session.
 
 ---
 
