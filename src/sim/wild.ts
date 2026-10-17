@@ -630,7 +630,11 @@ function navSteer(deck: Deck, px: number, pz: number, gx: number, gz: number): v
  */
 export function routeExists(deck: Deck, fx: number, fz: number, tx: number, tz: number): boolean {
   if (segmentClear(deck, fx, fz, tx, tz, NAV_LOS_R)) return true;
-  navBuildField(deck, tx, tz);
+  // `navEnsure`, not `navBuildField`: a caller asking about many starts against one target —
+  // `stage` in src/main.ts asks about every bearing round the dragon — should pay for one sweep,
+  // not one per question. The field is a pure function of (deck, target), so reusing it answers
+  // the same.
+  navEnsure(deck, tx, tz);
   if (nav.seed < 0) return false;
   return navFrom(deck, fx, fz) >= 0;
 }
