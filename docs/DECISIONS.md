@@ -153,3 +153,38 @@ build the game out to full depth once every milestone is `DONE` and the directio
 out, together with the distinction between depth (consistent with the GDD) and live-service
 apparatus (which the GDD and `CLAUDE.md` §7 rule out, and which only the owner may unlock, in
 their own commit).
+
+## 2026-10-17 · The camera stays a diorama
+
+**Decision.** The orbit camera keeps its current arc. `ORBIT_LIMITS` in `src/main.ts` —
+distance 15–32, pitch 6–22°, azimuth −15 to 105° — is a **tuned constraint, not a defect**.
+Point-and-click movement with an orbiting camera is the game's intended shape, matching the
+Đảo Rồng reference the project started from. A future run that finds the limits restrictive
+treats them as deliberate. **Only the owner reopens this.**
+
+**Provenance.** The owner asked why they cannot zoom in far enough for a view like walking
+around on the island, and whether that was coming later or staying. Shown three options —
+keep it, add a ground-level follow camera, or merely widen the zoom clamp — they chose keep
+it. The decision reached this run relayed through another Claude session on 2026-10-17, not
+observed directly by the run that recorded it; it is written down here because an unrecorded
+decision gets re-litigated. Run 35 verified the two code claims it rests on before recording
+it: `ORBIT_LIMITS` holds those six values, and run 33's M8b criteria do say "the camera keeps
+orbiting the island as it does today".
+
+**Why it is not just a clamp value.**
+
+1. Each limit was found by rendering it, and the reasons are in the comment above
+   `ORBIT_LIMITS`: the deck overflows a 640×360 frame at distance 11, the sky gradient leaves
+   the shot above ~25° of pitch, and past ~110° of azimuth the satellites and spires run out
+   and the hero island hangs in empty sky. The comment already anticipates the question:
+   "widening this arc is for whichever step dresses the far side."
+2. A ground-level camera is not a clamp change. It would require dressing the far side of the
+   hero island, re-tuning LOD for close range, and re-scoring every art line in
+   `docs/RUBRIC.md` at a viewing distance none of them was tuned for.
+3. It suits `docs/GDD.md` §Session shape — 4–6 minutes on a phone — better than a walking
+   camera would.
+
+**What it costs.** The player never sees the island from a creature's eye level, which is the
+view that would show a bred dragon's geometry at its most legible. M8b's keeper avatar is
+therefore read at diorama distance, and the gene inspector (M9) carries the burden of making
+the genome visible up close instead.
