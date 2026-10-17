@@ -343,17 +343,32 @@ function risingEdges(kb) {
  * budget it had not breached, and that is what went red on CI while the same commit
  * passed here.
  *
- * So the gate measures the time-driven rate first, with `renderer.render` paused via
- * `__dragonveinPerf.setRendering(false)`, and subtracts it:
+ * So the gate measures that baseline first, with `renderer.render` paused via
+ * `__dragonveinPerf.setRendering(false)`, in both the units it could be charged in — per
+ * second and per rAF callback — and subtracts **the smaller of the two**:
  *
- *   bytesPerFrame = (risingBytes − idleBytesPerSecond × windowSeconds) ÷ framesRendered
+ *   idleBytes    = min(idleBytesPerSecond × windowSeconds,
+ *                      idleBytesPerCallback × loopTicksInWindow,
+ *                      risingBytes)
+ *   bytesPerFrame = (risingBytes − idleBytes) ÷ framesRendered
+ *
+ * Taking the smaller is deliberate, and it is the strict reading: it removes less of the
+ * measured churn, so the budgeted figure is the larger of the two defensible ones and a
+ * pass is earned rather than granted. Which of the two wins depends on the pass. On the
+ * rasteriser the idle pass runs at vsync while the measured window runs at ~6 fps, so the
+ * per-callback figure is far the smaller and is what gets subtracted — 1 902 446 B against
+ * the per-second reading's 13 366 088 B over the 276.5 s window of run 35's `perf.json`,
+ * a difference of about 8 000 B/frame on a 40 960 B budget. `idleBytesIfChargedPerSecond`,
+ * `idleBytesIfChargedPerCallback` and `idleBytesSubtracted` are all reported, so which one
+ * was used is visible in the artefact and not a matter of reading this comment.
  *
  * Falls, which are scavenges, are counted separately rather than cancelling out the
  * allocation that caused them. Both the raw and the corrected figures are reported, so
  * the subtraction is visible rather than buried.
  *
  * @param {number[]} kb @param {number} frames @param {number} windowMs
- * @param {number|null} idleBytesPerSecond
+ * @param {{bytesPerSecond: number, bytesPerCallback: number|null}|null} baseline
+ * @param {number} loopTicks
  */
 function summariseHeap(kb, frames, windowMs, baseline, loopTicks) {
   if (kb.length < 2 || frames <= 0) return null;
@@ -782,12 +797,20 @@ try {
       withinBudget: paced.heap.bytesPerFrame <= BUDGET.heapBytesPerFrame,
       note: 'Sampled with Runtime.getHeapUsage over CDP from outside the page, every ' +
         '250 ms across the paced window, so none of the measurement is inside what it ' +
-        'measures. `bytesPerFrame` is the sum of the rising edges MINUS the time-driven ' +
-        'baseline (`idleBytesPerSecond`, measured first with renderer.render paused), ' +
-        'divided by the frames rendered — because the HUD timer and the rAF loop ' +
-        'allocate per second rather than per frame, and dividing those by frames made ' +
-        'the figure track 1/frames. `uncorrectedBytesPerFrame` is the old number, kept ' +
-        'so the subtraction is visible. `netGrowthKB` near zero with a large ' +
+        'measures. `bytesPerFrame` is the sum of the rising edges MINUS the idle ' +
+        'baseline (`idleBytesSubtracted`), divided by the frames rendered — because the ' +
+        'HUD timer and the rAF loop allocate whether or not a frame is drawn, and ' +
+        'dividing those by frames made the figure track 1/frames. The baseline is ' +
+        'measured once with renderer.render paused and read two ways: charged per second ' +
+        '(`idleBytesIfChargedPerSecond`) and charged per rAF callback ' +
+        '(`idleBytesIfChargedPerCallback`). ONE PASS CANNOT SPLIT THEM, so the gate ' +
+        'subtracts the SMALLER — `idleBytesSubtracted` says which it was. That is the ' +
+        'strict reading: it removes less of the measured churn, so `bytesPerFrame` is ' +
+        'the larger of the two defensible figures and a pass is earned, never granted. ' +
+        'On this rasteriser the idle pass runs at vsync and the measured window at a few ' +
+        'fps, so the per-callback figure is much the smaller and is the one used. ' +
+        '`uncorrectedBytesPerFrame` is the figure with no correction at all, kept so the ' +
+        'subtraction is visible. `netGrowthKB` near zero with a large ' +
         '`sawtoothAmplitudeKB` is churn, not a leak.',
     },
     gc: {
