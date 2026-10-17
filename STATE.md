@@ -201,6 +201,21 @@ options shown, and answered "use CI as gate runner". The procedure:
 
 No gate, budget or threshold changes.
 
+**Owner instruction, 2026-10-17: perf-heavy work goes to a cloud session.** "If my computer is
+too slow to process performance tasks, note and delegate it to Claude Code in the cloud."
+
+- **Where M8b stands.** The first CI gate pass on `wip/m8b-r34` (run 38993748999) failed
+  `gate:perf` on heap churn: **44 784 B/frame against 40 960**. Every gate before it was green,
+  and `gate:meshgen` measured a worker max of 56 ms with the cap verified.
+- **Local `gate:smoke` fails functionally.** Every wild drill reports "no open approach to the
+  dragon to stage the keeper on". There are 6 page errors, and the M8a stale-tab start-fresh
+  drill regressed.
+- **What happened to the local fix.** A local integrator started on both defects and was
+  stopped. Its partial edits are pushed as `3fc0cf7` on `wip/m8b-r34`; they are unit-tested
+  only.
+- **What happens next.** The rest of the M8b fix, smoke and heap together, goes to one remote
+  agent as the single sequential owner. Critics and close-out stay in the local session.
+
 ---
 
 ## 2026-10-16 · run 33 · M8b — approach and calm: a wild dragon reacts to the player
@@ -946,3 +961,4 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
+- run started 2026-10-17T13:02:35Z
