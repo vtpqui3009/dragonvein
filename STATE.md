@@ -257,6 +257,67 @@ above was invisible to all of them:
 `tools/playtest.mjs` (the drills) and `tests/`. Cross-directory, so **one sequential owner:
 the integrator**, per CLAUDE.md §3.3.
 
+### Integrator notes — what the fix turned out to require, and one contract change
+
+`npm run gates` **exits 0** on `wip/m8b-r35` at `fb7cc9a`, in this container, with the
+rasteriser cap verified: heap **40 024 B/frame** against 40 960 with `wild: {"dragon":true,
+"keeper":true}`, `cpuFrameMs` **p50 0.9 / p95 1.6 ms** against 3.5 (both enforced), **21**
+draw calls against 180, meshgen worker **max 41.7 ms** against 120, bundle 250.81 kB gzipped,
+and `gate:smoke` **0 page errors** with all five wild drills and `m8b-approach.webm` (32.8 s)
+landing. Five commits: `0a60581`, `c124f8d`, `c7d3956`, `1ee72fb`, `fb7cc9a`.
+
+**The diagnosis above was right about the sim and incomplete about the deck.** `stepKeeper`
+had no pathfinding, and it now walks a flow field (`src/sim/wild.ts` §the keeper's
+navigation). But the reason `stage` found no corridor was underneath that: **the `Deck` the
+page derived handed the sim each prop's scatter *reservation* rather than what a body meets.**
+A trunk's reservation is "about the crown's half-width, so crowns may touch but trunks never
+crowd"; a crystal shard's was its half-width × 1.45, where the shard itself is an octahedron
+of radius 0.3 × scale. Measured: 97 circles summing to **94 % of the deck's area, 16 % of it
+standable, in 54 disconnected pockets**, with the dragon's home spot and the keeper's gate
+both inside an obstacle. No navigation can cross that, and criterion 7 is unreachable on it.
+With each kind's real footprint below the keeper's height (read off its own GLB), the glade's
+middle kept clear and the gate moved to a spot with a route out: coverage **37 %**, 45 % of
+the deck standable, **97 % of that in one piece**.
+
+The dragon was the other half of it: its footprint is 1.36 across, its largest standable
+pocket on the dressed island was **1.4 m²**, and it could not take a step — so no run had
+ever seen it wander. `artifacts/shots/17-wild-wander.png` is the first one drawn.
+
+**Criterion 7, measured.** `tests/wild-nav.test.ts`, over the hero island's own deck frozen
+as `tests/fixtures/hero-deck.json`: **46 of 47 reachable targets of a seeded 48 arrived
+within 0.45 (97.9 %)**, worst miss 0.41, and **0 of 16** targets inside an obstacle or off
+the deck, where it stops clear and does not move at all for 60 further ticks. Reachability is
+decided by the test's own flood fill on a grid twice as fine as the navigation's. The one
+miss is a target 0.61 from the dragon, where the dragon's body is in the way and the keeper
+waits. `gate:smoke` drills eight tapped targets through real clicks: **8 of 8, every one
+0.000 from the mark**, a tap answered in 3.0 ms.
+
+**Contract change, `docs/ARCHITECTURE.md` §Ownership table, `src/sim/wild.ts` row** (same
+commit as this note): the `Deck`'s obstacle circles are documented as what a body *collides
+with*, not what the scatter reserved, and **the keeper's route is derived, never saved** — a
+pure function of the `Deck` and `keeper.goal`, so `World` and the schema do not grow for it
+and schema 2 stands. A world saved mid-walk resumes bit-identically, asserted at four
+different ticks.
+
+**Drill changes, in their own commit (`fb7cc9a`), with no assertion about the approach
+touched.** Gestures are dispatched as one burst instead of one awaited CDP call at a time:
+in this container a press with three 1-pixel moves arrived with `pointerdown` and `pointerup`
+**5.1 s apart**, and a double tap's two taps **2.1 s apart**, so TAP_MS (450 ms) and
+DOUBLE_TAP_MS (380 ms) were right to refuse them and what was being measured was the
+harness. An approach aims through the new `approach(gap)` hook at a spot the keeper can reach
+rather than at a point on the straight line to the dragon, which on a dressed island is often
+inside a trunk.
+
+**Carried hazards for the next run.** (1) `uncorrectedBytesPerFrame` is **46 150**, over the
+40 960 line; the gate scores the corrected 40 024, which leaves **936 B of headroom**. The
+churn rose from 32 821 because both bodies now actually animate — the dragon's walk, flight
+and attitude paths had never run on this island. Anything that buys it back is in
+`src/render/`, which this run does not own. (2) The rasteriser cap failed to verify on one
+`gate:perf` run of two ("1 of 59 threads are not inside their intended cpu set"), which
+silently demotes the p95 enforcement to p50; it verified on the re-run. (3)
+`tests/fixtures/hero-deck.json` is a snapshot: re-dump it with `__dragonveinWild.deck()` if
+the island is re-dressed, and `gate:smoke`'s tap drill is what catches a stale one.
+
 ---
 
 ## 2026-10-17 · run 34 · M8b — resumed from run 33's snapshot, gated on CI
