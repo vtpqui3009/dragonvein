@@ -8,7 +8,8 @@ import { DeckHeights, KEEPER_UNIFORMS, keeperGeometry, withKeeper } from './rend
 import type { WildDragonView } from './render/wild-dragon';
 import { TICK_HZ, TICK_MS, adoptGenomes, createWorld, step, type World } from './sim/world';
 import {
-  DRAGON_SCALE, LAND_S, TAKEOFF_S, WILD_DT, blankTemperament, keeperTo, temperament, type Deck, type Temperament,
+  DRAGON_SCALE, KEEPER_RADIUS, LAND_S, TAKEOFF_S, WILD_DT, blankTemperament, circleClear, keeperTo, routeExists,
+  temperament, type Deck, type Temperament,
 } from './sim/wild';
 import type { LoadReport, SaveSession, SaveState, SaveTiming } from './sim/persist';
 import type { SaveStore } from './core/save';
@@ -907,13 +908,26 @@ const CLEARING_INNER: Spot = { ...CLEARING, r: 2.3 };
  *
  * Keeping every boulder and bush outside one fixed radius drew exactly what it says: a
  * clean circular ring of props around the glade, which reads as a stamp rather than as a
- * place. Each sample gets its own exclusion radius between 0.6x and 1.35x instead, so the
+ * place. Each sample gets its own exclusion radius between 0.8x and 1.35x instead, so the
  * boundary is ragged and some props stand well inside the glade while others keep their
  * distance. Same seeded rng, so the layout is still identical in every build.
+ *
+ * The lower factor was 0.6, which let a boulder stand 1.38 from the glade's centre. A wild
+ * dragon's footprint is 1.36 across (src/sim/wild.ts BODY_RADIUS), and the glade is the ground
+ * it grazes and wanders on, so a prop that close left it nowhere to take a step: measured on
+ * the island, the dragon's largest standable pocket was 1.4 m² and it could not walk at all
+ * (STATE.md run 35). At 0.8 nothing solid stands inside GLADE_OPEN of the middle.
  */
 function softGlade(rng: () => number): Spot {
-  return { ...CLEARING_INNER, r: CLEARING_INNER.r * (0.6 + rng() * 0.75) };
+  return { ...CLEARING_INNER, r: CLEARING_INNER.r * (0.8 + rng() * 0.55) };
 }
+
+/**
+ * The radius around the glade's centre that holds no solid prop: the dragon's standing room,
+ * and the one piece of the island a body can turn around in. `CLEARING_INNER.r * 0.8` is the
+ * tightest any scattered prop may come, and the flowering shrubs below are held out to it too.
+ */
+const GLADE_OPEN = CLEARING_INNER.r * 0.8;
 
 // --- reservations: the path and the crystal clusters, laid out before the scatter -------
 /**
@@ -1284,9 +1298,15 @@ function heroSpot(
       : pickNear(rng, trunks, 0.05, 0.6, 0.2 + s * 0.35);
     ground('bush', spot, s, 0, { sy: 0.85 + rng.next() * 0.3 });
   }
+  // In the glade, which is the one place on the island with full sun — but not in the middle
+  // of it: `GLADE_OPEN` is the dragon's standing room. `-2.4` planted all eleven across the
+  // whole glade interior, including its centre, which is the dragon's own home spot.
   for (let i = 0; i < 11; i++) {
     const s = 0.3 + rng.next() * 0.14;
-    ground('flowershrub', pickNear(rng, [CLEARING], -2.4, -0.15, 0.16 + s * 0.3),
+    // The band is wider than the old one was deep, and gets more attempts, because holding
+    // them out of the middle takes away most of the room they used to have: at 60 attempts in
+    // a 0.7-unit band only 3 of the 11 found a place, and the glade lost its flowers.
+    ground('flowershrub', pickNear(rng, [CLEARING], GLADE_OPEN - CLEARING.r, 0.55, 0.16 + s * 0.3, DECK_R, 160),
       s, 0, { sy: 0.85 + rng.next() * 0.3 });
   }
   for (let i = 0; i < 22; i++) {
@@ -1342,22 +1362,77 @@ function heroSpot(
  *
  * The dragon starts in the glade, the island's open ground. The keeper starts across the deck
  * by the rim, out of the dragon's notice: the player walks in to meet it.
+ *
+ * **An obstacle is what a body meets, not what the scatter reserved for it.** This is the
+ * defect behind every failed wild drill in run 35, under the one the sim carried: the first
+ * version of this block handed the sim each spot's *reservation* radius — a trunk's is "about
+ * the crown's half-width, so crowns may touch but trunks never crowd" — and a crystal shard's
+ * reservation inflated by a further 1.45. Measured on the result: 97 circles summing to 94 %
+ * of the deck's area, **16 % of it standable, in 54 disconnected pockets**, with the dragon's
+ * own home spot and the keeper's gate both inside an obstacle. There was nowhere to walk, so
+ * no route could be found and no keeper could be staged.
+ *
+ * `SOLID_R` below is the real thing: the widest each kind's own geometry gets **below the
+ * keeper's height** (`KEEPER_HEIGHT`, 0.46), measured off the committed GLB it is drawn from
+ * and scaled by the instance's own scale. A keeper walks under a broadleaf's canopy, past a
+ * dead tree's bare trunk and around a conifer's branch skirt, which is what the renders show.
  */
+/**
+ * Collision radius in world units for each dressed kind, as a function of its instance scale
+ * `s`. Each coefficient is the kind's measured radius below 0.46 world units divided by `s`,
+ * over the scale range the hero island uses — reproduce it by walking the POSITION accessor of
+ * `public/assets/<file>.lod<n>.glb` (`tools/glb.mjs` `readGlb`) and taking the largest
+ * `hypot(x, z)` among vertices below `ymin + 0.46 / s`. The kinds not named here are ground
+ * cover (grass, fern, moss, lichen, fallen leaves) and the path stones, which are walked over.
+ */
+const SOLID_R: Partial<Record<HeroKind, (s: number) => number>> = {
+  // A conifer's skirt sweeps to the ground and widens fast with height: 0.63 at 1.8 tall,
+  // 0.77 at 2.6. The only kind whose fit needs a constant term.
+  conifer: (s) => 0.32 + 1.72 * s,
+  broadleaf: (s) => 1.18 * s,       // a clear trunk; the canopy is overhead (0.25–0.35)
+  sapling: (s) => 0.75 * s,         // 0.19–0.29
+  windtwisted: (s) => 0.74 * s,     // 0.17–0.22, and it leans away over the drop
+  deadtree: (s) => 0.85 * s,        // 0.17–0.22, a bare snag
+  boulders: (s) => 1.0 * s,         // 0.20–0.42, the whole lump: it is knee-high
+  columnar: (s) => 1.35 * s,        // 0.43–0.57, a wide low outcrop
+  bush: (s) => 0.79 * s,            // 0.26–0.43, foliage all the way down
+  flowershrub: (s) => 0.65 * s,     // 0.20–0.29
+};
 const deck: Deck = (() => {
   const o: number[] = [];
-  for (const t of heroTrees) o.push(t.x, t.z, t.r);
-  for (const r of heroRocks) o.push(r.x, r.z, r.r);
-  // A crystal shard stands up to 1.6 tall, as high as a dragon's spread wing: the whole of the
-  // footprint its cluster reserved, as the scatter does.
-  for (const c of crystalShards) o.push(c.x, c.z, Math.max(c.sx, c.sz) * 1.45);
   for (const s of heroSpots) {
-    // The radii `pickNear` reserved for them, from the same expressions.
-    if (s.kind === 'bush') o.push(s.x, s.z, 0.2 + s.s * 0.35);
-    else if (s.kind === 'flowershrub') o.push(s.x, s.z, 0.16 + s.s * 0.3);
+    if (s.onRock >= 0) continue;              // lichen grown on a boulder, not on the ground
+    const solid = SOLID_R[s.kind];
+    if (solid) o.push(s.x, s.z, solid(s.s));
   }
-  // The keeper starts across the deck from the glade, by the rim: well outside any dragon's notice.
-  const away = 4.9 / Math.hypot(CLEARING.x, CLEARING.z);
-  return { radius: DECK_R, obstacles: o, home: [CLEARING.x, CLEARING.z], gate: [-CLEARING.x * away, -CLEARING.z * away] };
+  // A crystal shard is an octahedron of geometry radius 0.3 scaled by (sx, h, sz), so its own
+  // half-width is 0.3 max(sx, sz) = 0.09–0.18; the 0.12 is what a tilt of up to 0.225 rad
+  // carries the body sideways by at the keeper's height.
+  for (const c of crystalShards) o.push(c.x, c.z, 0.3 * Math.max(c.sx, c.sz) + 0.12);
+  // The keeper starts across the deck from the glade, by the rim: well outside any dragon's
+  // notice. It must be somewhere it can *stand*, though — the first version took the point
+  // 4.9 out along that bearing whatever stood there, and on this layout a bush stood there, so
+  // a new world began with the keeper inside an obstacle until the sim's first tick pushed it
+  // out. The bearing is kept and the radius walked in, then the bearing swept, until a spot is
+  // clear for a keeper with room to spare.
+  const bearing = Math.atan2(-CLEARING.z, -CLEARING.x);
+  const probe: Deck = { radius: DECK_R, obstacles: o, home: [CLEARING.x, CLEARING.z], gate: [0, 0] };
+  const gate = ((): [number, number] => {
+    for (let turn = 0; turn <= 36; turn++) {
+      // Out along the bearing, then alternately to each side of it by 10° at a time.
+      const a = bearing + (turn === 0 ? 0 : (turn % 2 ? 1 : -1) * Math.ceil(turn / 2) * (Math.PI / 18));
+      for (let d = 4.9; d >= 3.4; d -= 0.1) {
+        const x = Math.cos(a) * d, z = Math.sin(a) * d;
+        // Room to stand, and a way out of it: a spot in a sealed pocket is somewhere the
+        // player taps and the keeper cannot leave.
+        if (circleClear(probe, x, z, KEEPER_RADIUS + 0.1) && routeExists(probe, x, z, CLEARING.x, CLEARING.z)) {
+          return [x, z];
+        }
+      }
+    }
+    return [Math.cos(bearing) * 4.9, Math.sin(bearing) * 4.9];
+  })();
+  return { radius: DECK_R, obstacles: o, home: [CLEARING.x, CLEARING.z], gate };
 })();
 
 /**
@@ -2645,10 +2720,19 @@ declare global {
     /** Stand the keeper at (x, z) at once: a drill's setup, never play. */
     place: (x: number, z: number) => ReturnType<typeof readWild>;
     /**
-     * Stand the keeper `dist` from the dragon where a straight walk to it is clear of every
-     * obstacle (the most open bearing of 72), and return that spot — or null if none is.
+     * Stand the keeper about `dist` from the dragon on a spot it can stand on, with a route to
+     * the dragon and open ground for the first strides along it, and return that spot — or null
+     * if the deck holds none. See the implementation for what "about" and "open" mean.
      */
     stage: (dist: number) => [number, number] | null;
+    /** The island's walkable deck as the sim sees it: radius, obstacle circles, home, gate. */
+    deck: () => Deck;
+    /**
+     * A spot `gap` from the dragon the keeper can stand on and walk to from where it is, on
+     * the bearing nearest its own: where to tap to come in to that distance. Null if the deck
+     * has none. Nothing is moved — the caller walks there.
+     */
+    approach: (gap: number) => [number, number] | null;
     /** A deck point (island frame) in CSS pixels on the page, at the island's current spin. */
     project: (x: number, z: number) => [number, number];
     /** Pin the island's spin (radians), or let it turn again (null). */
@@ -2700,27 +2784,105 @@ if (TEST_HOOKS) {
       }
       return readWild();
     },
+    /*
+     * A drill needs the keeper standing a given distance from the dragon, able to walk in, and
+     * with its first strides along open ground — a tap aimed a metre or two ahead must land
+     * where it was aimed, not be pushed off a trunk.
+     *
+     * The old version asked for a *straight corridor* the whole way to the dragon, and a
+     * dressed island has none: of 72 bearings at 6.32 units, 22 were on the deck and the best
+     * clearance over the lane was −0.14 against its own bar of +0.25, so it returned null at
+     * every distance and every wild drill failed (STATE.md run 35). What it was really asking
+     * for was a straight walk, because that was all the keeper could do. The keeper now routes
+     * around the furniture (src/sim/wild.ts §the keeper's navigation), so the question is the
+     * weaker and truer one:
+     *
+     *   - a spot the keeper can stand on, clear of every obstacle and the deck's lip;
+     *   - at `dist` from the dragon, or within 0.45 of it — never nearer than dist − 0.45, so a
+     *     drill that staged outside the notice radius stays outside it;
+     *   - with a route to the dragon (`routeExists`: the keeper's own flow field);
+     *   - with `lane` units of open ground toward the dragon, so the near aim points of a
+     *     tap-to-move drill are on walkable ground, and an approach has somewhere to walk. The
+     *     longest lane the deck offers is taken: 3.2 units if any bearing has one, else 2.6,
+     *     2.0, 1.4. (Measured on this island, with the dragon in the glade: one or two bearings
+     *     carry 2.6, rarely 3.2, and seven carry 1.4.)
+     *
+     * Of the bearings that qualify it takes the most open one.
+     */
     stage: (dist) => {
       const w = world;
       if (!w) return null;
       const [dx, dz] = w.wild.pos;
       const o = deck.obstacles;
-      let best: [number, number] | null = null, bestScore = -Infinity;
-      for (let i = 0; i < 72; i++) {
-        const a = (2 * Math.PI * i) / 72;
-        const x = dx + Math.cos(a) * dist, z = dz + Math.sin(a) * dist;
-        if (Math.hypot(x, z) > deck.radius - 0.3) continue;
-        // The keeper's corridor to the dragon: its closest approach to every obstacle.
+      const BEARINGS = 240;
+      /** The closest any obstacle comes to the first `lane` units from (x, z) toward the dragon. */
+      const laneClearance = (x: number, z: number, r: number, lane: number) => {
+        const sx = ((dx - x) / r) * lane, sz = ((dz - z) / r) * lane;
         let clearance = Infinity;
         for (let j = 0; j < o.length; j += 3) {
-          const px = o[j]! - x, pz = o[j + 1]! - z, sx = dx - x, sz = dz - z;
-          const t = Math.max(0, Math.min(0.8, (px * sx + pz * sz) / (sx * sx + sz * sz)));
+          const px = o[j]! - x, pz = o[j + 1]! - z;
+          const t = Math.max(0, Math.min(1, (px * sx + pz * sz) / (sx * sx + sz * sz)));
           clearance = Math.min(clearance, Math.hypot(px - sx * t, pz - sz * t) - o[j + 2]!);
         }
-        if (clearance > 0.25 && clearance > bestScore) { bestScore = clearance; best = [x, z]; }
+        return clearance;
+      };
+      for (const lane of [3.2, 2.6, 2.0, 1.4]) {
+        for (const off of [0, -0.15, 0.15, -0.3, 0.3, -0.45, 0.45]) {
+          const r = dist + off;
+          if (r < 1.2 || r > deck.radius * 2) continue;
+          let best: [number, number] | null = null, bestScore = -Infinity;
+          for (let i = 0; i < BEARINGS; i++) {
+            const a = (2 * Math.PI * i) / BEARINGS;
+            const x = dx + Math.cos(a) * r, z = dz + Math.sin(a) * r;
+            if (Math.hypot(x, z) > deck.radius - 0.3) continue;
+            if (!circleClear(deck, x, z, KEEPER_RADIUS + 0.06)) continue;
+            const clearance = laneClearance(x, z, r, Math.min(lane, Math.max(0.4, r - 0.8)));
+            if (clearance <= bestScore || clearance < 0.3) continue;
+            if (!routeExists(deck, x, z, dx, dz)) continue;
+            bestScore = clearance; best = [x, z];
+          }
+          if (best) {
+            globalThis.__dragonveinWild?.place(best[0], best[1]);
+            return best;
+          }
+        }
       }
-      if (best) globalThis.__dragonveinWild?.place(best[0], best[1]);
-      return best;
+      return null;
+    },
+    deck: () => structuredClone(deck) as Deck,
+    /*
+     * A drill that walks the keeper in used to aim at a point on the straight line from the
+     * keeper to the dragon. On a dressed island that point is often inside a trunk or a bush,
+     * and `keeperTo` then pulls the goal out to the nearest clear spot — which can be where the
+     * keeper already stands, so the tap does nothing and the approach stalls short of the
+     * notice radius. (That is what timed out the M8b clip: the keeper stopped 4.28 from the
+     * dragon, outside its notice, and calm never rose.) The keeper can walk round the furniture
+     * now, so the aim point does not have to be on that line — only at the right distance, on
+     * ground it can stand on, with a route to it. This picks the bearing closest to the one the
+     * keeper is already on, so a clear approach still reads as walking straight in.
+     */
+    approach: (gap) => {
+      const w = world;
+      if (!w) return null;
+      const dx = w.wild.pos[0], dz = w.wild.pos[1];
+      const kx = w.keeper.pos[0], kz = w.keeper.pos[1];
+      if (gap <= 0.2) return [dx, dz];          // the rush: `keeperTo` stops it at the body
+      const base = Math.atan2(kz - dz, kx - dx);
+      for (const off of [0, -0.2, 0.2, -0.4, 0.4]) {
+        const r = gap + off;
+        if (r < 0.5) continue;
+        for (let i = 0; i < 180; i++) {
+          // Bearings in order of how far they turn off the keeper's own.
+          const turn = ((i % 2 ? 1 : -1) * Math.ceil(i / 2) * Math.PI) / 90;
+          const a = base + turn;
+          const x = dx + Math.cos(a) * r, z = dz + Math.sin(a) * r;
+          if (Math.hypot(x, z) > deck.radius - 0.25) continue;
+          if (!circleClear(deck, x, z, KEEPER_RADIUS + 0.03)) continue;
+          if (!routeExists(deck, kx, kz, x, z)) continue;
+          return [x, z];
+        }
+      }
+      return null;
     },
     project: (x, z) => {
       island.updateMatrixWorld();
