@@ -167,6 +167,98 @@ verification-grade real-GPU row and a Potato row, and the M3 and M4 sightings (�
 
 ---
 
+## 2026-10-17 · run 35 · M8b — took the step over from run 34; the keeper could not walk
+
+**Step**: `M8b`, still the first step in reading order that is not `DONE`. **The acceptance
+criteria are run 33's, below, unchanged.** This run does not rewrite them either.
+
+**Why this run exists.** Run 34 ran from the owner's Windows machine and delegated its
+perf-heavy fixing to a cloud agent on `wip/m8b-r34`. That branch's head `3fc0cf7` was pushed
+at 03:19 UTC and had not moved in ten hours, which is the condition `NEXT.md` names: "if
+`wip/m8b-r34` stops moving for hours, run 34 died. Take M8b from the head of that branch."
+No other DRAGONVEIN session was running. This run starts from `3fc0cf7`, not from `main` and
+not from scratch, and works on `wip/m8b-r35`.
+
+**Step 0's push worked** (`cfbe02f`), so the credential path is sound. The marker is removed
+by this commit.
+
+### What run 34's unverified fixes turned out to be worth
+
+`3fc0cf7`'s own message says "partial smoke and heap fixes, unit-tested only — gate:smoke and
+gate:perf not yet run". This container is Linux, so the rasteriser cap works and both gates
+could finally be run on that code rather than inferred. Both of run 34's claims check out:
+
+- **The heap defect is fixed.** `gate:perf` passes at **32 821 B/frame against 40 960**, down
+  from the 44 784 CI measured on `0846a99` (CI run 38993748999). The gate change on that
+  branch does not touch the budget — it *tightens* the measurement, by refusing to report a
+  reading unless `__dragonveinStats().wild` shows the dragon and the keeper really were in the
+  scene. `artifacts/perf.json` records `wild: {"dragon":true,"keeper":true}`, so this is a
+  budget met with the dragon present, not a budget met by measuring an empty island.
+  `cpuFrameMs` p95 is 1.4 ms against 3.5 including the sim step; 21 draws against 180;
+  meshgen worker max 49 ms against 120.
+  - **Carried hazard:** `uncorrectedBytesPerFrame` is **41 013**, still a hair over the 40 960
+    line. The gate scores the corrected figure, and the correction is justified in
+    `perf.json`'s own note, but the uncorrected number no longer has headroom either.
+- **The M8a save regression is gone.** Every save drill passes, stale-tab start-fresh
+  included, with 0 page errors across all five save drill groups.
+
+**So the seven cap-independent gates, `gate:meshgen` and `gate:perf` are all green on
+`3fc0cf7`.** One gate fails: `gate:smoke`.
+
+### The real defect behind "no open approach to the dragon to stage the keeper on"
+
+All four wild drills and the M8b clip fail with that one message, and the "5 page errors" the
+previous handoff reported are those same five failures, not five separate faults. Measured in
+this container, not reasoned about:
+
+1. **`__dragonveinWild.stage(dist)` returns null at every distance tried** — 3, 3.5, 4, 4.5,
+   5, 5.36, 5.5, 6, 6.323, 6.5, 7 — including 5.36, which is where the keeper is *already
+   standing* at boot. So the failure is not "the drill asked for too much room".
+2. **It is not a NaN or a degenerate obstacle.** Instrumented, the deck holds **97 obstacle
+   circles, all finite**, radii 0.27–0.87, on a disc of radius 5.6 (area ≈ 98 units²; the
+   circles cover roughly half of it).
+3. **`stage` looks for a straight open corridor, and this island has none.** Of 72 bearings at
+   `notice + 2.2` = 6.32, 22 land inside the deck, and the **best corridor clearance over all
+   of them is −0.14** against the function's own bar of +0.25. At dist 3, 70 bearings are in
+   the deck and the best is **0.236** — still under the bar. There is no straight lane of that
+   length on a dressed island, and there never was.
+4. **The reason that matters is in the sim, not the drill.** `stepKeeper` has no pathfinding:
+   it steps straight at the goal, lets `pushOut` slide it off obstacles, and when the slide
+   stops making progress (`progress < 0.15 * want`) it **clears the goal and stands still**.
+   A straight-ish lane is therefore exactly what the keeper needs, because a straight-ish lane
+   is all it can walk.
+5. **So the headline interaction of criterion 4 barely works.** Walking the keeper from its
+   boot position to **40 deterministic deck targets, 2 arrived and 38 did not** — many without
+   moving at all, because the first tick already registered no progress and cancelled the goal.
+   Tap-to-move works on **5 %** of taps.
+
+**The ruling, against CLAUDE.md §2.7.** The drill is not what is wrong, so the drill is not
+what gets changed. A player tapping the island gets nowhere 95 % of the time; run 33's
+criterion 6 ("it must not leave the island or get stuck") is failed by the keeper, and
+criterion 4's tap-to-move is failed outright. **The keeper needs real navigation.** `stage`'s
+straight-corridor search then stops being the right question too, but it is a consequence of
+the fix, not the object of it: the drill's assertions about the approach — alert, wary, flee,
+settle, calm rising monotonically while still — stay exactly as run 33 wrote them.
+
+### What this run adds to run 33's criteria
+
+Run 33's six criteria stand unchanged and are the bar. This run adds one, because the defect
+above was invisible to all of them:
+
+7. **The keeper goes where it is told.** Over a fixed, seeded set of at least 40 deck targets
+   reachable on an open deck, the keeper arrives at **≥ 95 %** of them (within 0.45 units),
+   and at **0 %** of targets inside an obstacle or off the deck, where it must instead stop
+   clear and not jitter. Asserted by a test in `tests/`, and drilled in `gate:smoke` through
+   real pointer events for a sample of them. The navigation is deterministic and lives in
+   `src/sim/`, so `check:determinism` and `check:layers` still pass, and it must not cost the
+   heap budget: `gate:perf` stays under 40 960 B/frame with the dragon present.
+
+**Ownership**: `src/sim/wild.ts` (the navigation), `src/main.ts` (the `stage` hook),
+`tools/playtest.mjs` (the drills) and `tests/`. Cross-directory, so **one sequential owner:
+the integrator**, per CLAUDE.md §3.3.
+
+---
+
 ## 2026-10-17 · run 34 · M8b — resumed from run 33's snapshot, gated on CI
 
 **Step**: `M8b`, still the first step in reading order that is not `DONE`. **The acceptance
@@ -961,4 +1053,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-17T13:02:35Z
