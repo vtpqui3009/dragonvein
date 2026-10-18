@@ -166,6 +166,8 @@ interface LegState {
   thighRestT: THREE.Matrix4; shinRestT: THREE.Matrix4;
   /** Posed: knee angle (radians), whether planted, whether the IK had to stretch. */
   kneeAngle: number; planted: boolean; stretched: boolean;
+  /** The rest pose's knee angle, so the rest pose can report its own rather than the last pose's. */
+  restKnee: number;
 }
 
 export class DragonWalk {
@@ -228,14 +230,14 @@ export class DragonWalk {
         hip, knee, ankle, ball: V(leg.ball), toe: V(leg.toe),
         l1: knee.distanceTo(hip), l2: ankle.distanceTo(knee),
         pole: new THREE.Vector3(), thighRestT: new THREE.Matrix4(), shinRestT: new THREE.Matrix4(),
-        kneeAngle: 0, planted: true, stretched: false,
+        kneeAngle: 0, planted: true, stretched: false, restKnee: 0,
       };
       const dir = ankle.clone().sub(hip).normalize();
       s.pole.copy(knee).sub(hip).addScaledVector(dir, -knee.clone().sub(hip).dot(dir)).normalize();
       const nrm = knee.clone().sub(hip).cross(ankle.clone().sub(knee)).normalize();
       DragonWalk.frame(knee.clone().sub(hip).normalize(), nrm, s.thighRestT).transpose();
       DragonWalk.frame(ankle.clone().sub(knee).normalize(), nrm, s.shinRestT).transpose();
-      s.kneeAngle = hip.clone().sub(knee).angleTo(ankle.clone().sub(knee));
+      s.kneeAngle = s.restKnee = hip.clone().sub(knee).angleTo(ankle.clone().sub(knee));
       this.legs.push(s);
       drop = Math.min(drop, this.rest[leg.anchor]!.y - leg.ball[1]);
     });
@@ -257,8 +259,23 @@ export class DragonWalk {
     const fl = this.flight !== null && this.flight.active ? this.flight : null;
     const att = this.attitude;
     if (t === null && fl === null && att === null) {
-      for (let i = 0; i < this.bones.length; i++) this.bones[i]!.matrixWorld.identity();
-      for (let i = 0; i < this.legs.length; i++) { this.legs[i]!.planted = true; this.legs[i]!.stretched = false; }
+      // The rest pose, taken without posing anything: every bone's matrix is the identity. The
+      // joint rotations and positions have to be set to the rest pose too, not merely left —
+      // `ball()`, `toe()` and `legState()` read `R`, `P` and the leg states, not the matrices,
+      // so skipping them makes a rest reading report whatever the last real pose left behind.
+      // (It did, until M8b criterion 2's work tripped over it: a "rest" foot height measured
+      // this way was a walking dragon's.)
+      for (let i = 0; i < this.bones.length; i++) {
+        this.bones[i]!.matrixWorld.identity();
+        this.R[i]!.identity();
+        this.P[i]!.copy(this.rest[i]!);
+      }
+      for (let i = 0; i < this.legs.length; i++) {
+        const s = this.legs[i]!;
+        s.planted = true;
+        s.stretched = false;
+        s.kneeAngle = s.restKnee;
+      }
       this.travel = 0;
       this.weight = 0;
       return;

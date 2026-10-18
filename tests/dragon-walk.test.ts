@@ -126,6 +126,41 @@ describe.each(genomes.map((g, i) => [i, g] as const))('genome #%i', (_i, gm) => 
       a0.bones.forEach((b, i) => expect(b.matrixWorld.equals(a1.bones[i]!.matrixWorld)).toBe(true));
     }
   });
+  /**
+   * The rest pose has to read as the rest pose through *every* way of asking, not only through
+   * the bone matrices. `pose(null)` with no layers takes a shortcut — it writes the identity into
+   * each `matrixWorld` and returns — but `ball()`, `toe()` and `legState()` answer from the
+   * solver's own joint rotations, positions and leg states, which that shortcut used to leave
+   * exactly as the previous pose had them. A rest reading taken after a walk was therefore a
+   * walking dragon's: the trap cost half an hour of M8b criterion 2's measurement before it was
+   * spotted, and it would have silently poisoned anything that measured a change *from* rest.
+   * So: walk it, then ask for rest, and require rest's own answers.
+   */
+  it('reports the rest pose through ball, toe and legState after a walk, not the walk it just did', () => {
+    const w = walkParams(gm);
+    const walk = new DragonWalk(a.rig, w);
+    const V = (v: readonly number[]) => new THREE.Vector3(v[0], v[1], v[2]);
+    const atRest = () => {
+      walk.pose(null);
+      return a.rig.legs.map((_, i) => ({ ball: walk.ball(i, new THREE.Vector3()), toe: walk.toe(i, new THREE.Vector3()), st: walk.legState(i) }));
+    };
+    const cold = atRest();
+    walk.pose(0.63 * w.period, 1);
+    const warm = atRest();
+    a.rig.legs.forEach((leg, i) => {
+      // The rest ball and toe are the rig's own, to the last bit of a double — not near them.
+      expect(warm[i]!.ball.distanceTo(V(leg.ball)), `leg ${i} rest ball`).toBeLessThan(1e-12);
+      expect(warm[i]!.toe.distanceTo(V(leg.toe)), `leg ${i} rest toe`).toBeLessThan(1e-12);
+      // And asking twice, once from cold and once after a walk, gives the same answer.
+      expect(warm[i]!.ball.distanceTo(cold[i]!.ball), `leg ${i} ball, cold vs after a walk`).toBeLessThan(1e-12);
+      expect(warm[i]!.st.planted, `leg ${i} planted at rest`).toBe(true);
+      expect(warm[i]!.st.stretched, `leg ${i} stretched at rest`).toBe(false);
+      // The rest knee angle is the rig's rest bend, not whatever the walk's last frame held.
+      const rest = V(leg.hip).sub(V(leg.knee)).angleTo(V(leg.ankle).sub(V(leg.knee)));
+      expect(warm[i]!.st.kneeAngle, `leg ${i} rest knee`).toBeCloseTo(rest, 12);
+    });
+  });
+
   it('rests at the identity, and walks with planted feet and bending knees', () => {
     const w = walkParams(gm);
     const walk = new DragonWalk(a.rig, w);
