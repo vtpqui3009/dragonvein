@@ -294,12 +294,15 @@ const CREST_NEAR_WING = 0.1;
 /**
  * The five dragons in that family, and what the attitude gate found about them: 13 and 24 have
  * the crest through the wing in the rest mesh already (above); 17, 18 and 31 have it within
- * 0.0013, 0.0023 and 0.035 of the wing at rest, and when the neck rises — `ATTITUDES.alert`, or
+ * 0.0023, 0.0013 and 0.035 of the wing at rest, and when the neck rises — `ATTITUDES.alert`, or
  * any transition passing through a raised neck — the crest it carries goes *through* the
- * membrane, by 0.059, 0.041 and 0.052. That is a pre-existing defect of the graph (graph.ts
- * builds the crest and the wing without consulting each other), the same one as 13 and 24, and
- * it is three names wider than anyone knew before this gate existed. It is recorded here, not
- * fixed here: this commit moves no geometry and no amplitude.
+ * membrane: 0.074, 0.084 and 0.054 at the amplitudes shipped for criterion 2, against 0.059,
+ * 0.041 and 0.052 before them. That is a pre-existing defect of the graph (graph.ts builds the
+ * crest and the wing without consulting each other), the same one as 13 and 24, and amplifying
+ * the tells makes it worse on those three because a bigger tell moves the crest further. It is
+ * recorded here and in FINDINGS.md against M3, whose territory src/assets/ is; this step does
+ * not touch geometry, and the dragon the player meets on the hero island is not one of the five
+ * (its free wing starts 0.323 from its body, gid e35390fdfd).
  */
 const CREST_THROUGH_WING_UNDER_ATTITUDE = ['fixture #13', 'fixture #17', 'fixture #18', 'fixture #24', 'fixture #31'];
 
@@ -333,8 +336,8 @@ const PX_PER_UNIT = 48.5;
  * stroke, which run 36's criterion 2 takes as the least a player notices.
  *
  * This is not a licence to spend. The free wing — the vertex population that can actually put a
- * wing through a flank — is gated strictly at > 0 below, with 0.11 to 0.30 of margin, and that
- * bar does not move.
+ * wing through a flank — is gated strictly at > 0 below, with 0.038 to 0.26 of margin at the
+ * amplitudes shipped for criterion 2, and that bar does not move.
  */
 const JUNCTION_SLACK = 0.050;
 /**
@@ -365,7 +368,10 @@ describe('the probe under the attitude: no wing through the body in a crouch, a 
     const wp = walkParams(gm);
     const walk = new DragonWalk(a.rig, wp);
     const flight = new DragonFlight(walk, a.rig, fp);
-    const r = probeFlight({ ...a, phenotype: gm.phenotype }, flight, attitudeSamples(fp, wp.period), new DragonAttitude());
+    // The rig and the flight's params: `fold` and `rise` pose the wings in the flap's own units,
+    // and a bare `new DragonAttitude()` poses the body only — it would measure nothing at all
+    // about the two channels that move a wing toward the flank it is folded against.
+    const r = probeFlight({ ...a, phenotype: gm.phenotype }, flight, attitudeSamples(fp, wp.period), new DragonAttitude(a.rig, fp));
     expect(r.samples, 'the schedule covers the attitude, not a token pose').toBeGreaterThanOrEqual(60);
     expect(r.wingVerts).toBeGreaterThan(0);
     const crest = r.free.restMin < CREST_NEAR_WING;
@@ -376,8 +382,10 @@ describe('the probe under the attitude: no wing through the body in a crouch, a 
     console.log(`${label}${crest ? ' [crest family]' : ''}: free ${px(r.free.min)} at ${r.free.at.state}`
       + `, junction ${px(r.junction.min)} at ${r.junction.at.state}, any vertex ${px(r.body.min)}`
       + `, rest free ${r.free.restMin.toFixed(4)} junction ${r.junction.restMin.toFixed(4)}`);
-    // The hazard anyone can see: a wing through the flank. The free wing keeps 0.11 to 0.30 of
-    // margin over the whole attitude range on every dragon whose crest is not already in it.
+    // The hazard anyone can see: a wing through the flank. The free wing keeps 0.038 to 0.26 of
+    // margin over the whole attitude range on every dragon whose crest is not already in it;
+    // the thinnest of them, fixture #6, is thin because its wings sit 0.0009 from its flanks in
+    // the rest mesh, and it is thinnest at `wary`'s crouch with a flap ramping over it.
     if (!crest) {
       expect(r.free.min, `the free wing is inside the body at ${JSON.stringify(r.free.at)}`).toBeGreaterThan(0);
       // The junction band: on the body's surface by construction, so it is barred by how far in

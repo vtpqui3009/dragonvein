@@ -1816,7 +1816,8 @@ try {
         errors.push(`wild: ${name} was captured with the dragon in '${at.wild.state}', not the '${r.wild.state}' the drill waited for`);
       }
       say(`shot: ${SHOTS}/${name}  (${what}) — ${wildLine(at)}; tells: look ${fmt(at.dragon.attitude.look)} neck ${fmt(at.dragon.attitude.neck)} ` +
-        `head ${fmt(at.dragon.attitude.head)} lower ${fmt(at.dragon.attitude.lower)} tail ${fmt(at.dragon.attitude.tail)}; walk ${fmt(at.dragon.walkWeight)} ` +
+        `head ${fmt(at.dragon.attitude.head)} lower ${fmt(at.dragon.attitude.lower)} tail ${fmt(at.dragon.attitude.tail)} ` +
+        `fold ${fmt(at.dragon.attitude.fold)} rise ${fmt(at.dragon.attitude.rise)} rear ${fmt(at.dragon.attitude.rear)}; walk ${fmt(at.dragon.walkWeight)} ` +
         `flap ${fmt(at.dragon.flap)} glide ${fmt(at.dragon.glide)} altitude ${fmt(at.dragon.altitude)}; calm meter ${at.calmMeter}`);
       say(`  framing: camera ${sc.dragon ? sc.dragon.cameraDistance.toFixed(2) : '?'} from the body at ${elev}° up` +
         `${withKeeper ? ' on the pair' : ' on the dragon alone'}; in a ${sc.viewport[0]}x${sc.viewport[1]} frame the dragon is ` +

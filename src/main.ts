@@ -2699,7 +2699,10 @@ function readWild() {
       ready: true, gid: v.gid, triangles: v.triangles, buildMs: v.buildMs,
       holder: v.holder.position.toArray(), yaw: v.holder.rotation.y, scale: v.holder.scale.x,
       walkWeight: v.walkW, flap: v.fleeNow.flap, glide: v.fleeNow.glide, altitude: v.fleeNow.altitude,
-      attitude: { look: v.attitude.look, neck: v.attitude.neck, head: v.attitude.head, lower: v.attitude.lower, tail: v.attitude.tail },
+      attitude: {
+        look: v.attitude.look, neck: v.attitude.neck, head: v.attitude.head, lower: v.attitude.lower, tail: v.attitude.tail,
+        fold: v.attitude.fold, rise: v.attitude.rise, rear: v.attitude.rear,
+      },
     } : { ready: false, error: wildError },
     keeperView: { pos: keeper.position.toArray(), yaw: keeper.rotation.y, ring: KEEPER_UNIFORMS.uMark.value.toArray(), visible: keeper.visible },
     taps: { ...taps, lastGoal: [...taps.lastGoal] },

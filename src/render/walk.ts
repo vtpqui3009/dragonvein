@@ -41,6 +41,15 @@ import type { WalkParams } from '../assets/dragon/walk';
  * move back), and moves the whole posed skeleton rigidly (heave, bank, altitude). With no layer,
  * or one at weight 0, the pose is the walk's alone, and the wing chains ride the shoulders.
  *
+ * **Attitude (M8b).** An `AttitudeLayer` (src/render/wild.ts) can ride on top of both: it turns
+ * the body's own bones in `locals`, and it has two channels this file has to act on itself
+ * because they happen *before* the forward kinematics and the legs' IK — `lower`, which sinks
+ * the body so the knees bend under it, and `rear`, which pitches the body nose-up about the
+ * pelvis, sinks the hips onto the haunches (REAR_SINK), lifts the tail out of the turn
+ * (REAR_TAIL_LIFT) and hands the forefeet a target that rises with the shoulders they hang
+ * from. A pose multiplied onto the legs after they were solved would simply drag them through
+ * the deck.
+ *
  * Nothing allocates per pose: every vector, quaternion and matrix is preallocated here.
  */
 const TWO_PI = Math.PI * 2;
@@ -69,6 +78,15 @@ export interface AttitudeLayer {
   locals(local: THREE.Quaternion[]): void;
   /** How far the body sinks, as a share of the shortest leg's drop, 0..1. */
   readonly lower: number;
+  /**
+   * How far the dragon rears up, 0..1 of REAR_PITCH: the body pitches nose-up about the
+   * pelvis, the **hind feet stay where they are** (their IK re-solves against the pitched
+   * hips, so they keep their hold on the deck) and the **forefeet rise with the shoulders**
+   * they hang from. It is a layer's channel rather than a rotation it writes in `locals`
+   * because the pitch has to be in the pelvis *before* the forward kinematics and the legs'
+   * IK, not multiplied onto a pose the legs have already been solved for.
+   */
+  readonly rear: number;
 }
 
 /** A pose added on top of the walk (src/render/flight.ts `DragonFlight`). */
@@ -93,6 +111,45 @@ export interface FlightLayer {
  */
 export const TUCK = 0.62;
 export const TUCK_BACK = 0.30;
+/**
+ * A full rear-up (`AttitudeLayer.rear` = 1) pitches the body this far nose-up about the pelvis,
+ * radians: 0.35 is 20°, which is what the owner's note asks for and about as far as a quadruped
+ * leans back before it is standing rather than rearing. It is a pitch of the *body*, so the
+ * wings and
+ * the neck ride it rigidly and the clearance between a folded wing and the flank does not change
+ * at all (measured: the rear-up is the one tell that costs the clearance gate nothing) — what
+ * changes is the silhouette, which is the whole point (M8b criterion 2). What it does cost is
+ * the legs and the tail: see REAR_SINK and REAR_TAIL_LIFT below.
+ */
+export const REAR_PITCH = 0.35;
+/**
+ * A reared forefoot does not just hang: it curls up and back under the chest by this share of
+ * the shortest leg's drop, the way a tucked foot does in flight, so the forelimb reads as held
+ * rather than dangling. Shortening the hip-to-ankle distance can only bend the knee further,
+ * never stretch it, which is why the share may be chosen for looks.
+ */
+export const REAR_FORE_CURL = 0.34;
+export const REAR_FORE_BACK = 0.22;
+/**
+ * A rearing dragon sits back on its haunches: the hips sink this share of the shortest leg's
+ * drop at full rear, on top of whatever the attitude's `lower` asks for. It is not decoration.
+ * The pitch is about the pelvis, so it carries the hind hips up and back away from hind feet
+ * that are holding their place on the deck; without the sink the two-bone IK is asked for more
+ * than the leg has and `stretched` goes true, which is the leg visibly pulling out of the
+ * ground. Measured: at REAR_PITCH and this sink, no leg of any of the 35 probe dragons
+ * stretches anywhere in the rear's range (tests/wild-render.test.ts).
+ */
+export const REAR_SINK = 0.26;
+/**
+ * A rearing dragon lifts its tail against the pitch, as a counterweight — and it must, because
+ * the pitch is about the pelvis and a dragon's tail is long: #31 of the probe set carries its
+ * tip 4.9 units behind the hips, so 20° of rigid nose-up would sweep that tip 1.3 units
+ * *through the deck*. Each tail segment counter-pitches this share of the body's pitch, spread
+ * over the three of them, so the tail curves up out of the turn instead of swinging down with
+ * it. 1 holds the tip's rest direction; above 1 lifts it clear. Measured against every probe
+ * dragon's own tail length, which is the only honest way to pick it (the longest tail decides).
+ */
+export const REAR_TAIL_LIFT = 1.45;
 /**
  * The forelegs fold this share of the hind legs' tuck: their thighs hang beside the wings' roots,
  * and folded as far they rise into the skin where the wing grows from the shoulder.
@@ -221,16 +278,21 @@ export class DragonWalk {
     const shoulderRoll = k * ROLL * w.flex * Math.sin(shoulderA);
     const twice = Math.cos(2 * TWO_PI * c); // 1 at each hind footfall
     const pitch = k * w.pitch * twice;
-    const lower = k * (w.crouch * this.drop + w.bob * (0.5 + 0.5 * twice)) + (att ? att.lower * this.drop : 0);
+    // The rear-up's pitch goes into the pelvis and is *not* taken back by the spine below (the
+    // walk's own pitch is, at spine1), so the whole body above the hips comes up with it.
+    const rear = att ? Math.min(1, Math.max(0, att.rear)) : 0;
+    const lower = k * (w.crouch * this.drop + w.bob * (0.5 + 0.5 * twice))
+      + (att ? (att.lower + REAR_SINK * rear) * this.drop : 0);
 
     const L = this.local;
     for (let i = 0; i < L.length; i++) L[i]!.identity();
-    turn(L[BONE.pelvis]!, hips, pitch, hipRoll, this.q);
+    turn(L[BONE.pelvis]!, hips, pitch + REAR_PITCH * rear, hipRoll, this.q);
     turn(L[BONE.spine1]!, (shoulders - hips) / 2, -pitch, -hipRoll, this.q);
     turn(L[BONE.spine2]!, (shoulders - hips) / 2, 0, shoulderRoll, this.q);
     for (let i = 0; i < NECK.length; i++) turn(L[NECK[i]!]!, (-NECK_COUNTER * shoulders) / NECK.length, 0, -shoulderRoll / NECK.length, this.q);
+    const tailLift = -(REAR_PITCH * rear * REAR_TAIL_LIFT) / TAIL.length;
     for (let i = 0; i < TAIL.length; i++) {
-      turn(L[TAIL[i]!]!, k * w.tailSway * Math.sin(hipA - TAIL_LAG * (i + 1)), 0, 0, this.q);
+      turn(L[TAIL[i]!]!, k * w.tailSway * Math.sin(hipA - TAIL_LAG * (i + 1)), tailLift, 0, this.q);
     }
     if (fl) fl.locals(L);
     if (att) att.locals(L);
@@ -250,7 +312,7 @@ export class DragonWalk {
       }
     }
     const tuck = fl ? fl.tuck : 0;
-    for (let i = 0; i < this.legs.length; i++) this.solveLeg(this.legs[i]!, c, k, tuck);
+    for (let i = 0; i < this.legs.length; i++) this.solveLeg(this.legs[i]!, c, k, tuck, rear);
     if (fl) {
       // The flight's rigid motion: every bone turned about the pivot, then lifted.
       const q = fl.rootQ, o = fl.rootPivot;
@@ -272,7 +334,7 @@ export class DragonWalk {
   }
 
   /** One leg: the foot's target this phase, then the two-bone IK from the hip joint to the ankle. */
-  private solveLeg(s: LegState, c: number, k: number, tuck: number): void {
+  private solveLeg(s: LegState, c: number, k: number, tuck: number, rear: number): void {
     const w = this.params, R = this.R, P = this.P;
     const ph = c - s.phase;
     const phi = ph - Math.floor(ph);
@@ -286,14 +348,26 @@ export class DragonWalk {
       lift = w.lift * 0.5 * (1 - Math.cos(TWO_PI * u));
       s.planted = false;
     }
+    // The hip joint, carried by the body.
+    const a = s.anchor;
+    const H = P[s.thigh]!.subVectors(s.hip, this.rest[a]!).applyQuaternion(R[a]!).add(P[a]!);
     // The foot keeps its rest orientation: the ankle sits where it does over the ball at rest.
     const T = this.t.copy(s.ankle);
     const fold = tuck * (s.anchor === BONE.pelvis ? 1 : TUCK_FORE) * this.drop;
     T.x += k * dx - TUCK_BACK * fold;
     T.y += k * lift + TUCK * fold;
-    // The hip joint, carried by the body.
-    const a = s.anchor;
-    const H = P[s.thigh]!.subVectors(s.hip, this.rest[a]!).applyQuaternion(R[a]!).add(P[a]!);
+    if (rear > 0 && s.anchor !== BONE.pelvis) {
+      // A foreleg of a rearing dragon leaves the deck. Its ankle target eases from where it
+      // stands to where its own rest pose puts it under the *pitched* shoulder — measured off
+      // the posed hip, so the leg keeps its rest length exactly and the IK can never be asked
+      // to stretch however far the body pitches — and then curls up and back under the chest.
+      const rest = this.n.subVectors(s.ankle, s.hip).applyQuaternion(R[a]!).add(H);
+      T.lerp(rest, rear);
+      T.x -= rear * REAR_FORE_BACK * this.drop;
+      T.y += rear * REAR_FORE_CURL * this.drop;
+      s.planted = false; // it is off the deck, whatever the gait's phase says
+
+    }
     const D = this.d.subVectors(T, H);
     let dist = D.length();
     const max = (s.l1 + s.l2) * REACH, min = Math.abs(s.l1 - s.l2) + 1e-4;

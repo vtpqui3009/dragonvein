@@ -107,12 +107,25 @@ export function flightSamples(p: FlightParams, cycles = 2, perCycle = 32): Fligh
 }
 
 /**
- * The attitude channels that hold a pose, in the order a corner's label spells them. `look` is
- * not among them because it is swept separately, at ±LOOK_MAX and 0, over every pose below:
- * its reachable range is the same whatever the other channels are doing.
+ * The attitude channels whose corners are measured **exhaustively**: every one of the 2⁵
+ * combinations of their per-state minima and maxima. These are the channels that move geometry
+ * toward other geometry — the crouch, the wing fold, the wing lift, the rear-up, and the neck
+ * raise, which is the channel the M8b baseline showed drives the least clearance on 25 of 34
+ * dragons. `look` is not among them because it is swept separately, at ±LOOK_MAX and 0, over
+ * every pose below: its reachable range is the same whatever the other channels are doing.
  */
-const CHANNELS = ['neck', 'head', 'lower', 'tail'] as const;
-type Channel = (typeof CHANNELS)[number];
+const GEOM_CHANNELS = ['neck', 'lower', 'fold', 'rise', 'rear'] as const;
+/**
+ * The channels whose corners are **sampled** rather than enumerated: the head's nod and the
+ * tail's curl. Eight channels is 256 corners before the look sweep and the gait phases, which is
+ * minutes of unit test for poses that differ by a nod. These two are taken at both extremes
+ * together (all-minimum and all-maximum), which is where their own geometry is furthest from the
+ * body — a head tipped up over a raised neck, and a tail curled under a crouch — rather than at
+ * every mixture. If a defect is ever found at a mixture of these two, enumerate them here.
+ */
+const SAMPLED_CHANNELS = ['head', 'tail'] as const;
+type Channel = (typeof GEOM_CHANNELS)[number] | (typeof SAMPLED_CHANNELS)[number];
+const CHANNELS = [...GEOM_CHANNELS, ...SAMPLED_CHANNELS] as readonly Channel[];
 
 /**
  * The gait phases an attitude is measured over while walking, as fractions of the walk's period.
@@ -140,15 +153,17 @@ const GAIT = [0.25, 0.75] as const;
  *
  * - every named state in `ATTITUDES`, snapped, over the walk at rest;
  * - every corner of the per-channel box, over the walk at rest;
- * - walking (`walkW` 1) at the two gait phases of `GAIT`: every named state with the keeper to
- *   one side, and every box corner with the keeper ahead — `wary` walks off while crouched, so
- *   the crouch has to be measured in motion and not only standing;
+ * - walking (`walkW` 1): every named state with the keeper to one side at both gait phases of
+ *   `GAIT`, and every box corner with the keeper ahead at the first of them — `wary` walks off
+ *   while crouched, so the crouch has to be measured in motion and not only standing;
  * - a handful with a flap riding over the attitude, because `flee`'s ramp starts while the
  *   previous state's ease is still running: the wings are already beating while the body is
  *   still crouched or reared.
  *
- * That is 18 + 48 + 44 + 8 = 118 samples per dragon, about the size of the flap schedule the
- * unit test already runs on all 27 fixture genomes.
+ * That is 18 + 192 + 12 + 64 + 8 = 294 samples per dragon, two and a half times the schedule
+ * M8b's first pass measured, because `fold`, `rise` and `rear` added three dimensions to the
+ * box. `GEOM_CHANNELS` and `SAMPLED_CHANNELS` say which corners are enumerated and which are
+ * sampled, and why.
  */
 export function attitudeSamples(p: FlightParams, walkPeriod: number): FlightSample[] {
   const out: FlightSample[] = [];
@@ -170,15 +185,19 @@ export function attitudeSamples(p: FlightParams, walkPeriod: number): FlightSamp
     for (const c of CHANNELS) { lo[c] = Math.min(lo[c], a[c]); hi[c] = Math.max(hi[c], a[c]); }
   }
   const corners: { label: string; raw: AttitudeChannels }[] = [];
-  for (let mask = 0; mask < 1 << CHANNELS.length; mask++) {
-    const raw: AttitudeChannels = { look: 0, neck: 0, head: 0, lower: 0, tail: 0 };
-    const parts: string[] = [];
-    CHANNELS.forEach((c, k) => {
-      const up = ((mask >> k) & 1) === 1;
-      raw[c] = up ? hi[c] : lo[c];
-      parts.push(`${c}${up ? '+' : '−'}`);
-    });
-    corners.push({ label: `corner ${parts.join(' ')}`, raw });
+  for (let mask = 0; mask < 1 << GEOM_CHANNELS.length; mask++) {
+    // The sampled channels take both extremes together, the geometry channels every corner.
+    for (const rest of [false, true]) {
+      const raw: AttitudeChannels = { look: 0, neck: 0, head: 0, lower: 0, tail: 0, fold: 0, rise: 0, rear: 0 };
+      const parts: string[] = [];
+      GEOM_CHANNELS.forEach((c, k) => {
+        const up = ((mask >> k) & 1) === 1;
+        raw[c] = up ? hi[c] : lo[c];
+        parts.push(`${c}${up ? '+' : '−'}`);
+      });
+      for (const c of SAMPLED_CHANNELS) { raw[c] = rest ? hi[c] : lo[c]; parts.push(`${c}${rest ? '+' : '−'}`); }
+      corners.push({ label: `corner ${parts.join(' ')}`, raw });
+    }
   }
 
   const states = Object.keys(ATTITUDES);
@@ -189,8 +208,11 @@ export function attitudeSamples(p: FlightParams, walkPeriod: number): FlightSamp
   for (const phase of GAIT) {
     const walkT = walkPeriod * phase;
     for (const s of states) named(s, LOOK_MAX, walkT, 1);
-    for (const c of corners) corner(c, 0, walkT, 1);
   }
+  // The corners walk at one phase, not both: 64 corners × every phase × every look is minutes
+  // of test for poses a quarter cycle apart. The named states, which are what a player sees,
+  // walk at both.
+  for (const c of corners) corner(c, 0, walkPeriod * GAIT[0], 1);
   // The overlap: wings beating while the body is still in the state it is leaving.
   for (const flap of [0.35, 0.8]) {
     named('alert', LOOK_MAX, null, 0, flap);

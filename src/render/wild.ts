@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { BONE } from '../assets/dragon/rig';
+import type { FlightParams } from '../assets/dragon/flight';
+import { BONE, type Rig } from '../assets/dragon/rig';
+import { foldScaleOf, wingAxes, type WingAxes } from './flight';
 import type { AttitudeLayer } from './walk';
 
 /**
@@ -10,13 +12,37 @@ import type { AttitudeLayer } from './walk';
  * mesh, so the player reads it without a number (STATE.md run 33: "the render shows the
  * tells, not a number first"):
  *
- *   graze    the head goes down to the grass, the body settles a little;
- *   alert    the neck rises and the head turns to the keeper;
- *   wary     the body crouches low (the legs' IK bends the knees), the neck drops, the
- *            tail tucks, and the head looks back over the shoulder at the keeper — the sim
- *            has already turned its tail to the keeper and is walking it off;
+ *   graze    the head goes down to the grass, the body settles, the wings fold in close;
+ *   alert    it rears up on its hind legs, the neck rises, the wings lift and half-open, and
+ *            the head turns to the keeper: the widest, tallest silhouette it has;
+ *   wary     the body crouches low (the legs' IK bends the knees), the wings fold hard against
+ *            the flanks, the neck drops, the tail tucks, and the head looks back over the
+ *            shoulder at the keeper — the sim has already turned its tail to the keeper and is
+ *            walking it off: the lowest, narrowest silhouette it has;
  *   settle   it eases back into the idle: head level, a softer, lower stance, a glance;
  *   flee     the M7c flap and glide (src/render/flight.ts), driven by the flight's progress.
+ *
+ * **Why the amplitudes are as big as they are** (M8b criterion 2, owner's decision
+ * docs/DECISIONS.md §"M8b criterion 6"). At the camera the player has, the dragon is 97 px
+ * across. The first pass's tells — `lower` 0.289 on wary, `neck` 0.42 on alert — were measured
+ * by two critics independently and do not read at that size: a pose that moves the outline by
+ * two pixels is a pose nobody sees. So the reading stays in the body (docs/GDD.md §The loop:
+ * taming is "reading its behaviour, not throwing a ball") and the body moves far enough to be
+ * read: the whole stance changes, not a joint. Three channels do the carrying, and all three
+ * are measured in units the flap already proves safe:
+ *
+ *   fold   the wings fold in — elbow, wrist and fan — exactly the motion the upstroke makes,
+ *          at `p.fold` / `p.wristFold` scale with the same narrow-fan guard (`foldScaleOf`);
+ *   rise   the humerus elevates about the wing's own elevation axis at `p.stroke` scale, the
+ *          same arc the beat sweeps;
+ *   rear   the body pitches nose-up about the pelvis (./walk.ts REAR_PITCH), hind feet
+ *          planted, forefeet lifting with the shoulders.
+ *
+ * **The rest pose is not ours to change.** `wander` is the reference and keeps the wings as the
+ * mesher builds them: whether a resting dragon should furl its wings at all is an open owner
+ * question (NEXT.md §Open items; tests/dragon-wings.test.ts asserts the spread for all 40
+ * genomes as M3e criterion 2). A fold here is only ever a *difference between states* — the
+ * dragon changes its wings when it reacts — and `wander` has `fold` 0.
  *
  * `DragonAttitude` is an `AttitudeLayer` on the dragon's `DragonWalk` (./walk.ts): each
  * channel eases toward its target with its own rate, so a change of state is a motion, never
@@ -25,7 +51,7 @@ import type { AttitudeLayer } from './walk';
  * The bridge from sim state to `setTargets` lives in src/main.ts, which may import both.
  */
 
-/** Pose targets, all in radians except `lower` (share of the leg's drop). */
+/** Pose targets, all in radians except `lower`, `fold`, `rise` and `rear` (shares, see each). */
 export interface AttitudeTargets {
   /** Head and neck turn toward the keeper (mesh frame, + to the dragon's left), and how much of it to take. */
   look: number;
@@ -38,6 +64,12 @@ export interface AttitudeTargets {
   lower: number;
   /** Tail curled down (+). */
   tail: number;
+  /** Wings folded in, 0..1 of the flap's own full fold (elbow, wrist and the fan closing with them). */
+  fold: number;
+  /** Wings raised (+) or hugged down (−), −1..1 of the flap's own stroke. */
+  rise: number;
+  /** Reared up on the hind legs, 0..1 of ./walk.ts REAR_PITCH. */
+  rear: number;
 }
 
 /**
@@ -48,18 +80,28 @@ export interface AttitudeTargets {
  */
 export type AttitudeChannels = Omit<AttitudeTargets, 'lookShare'>;
 
-/** Each named state's pose (look is filled per frame). */
+/**
+ * Each named state's pose (look is filled per frame). `wander` is the reference the others are
+ * read against, so its `fold` and `rise` are 0: the rest mesh, unchanged. `flee` is all zeros
+ * because the flight owns the wings there — the ease out of the previous state while the flap
+ * ramps in is the overlap `attitudeSamples` covers.
+ */
 export const ATTITUDES: Readonly<Record<string, Readonly<Omit<AttitudeTargets, 'look'>>>> = {
-  graze: { lookShare: 0, neck: -0.75, head: -0.3, lower: 0.12, tail: 0.05 },
-  wander: { lookShare: 0, neck: -0.08, head: 0, lower: 0, tail: 0 },
-  alert: { lookShare: 1, neck: 0.42, head: -0.22, lower: -0.06, tail: -0.12 },
-  wary: { lookShare: 0.85, neck: -0.32, head: 0.22, lower: 0.42, tail: 0.32 },
-  settle: { lookShare: 0.35, neck: -0.12, head: -0.05, lower: 0.18, tail: 0.06 },
-  flee: { lookShare: 0, neck: 0, head: 0, lower: 0, tail: 0 },
+  graze: { lookShare: 0, neck: -0.95, head: -0.40, lower: 0.25, tail: 0.10, fold: 0.80, rise: -0.15, rear: 0 },
+  wander: { lookShare: 0, neck: -0.08, head: 0, lower: 0, tail: 0, fold: 0, rise: 0, rear: 0 },
+  alert: { lookShare: 1, neck: 0.46, head: -0.25, lower: 0, tail: 0.30, fold: 0.10, rise: 0.45, rear: 0.80 },
+  wary: { lookShare: 0.85, neck: -0.50, head: 0.30, lower: 0.50, tail: 0.55, fold: 0.90, rise: -0.15, rear: 0 },
+  settle: { lookShare: 0.35, neck: -0.20, head: -0.05, lower: 0.30, tail: 0.10, fold: 0.25, rise: -0.10, rear: 0 },
+  flee: { lookShare: 0, neck: 0, head: 0, lower: 0, tail: 0, fold: 0, rise: 0, rear: 0 },
 };
 
-/** How fast each channel eases, per second (1 − e^(−rate·dt) of the way each frame). */
-const RATE = { look: 4.5, neck: 3.2, head: 3.6, lower: 2.6, tail: 2.4 } as const;
+/**
+ * How fast each channel eases, per second (1 − e^(−rate·dt) of the way each frame). The three
+ * new channels ease at the rates of the body parts they move: the wings with the neck (a wing
+ * is light and fast), the rear-up a little slower than the crouch it is the opposite of, since
+ * a dragon pushing its own weight up is the slowest thing it does.
+ */
+const RATE = { look: 4.5, neck: 3.2, head: 3.6, lower: 2.6, tail: 2.4, fold: 3.0, rise: 3.0, rear: 2.2 } as const;
 /** The turn toward the keeper is spread over the neck and head, root to tip. */
 const LOOK_SPREAD = [0.1, 0.14, 0.18, 0.2, 0.2, 0.18] as const;
 const NECK_BONES = [BONE.neck0, BONE.neck1, BONE.neck2, BONE.neck3, BONE.neck4] as const;
@@ -80,6 +122,12 @@ function ease(value: number, goal: number, rate: number, dt: number): number {
   return Math.abs(goal - next) < SETTLED ? goal : next;
 }
 
+/** One wing, as the attitude poses it: its bones, its axes, and the fold its fan can take. */
+interface AttitudeWing extends WingAxes {
+  humerus: number; forearm: number; hand: number; fingers: number[];
+  foldScale: number;
+}
+
 export class DragonAttitude implements AttitudeLayer {
   /** Current (eased) values. */
   look = 0;
@@ -87,8 +135,38 @@ export class DragonAttitude implements AttitudeLayer {
   head = 0;
   lower = 0;
   tail = 0;
-  private readonly goal: AttitudeTargets = { look: 0, lookShare: 0, neck: 0, head: 0, lower: 0, tail: 0 };
+  fold = 0;
+  rise = 0;
+  rear = 0;
+  private readonly goal: AttitudeTargets = { look: 0, lookShare: 0, neck: 0, head: 0, lower: 0, tail: 0, fold: 0, rise: 0, rear: 0 };
   private readonly q = new THREE.Quaternion();
+  /** The wings this poses, and the genome's flight scales: empty with no rig, and then `fold` and `rise` do nothing. */
+  private readonly wings: AttitudeWing[] = [];
+  private readonly fp: FlightParams | null;
+
+  /**
+   * `rig` and `params` are the dragon's own: the attitude needs the wings' axes (shared with
+   * the flap through src/render/flight.ts `wingAxes`, so there is one truth for them) and the
+   * genome's flight scales, because `fold` and `rise` are measured in the flap's own units —
+   * the fold the upstroke makes, the arc the stroke sweeps — which keeps the wings inside a
+   * range the clearance gate already trusts.
+   *
+   * **With no rig it poses the body only**: the neck, head, tail, crouch and rear-up all work,
+   * and `fold` and `rise` are inert. Several tests and probes build a bare `new
+   * DragonAttitude()` to measure the body, and that stays valid.
+   */
+  constructor(rig?: Rig, params?: FlightParams) {
+    this.fp = params ?? null;
+    if (rig && params) {
+      for (const w of rig.wings) {
+        const axes = wingAxes(w);
+        this.wings.push({
+          humerus: w.humerus, forearm: w.forearm, hand: w.hand, fingers: w.fingers, ...axes,
+          foldScale: foldScaleOf(axes.psiLast, params),
+        });
+      }
+    }
+  }
 
   /** Set the targets for state `state` with the keeper `look` radians off the snout. Allocation-free. */
   setTargets(state: string, look: number): void {
@@ -100,6 +178,9 @@ export class DragonAttitude implements AttitudeLayer {
     g.head = a.head;
     g.lower = a.lower;
     g.tail = a.tail;
+    g.fold = a.fold;
+    g.rise = a.rise;
+    g.rear = a.rear;
   }
 
   /**
@@ -114,6 +195,9 @@ export class DragonAttitude implements AttitudeLayer {
     this.head = ease(this.head, g.head, RATE.head, dt);
     this.lower = ease(this.lower, g.lower, RATE.lower, dt);
     this.tail = ease(this.tail, g.tail, RATE.tail, dt);
+    this.fold = ease(this.fold, g.fold, RATE.fold, dt);
+    this.rise = ease(this.rise, g.rise, RATE.rise, dt);
+    this.rear = ease(this.rear, g.rear, RATE.rear, dt);
   }
 
   /**
@@ -138,12 +222,16 @@ export class DragonAttitude implements AttitudeLayer {
     this.head = g.head = c.head;
     this.lower = g.lower = c.lower;
     this.tail = g.tail = c.tail;
+    this.fold = g.fold = c.fold;
+    this.rise = g.rise = c.rise;
+    this.rear = g.rear = c.rear;
   }
 
   /** Jump straight to the targets (a load, a first frame). */
   snap(): void {
     const g = this.goal;
     this.look = g.look; this.neck = g.neck; this.head = g.head; this.lower = g.lower; this.tail = g.tail;
+    this.fold = g.fold; this.rise = g.rise; this.rear = g.rear;
   }
 
   locals(local: THREE.Quaternion[]): void {
@@ -159,6 +247,25 @@ export class DragonAttitude implements AttitudeLayer {
     // lowered neck carries the head down with it. Then the head's own nod.
     H.multiply(q.setFromAxisAngle(Z, this.head - 0.55 * Math.max(0, this.neck)));
     for (let i = 0; i < TAIL_BONES.length; i++) local[TAIL_BONES[i]!]!.multiply(q.setFromAxisAngle(Z, -this.tail / TAIL_BONES.length));
+    // The wings, in the flap's own units (./flight.ts `locals`, the upstroke's branch): the
+    // elbow and the wrist fold back about the wing's plane normal and the fan closes onto its
+    // last finger by as much, so the leading digit folds toward the last one and no finger
+    // swings in against the flank; the humerus elevates about the wing's elevation axis. Same
+    // axes, same scales, same narrow-fan guard as the beat, so every pose here is one the flap
+    // already visits and the clearance gate already trusts. Nothing allocates.
+    const p = this.fp;
+    if (p !== null && (this.fold !== 0 || this.rise !== 0)) {
+      for (let i = 0; i < this.wings.length; i++) {
+        const w = this.wings[i]!;
+        const fold = this.fold * w.foldScale;
+        if (this.rise !== 0) local[w.humerus]!.multiply(q.setFromAxisAngle(w.elev, this.rise * p.stroke));
+        if (fold === 0) continue;
+        local[w.forearm]!.multiply(q.setFromAxisAngle(w.normal, w.foldSign * p.fold * fold));
+        local[w.hand]!.multiply(q.setFromAxisAngle(w.normal, w.foldSign * p.wristFold * fold));
+        const close = (fold * (p.fold + p.wristFold)) / w.psiLast;
+        for (let k = 0; k < w.fingers.length; k++) local[w.fingers[k]!]!.multiply(q.setFromAxisAngle(w.normal, -close * w.psi[k]!));
+      }
+    }
   }
 }
 

@@ -3,6 +3,7 @@ import { Genome, type GenomeJson } from '../core/genome';
 import { DragonMesher } from '../assets/dragon/mesher';
 import { flightParams, type FlightParams } from '../assets/dragon/flight';
 import { idleParams } from '../assets/dragon/idle';
+import type { Rig } from '../assets/dragon/rig';
 import { walkParams, type WalkParams } from '../assets/dragon/walk';
 import { DragonFlight } from './flight';
 import { withIdle } from './idle';
@@ -119,7 +120,7 @@ export class WildDragonView {
   readonly bones: Float32Array;
   readonly walk: DragonWalk;
   readonly flight: DragonFlight;
-  readonly attitude = new DragonAttitude();
+  readonly attitude: DragonAttitude;
   readonly gait: WalkParams;
   readonly flightParams: FlightParams;
   readonly gid: string;
@@ -136,13 +137,16 @@ export class WildDragonView {
   private lastZ = 0;
   private lastH = 0;
   /**
-   * What the last pose was made from: [1 if it was a standing, flightless one, else 0, then the
-   * attitude's look, neck, head, lower and tail]. `update` skips a pose that would repeat it.
+   * What the last pose was made from: [1 if it was a standing, flightless one, else 0, then
+   * **every** channel of the attitude — look, neck, head, lower, tail, fold, rise, rear].
+   * `update` skips a pose that would repeat it, so a channel missing from this list is a tell
+   * that silently never re-poses: the dragon would hold the stance it had when the last
+   * compared channel stopped moving.
    */
-  private readonly posedAt = new Float64Array(6);
+  private readonly posedAt = new Float64Array(9);
 
   private constructor(
-    mesh: THREE.Mesh, bones: Float32Array, walk: DragonWalk, flight: DragonFlight, gait: WalkParams, fp: FlightParams,
+    mesh: THREE.Mesh, bones: Float32Array, walk: DragonWalk, flight: DragonFlight, rig: Rig, gait: WalkParams, fp: FlightParams,
     gid: string, buildMs: number, private readonly scale: number,
     /** The rest mesh's bounding radius in world units: what a camera has to frame. */
     readonly bodyRadius: number,
@@ -155,6 +159,9 @@ export class WildDragonView {
     this.flight = flight;
     this.gait = gait;
     this.flightParams = fp;
+    // The attitude poses the wings as well as the body, so it needs the rig's wings and the
+    // genome's flight scales (./wild.ts `DragonAttitude`).
+    this.attitude = new DragonAttitude(rig, fp);
     this.gid = gid;
     this.buildMs = buildMs;
     this.triangles = (mesh.geometry.getIndex()?.count ?? 0) / 3;
@@ -212,7 +219,7 @@ export class WildDragonView {
     const v = body.graph.v;
     mesh.position.x = -(v[body.idx.hip]![0] + v[body.idx.shoulder]![0]) / 2;
     centre.x += mesh.position.x;
-    return new WildDragonView(mesh, bones, walk, flight, gait, fp, genome.gid, built.roundTripMs, scale,
+    return new WildDragonView(mesh, bones, walk, flight, body.rig, gait, fp, genome.gid, built.roundTripMs, scale,
       bodyRadius * scale, centre.multiplyScalar(scale));
   }
 
@@ -255,12 +262,13 @@ export class WildDragonView {
     const still = this.walkW === 0 && !this.flight.active;
     const p = this.posedAt;
     if (!(still && p[0] === 1 && p[1] === att.look && p[2] === att.neck && p[3] === att.head
-      && p[4] === att.lower && p[5] === att.tail)) {
+      && p[4] === att.lower && p[5] === att.tail && p[6] === att.fold && p[7] === att.rise && p[8] === att.rear)) {
       this.walk.pose(this.walkW > 0 ? this.gaitT : null, this.walkW);
       const bones = this.walk.bones, out = this.bones;
       for (let i = 0; i < bones.length; i++) bones[i]!.matrixWorld.toArray(out, 16 * i);
       p[0] = still ? 1 : 0;
       p[1] = att.look; p[2] = att.neck; p[3] = att.head; p[4] = att.lower; p[5] = att.tail;
+      p[6] = att.fold; p[7] = att.rise; p[8] = att.rear;
     }
     this.holder.position.set(x, ground + fp.altitude, z);
     this.holder.rotation.y = -heading;

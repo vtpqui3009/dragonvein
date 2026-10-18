@@ -81,8 +81,14 @@ const HOVER_OF_CHEST = 0.9;
  */
 export const FLIGHT_RAMP_S = 0.5;
 
-interface WingState {
-  humerus: number; forearm: number; hand: number; fingers: number[];
+/**
+ * One wing's axes and finger angles, read off its rest geometry: the frame every pose of that
+ * wing turns in, whatever poses it. The flap (below) and the wild dragon's fold and lift
+ * (./wild.ts `DragonAttitude`) both need these, and they must be the *same* numbers — a wing
+ * folded by one and raised by the other about axes computed twice, slightly differently, is a
+ * wing that creases. One truth, `wingAxes`, used by both.
+ */
+export interface WingAxes {
   /** Elevation axis (positive raises the outer end), sweep axis (positive forward), plane normal. */
   elev: THREE.Vector3; sweep: THREE.Vector3; normal: THREE.Vector3;
   /** Sign of a fold about `normal` that moves the outer part back. */
@@ -90,6 +96,10 @@ interface WingState {
   /** Each finger's rest angle about `normal` from the leading digit, radians, and the last one's size. */
   psi: number[];
   psiLast: number;
+}
+
+interface WingState extends WingAxes {
+  humerus: number; forearm: number; hand: number; fingers: number[];
   /** The share of the flap's fold this wing takes: all of it unless its fan is too narrow to close that far. */
   foldScale: number;
 }
@@ -118,6 +128,43 @@ export function flapAngles(p: FlightParams, t: number, out: FlapAngles): FlapAng
 }
 /** The fan never closes past this share of its rest spread, so its fingers keep their order. */
 const FAN_MIN = 0.35;
+
+/**
+ * One wing's axes and finger angles from its rest geometry alone: see `WingAxes` and the
+ * class comment's *Axes* paragraph. No genome, no beat — a wing's frame is a property of the
+ * wing. Allocates (setup-time only: the flap builds these once per dragon, and so does the
+ * attitude layer).
+ */
+export function wingAxes(w: RigWing): WingAxes {
+  const v = (a: readonly number[]) => new THREE.Vector3(a[0], a[1], a[2]);
+  const root = v(w.root), elbow = v(w.elbow), wrist = v(w.wrist), lead = v(w.lead);
+  const last = v(w.tips[w.tips.length - 1] ?? w.lead);
+  // Left (side +1) lies at mesh z < 0: +x raises it; the right wing mirrors.
+  const elev = new THREE.Vector3(w.side, 0, 0);
+  const sweep = new THREE.Vector3(0, -w.side, 0);
+  const normal = new THREE.Vector3().subVectors(wrist, root).cross(new THREE.Vector3().subVectors(last, wrist)).normalize();
+  if (normal.y < 0) normal.negate();
+  const fore = new THREE.Vector3().subVectors(wrist, elbow);
+  const turned = fore.clone().applyAxisAngle(normal, 0.1);
+  const foldSign = turned.x < fore.x ? 1 : -1;
+  const dl = new THREE.Vector3().subVectors(lead, wrist).projectOnPlane(normal);
+  const psi = w.tips.map((t) => {
+    const d = v(t).sub(wrist).projectOnPlane(normal);
+    return Math.atan2(new THREE.Vector3().crossVectors(dl, d).dot(normal), dl.dot(d));
+  });
+  const psiLast = Math.abs(psi[psi.length - 1] ?? 1);
+  return { elev, sweep, normal, foldSign, psi, psiLast };
+}
+
+/**
+ * The share of a full fold a wing may take: all of it, unless its fan is too narrow to close
+ * that far without crossing its own fingers (FAN_MIN). The fold the attitude layer applies is
+ * measured in the same `p.fold` / `p.wristFold` units as the flap's, so it is bounded the same
+ * way and by the same number.
+ */
+export function foldScaleOf(psiLast: number, p: FlightParams): number {
+  return Math.min(1, ((1 - FAN_MIN) * psiLast) / (p.fold + p.wristFold));
+}
 const smooth = (x: number) => { const t = Math.min(1, Math.max(0, x)); return t * t * (3 - 2 * t); };
 /** Beat phase (0..1) → stroke angle: 0..π over the downstroke, π..2π over the upstroke. */
 function strokePhase(ph: number, down: number): number {
@@ -162,7 +209,7 @@ export class DragonFlight implements FlightLayer {
     this.walk = walk;
     this.params = params;
     const v = (a: readonly number[]) => new THREE.Vector3(a[0], a[1], a[2]);
-    for (const w of rig.wings) this.wings.push(DragonFlight.wingState(w, v, params));
+    for (const w of rig.wings) this.wings.push(DragonFlight.wingState(w, params));
     // The body turns about the belly's pivot (spine1).
     this.rootPivot.set(rig.pivot[3]!, rig.pivot[4]!, rig.pivot[5]!);
     walk.flight = this;
@@ -201,26 +248,13 @@ export class DragonFlight implements FlightLayer {
     walk.pose(null);
   }
 
-  /** One wing's axes and finger angles, from its rest geometry. */
-  private static wingState(w: RigWing, v: (a: readonly number[]) => THREE.Vector3, p: FlightParams): WingState {
-    const root = v(w.root), elbow = v(w.elbow), wrist = v(w.wrist), lead = v(w.lead);
-    const last = v(w.tips[w.tips.length - 1] ?? w.lead);
-    // Left (side +1) lies at mesh z < 0: +x raises it; the right wing mirrors.
-    const elev = new THREE.Vector3(w.side, 0, 0);
-    const sweep = new THREE.Vector3(0, -w.side, 0);
-    const normal = new THREE.Vector3().subVectors(wrist, root).cross(new THREE.Vector3().subVectors(last, wrist)).normalize();
-    if (normal.y < 0) normal.negate();
-    const fore = new THREE.Vector3().subVectors(wrist, elbow);
-    const turned = fore.clone().applyAxisAngle(normal, 0.1);
-    const foldSign = turned.x < fore.x ? 1 : -1;
-    const dl = new THREE.Vector3().subVectors(lead, wrist).projectOnPlane(normal);
-    const psi = w.tips.map((t) => {
-      const d = v(t).sub(wrist).projectOnPlane(normal);
-      return Math.atan2(new THREE.Vector3().crossVectors(dl, d).dot(normal), dl.dot(d));
-    });
-    const psiLast = Math.abs(psi[psi.length - 1] ?? 1);
-    const foldScale = Math.min(1, ((1 - FAN_MIN) * psiLast) / (p.fold + p.wristFold));
-    return { humerus: w.humerus, forearm: w.forearm, hand: w.hand, fingers: w.fingers, elev, sweep, normal, foldSign, psi, psiLast, foldScale };
+  /** One wing's axes, finger angles and bones, from its rest geometry and the genome's flight. */
+  private static wingState(w: RigWing, p: FlightParams): WingState {
+    const axes = wingAxes(w);
+    return {
+      humerus: w.humerus, forearm: w.forearm, hand: w.hand, fingers: w.fingers, ...axes,
+      foldScale: foldScaleOf(axes.psiLast, p),
+    };
   }
 
   get active(): boolean { return this.flap > 0 || this.glide > 0; }
