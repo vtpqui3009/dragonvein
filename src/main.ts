@@ -2254,8 +2254,25 @@ let simHeld = false;
  * seconds to ease and `wary` can be over before they land (run 36, C0).
  */
 let poseHeld = false;
+/**
+ * `?test` only: the instant the pose was frozen at, so the dragon's *idle* animation — the
+ * breath, which runs off the wall clock and not off the frame's dt — stops with it. Without
+ * this, two photographs of the same held pose differ: at the camera a player has, where the
+ * whole dragon is about 1500 drawn pixels, a breath moving the outline by a pixel changed 70 of
+ * them, which is noise of the same order as the tells being measured (run 36, criterion 2).
+ */
+let idleFrozenAtMs: number | null = null;
 /** `?test` only: pin the island's spin at this angle (radians), so a drill can aim at the deck. */
 let spinPinned: number | null = null;
+/**
+ * `?test` only (M8b criterion 2's drill): pose the dragon's attitude layer as this state and
+ * bearing instead of the sim's, or null to hand it back. It changes the attitude layer and
+ * nothing else — not the position, not the heading, not the flight, not `world.wild.state` — so
+ * `readWild().wild.state` still reports what the sim thinks and a drill cannot photograph a lie.
+ */
+let posedAs: { state: string; look: number } | null = null;
+/** Set when `poseAs` changes, so the next frame snaps instead of easing (a held sim has dt 0). */
+let posedAsFresh = false;
 
 /** `?test&seed=N` fixes a fresh world's seed, so gate:smoke meets the same wild dragon every run. */
 const TEST_SEED = TEST_HOOKS ? Number(new URLSearchParams(location.search).get('seed') ?? Number.NaN) : Number.NaN;
@@ -2637,7 +2654,8 @@ function lerpAngle(a: number, b: number, t: number): number {
  * the last two ticks. Allocation-free.
  */
 function updateWild(nowMs: number, dt: number, alpha: number): void {
-  setIdleTime(nowMs / 1000);
+  // Held poses hold the breath too: see `idleFrozenAtMs`.
+  setIdleTime((idleFrozenAtMs ?? nowMs) / 1000);
   const w = world;
   if (!w) return;
   const a = alpha;
@@ -2675,7 +2693,18 @@ function updateWild(nowMs: number, dt: number, alpha: number): void {
   const lx = (kx - x) * ch + (kz - z) * sh, lz = -(kx - x) * sh + (kz - z) * ch;
   const flee = d.state === 'flee';
   const hop = Math.hypot(d.goal[0] - d.from[0], d.goal[1] - d.from[1]);
-  view.update(x, z, deckHeights.at(x, z), h, d.state, Math.atan2(-lz, lx),
+  // `?test` only: a drill can pose the attitude as any state, with the sim untouched.
+  const posed = posedAs;
+  const state = posed ? posed.state : d.state;
+  const look = posed ? posed.look : Math.atan2(-lz, lx);
+  if (posed !== null && posedAsFresh) {
+    // The override is meant to be seen at once, and a drill holds the sim to photograph it —
+    // which passes dt 0, so an eased change would never arrive. Set the targets and land on them.
+    view.attitude.setTargets(state, look);
+    view.attitude.snap();
+    posedAsFresh = false;
+  }
+  view.update(x, z, deckHeights.at(x, z), h, state, look,
     flee ? Math.max(0, d.t - 1 + a) * WILD_DT : 0, d.dur * WILD_DT, TAKEOFF_S, LAND_S,
     Math.min(3.0, 1.2 + 0.35 * hop), dt);
 }
@@ -2796,6 +2825,16 @@ declare global {
      * `pose` true — the default, and what a photograph wants — freezes both.
      */
     hold: (on: boolean, pose?: boolean) => void;
+    /**
+     * Drill-only: pose the attitude layer as `state` with the keeper `look` radians off the
+     * snout, snapped, whatever the sim is doing; `poseAs(null, 0)` hands it back to the sim.
+     * Nothing else moves — the dragon stands where the sim has it, facing where the sim faces,
+     * and `read().wild.state` keeps reporting the sim's own state. Used by the `wild tells at
+     * the player's camera` drill to put four comparable frames side by side.
+     */
+    poseAs: (state: string | null, look: number) => void;
+    /** Drill-only: hide the dragon (and so its shadow), to capture the scene without it. */
+    hideDragon: (on: boolean) => void;
     /** The world exactly as it was loaded, before its first tick. */
     loaded: () => World | null;
   } | undefined;
@@ -3083,7 +3122,16 @@ if (TEST_HOOKS) {
       }
       return true;
     },
-    hold: (on, pose = true) => { simHeld = on; poseHeld = on && pose; },
+    hold: (on, pose = true) => {
+      simHeld = on;
+      poseHeld = on && pose;
+      idleFrozenAtMs = poseHeld ? performance.now() : null;
+    },
+    poseAs: (state, look) => {
+      posedAs = state === null ? null : { state, look };
+      posedAsFresh = true;
+    },
+    hideDragon: (on) => { if (wildView) wildView.holder.visible = !on; },
     loaded: () => (loadedWorld ? JSON.parse(loadedWorld) as World : null),
   };
 }

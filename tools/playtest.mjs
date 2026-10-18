@@ -48,6 +48,16 @@
  *    21-wild-wary.png          the keeper walking in: crouched, tail to the keeper, walking off
  *    19-wild-settle.png        the keeper near and still: calm risen, the dragon settled
  *    20-wild-flee.png          mid-takeoff after a rush: the dragon alone, altitude framed
+ *
+ *  And for M8b criterion 2 and 3, the same four states at the camera a *player* has — the
+ *  default orbit, where the dragon is about 97 px across — so a critic can judge whether the
+ *  tells read at that size rather than at 3.3 units. The drill holds the sim, pins the island's
+ *  spin and freezes the wind, so the only thing that differs between the four frames is the
+ *  dragon's own pose, and it counts the difference in pixels inside the dragon's screen disc:
+ *    22-wild-reads-wander.png  the reference pose
+ *    23-wild-reads-alert.png   reared, neck up, wings lifted
+ *    24-wild-reads-wary.png    crouched, wings folded, tail down
+ *    25-wild-reads-settle.png  the idle it eases back into
  *  and the clip `artifacts/turntables/m8b-approach.webm`: one slow approach from far to settle,
  *  then a rush to flight, the camera tracking the pair. Before them, drills: tap-to-move under the
  *  mouse and under touch (a tap walks, a drag orbits, a double tap runs), and a reload
@@ -1950,6 +1960,230 @@ try {
       for (const e of wildErrors) errors.push(`wild shots: ${e}`);
     } catch (e) {
       errors.push(`wild shots drill failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      await ctx.close();
+    }
+  }
+  await flush();
+
+  /*
+   * **Do the tells read at the camera the player actually has?** (run 36, criteria 2 and 3.)
+   *
+   * Shots 17-21 prove the tells exist; they are framed on their subject, 3.3 to 4.5 units from
+   * the body, where the dragon fills 400-530 px. Two critics measured the reaction at the
+   * framing a *player* gets — the default orbit, 20 units out, where the dragon is about 97 px
+   * across and the keeper 21 — and could not read it (gameplay D1, art A9). That is the finding
+   * run 36 exists to answer, and this drill is the measurement: four frames at the default
+   * orbit, nothing changing between them but the dragon's own pose, and the difference counted
+   * in pixels inside the dragon's own screen disc.
+   *
+   * What is held still, so that the only variable is the pose:
+   *
+   * - the sim (`hold`), so the dragon stands at one place and heading for all four frames;
+   * - the island's spin (`frameAcross` on the keeper), so the dragon is seen side on as shots
+   *   17-21 see it;
+   * - the wind, the island's spin and the flock (`__dragonveinWind.freeze`), so the flora behind
+   *   the dragon is the same pixels in every frame;
+   * - the camera: the **default orbit**, untouched. No `closeUp`, no `__dragonveinShot` pose.
+   *   The whole defect being measured is that the old evidence was framed close, so framing
+   *   these any closer would answer a question nobody asked.
+   *
+   * The pose comes from `__dragonveinWild.poseAs`, which feeds the attitude layer a state and a
+   * bearing and snaps it there — with the sim held the pose dt is 0, so an eased change would
+   * never arrive — and touches nothing else: not the position, not the heading, not the flight,
+   * not `w.wild.state`, so `read().wild.state` still reports what the sim thinks and no caption
+   * can claim a state the sim is not in. The bearing handed to it is the real one, computed from
+   * the two actors' positions and the dragon's heading exactly as src/main.ts computes it.
+   *
+   * The measurement, per criterion 2, inside a disc centred on the dragon's drawn centre:
+   *
+   * - the disc's radius is DISC_GROW × the rest sphere's half-width, because the rear-up and the
+   *   raised wings reach well past the sphere `screen()` reports (which is the *rest* mesh's).
+   *   The drill checks that every silhouette it measures stays clear of the disc's edge, and
+   *   says so: a mask that reaches the edge is being clipped, which under-reports every number
+   *   below. The same disc truncates every frame identically, so a little clipping of the long
+   *   end of a shadow leaves (a) comparable; more than a twentieth of the mask touching the edge
+   *   is a measurement that cannot be read, and fails;
+   * - the **silhouette** is the set of pixels inside the disc that differ from a fifth frame with
+   *   the dragon hidden (`hideDragon`), by more than DIFF of 255 in any channel. That is the
+   *   dragon's own pixels *and its own shadow on the deck*: hiding the mesh hides what it casts.
+   *   The shadow is left in deliberately — it is drawn by the dragon and it moves when the pose
+   *   moves — and it makes the area bigger, which makes (a) *smaller*, so every (a) below is
+   *   conservative;
+   * - **(a)** is the pixels inside the disc that differ from the `wander` frame by more than DIFF,
+   *   as a share of `wander`'s silhouette area;
+   * - **(b)** is each silhouette's bounding box, and its change in height and width from
+   *   `wander`'s.
+   *
+   * The bars are STATE.md run 36's, set before the amplification and not moved by it: (a) ≥ 15 %
+   * and (b) ≥ 5 px in height or in width, for `alert` and for `wary`, each against `wander`.
+   * Every state's numbers are logged either way, because `settle` and the `wander`-against-
+   * `wander` control are what say whether the measurement can be trusted at all: the control is
+   * two captures of the *same* pose a fraction of a second apart, so it carries whatever noise
+   * the pipeline has (the dragon's idle breath keeps running under a held sim), and if it is not
+   * near zero then neither is anything else here.
+   */
+  {
+    const ctx = await browser.newContext({ viewport: VIEW });
+    const p = await ctx.newPage();
+    const wildErrors = [];
+    p.on('pageerror', (e) => wildErrors.push(String(e)));
+    /** How much bigger than the rest sphere the measured disc is: a rear-up is taller than rest. */
+    const DISC_GROW = 2.0;
+    /** A channel difference of more than this (of 255) is a changed pixel: criterion 2's own figure. */
+    const DIFF = 8;
+    const AREA_BAR = 15, BOX_BAR = 5;
+    /** The control frame and the dragon-less frame: measured, not shipped to the critics. */
+    const WORK = 'artifacts/tmp';
+    try {
+      await p.goto(wildUrl, { waitUntil: 'load', timeout: 30_000 });
+      const r0 = await wildReady(p);
+      if (!r0.dragon.ready) throw new Error(`the wild dragon was not built: ${r0.dragon.error}`);
+      await p.waitForFunction(() => (globalThis.__dragonveinStats?.().windInstances ?? 0) > 0, undefined, { timeout: 30_000 });
+      // Stand the keeper where it can see the dragon, then stop the world and the wind.
+      const spot = await p.evaluate((d) => globalThis.__dragonveinWild.stage(d), r0.temperament.notice + 1.4);
+      if (spot) await p.evaluate(([x, z]) => globalThis.__dragonveinWild.place(x, z), spot);
+      const r1 = await wildRead(p);
+      const [kx, kz] = r1.keeper.pos;
+      const framed = await p.evaluate(([x, z]) => {
+        const h = globalThis.__dragonveinWild;
+        h.hold(true);
+        const ang = h.frameAcross(x, z);
+        globalThis.__dragonveinWind?.freeze(0);
+        return (ang * 180) / Math.PI;
+      }, [kx, kz]);
+      // The keeper's bearing off the dragon's snout, as src/main.ts computes it for the tells.
+      const [dx, dz] = r1.wild.pos, dh = r1.wild.heading;
+      const ch = Math.cos(dh), sh = Math.sin(dh);
+      const lx = (kx - dx) * ch + (kz - dz) * sh, lz = -(kx - dx) * sh + (kz - dz) * ch;
+      const bearing = Math.atan2(-lz, lx);
+      // Read the framing *after* a frame has been drawn with the pinned spin: `screen()` projects
+      // through `island.matrixWorld`, which the frame loop updates, so reading it in the same
+      // round trip that pinned the spin answers for the island's *old* angle — 112 px of error
+      // in x the first time this drill ran, which put the measured disc on the crystals beside
+      // the dragon instead of on the dragon.
+      await p.waitForTimeout(250);
+      const sc0 = await p.evaluate(() => globalThis.__dragonveinWild.screen());
+      say(`wild tells: the player's camera — ${sc0.viewport[0]}x${sc0.viewport[1]}, the dragon ` +
+        `${sc0.dragon ? sc0.dragon.widthPx.toFixed(0) : '?'} px across centred at ${fmt(sc0.dragon?.px ?? [])} ` +
+        `${sc0.dragon ? sc0.dragon.cameraDistance.toFixed(1) : '?'} units out, the keeper ` +
+        `${sc0.keeper ? sc0.keeper.heightPx.toFixed(0) : '?'} px tall; island pinned at ${framed.toFixed(1)}°, ` +
+        `sim held, wind frozen; keeper bearing ${bearing.toFixed(3)} rad off the snout`);
+      if (!sc0.dragon) throw new Error('the dragon is not on screen at the default orbit');
+      if (sc0.dragon.widthPx > 200) {
+        errors.push(`wild tells: the dragon is ${sc0.dragon.widthPx.toFixed(0)} px across, not the ~97 px of the ` +
+          `player's own camera — this drill is not measuring the framing the finding was about`);
+      }
+      /** Pose the attitude, let the frame land, screenshot, and report what the page holds. */
+      const frame = async (state, file) => {
+        if (state !== null) await p.evaluate(([s, b]) => globalThis.__dragonveinWild.poseAs(s, b), [state, bearing]);
+        else await p.evaluate(() => globalThis.__dragonveinWild.hideDragon(true));
+        await p.waitForTimeout(250);
+        await p.screenshot({ path: `${SHOTS}/${file}` });
+        const at = await wildRead(p);
+        return { at, png: decodePng(`${SHOTS}/${file}`) };
+      };
+      const shots = {};
+      shots.wander = await frame('wander', '22-wild-reads-wander.png');
+      // The control: the same pose again, a fraction of a second later. Not kept as a shot, and
+      // not written among them either — artifacts/shots is the critics' folder.
+      await mkdir(WORK, { recursive: true });
+      const control = await frame('wander', '../tmp/wild-reads-control.png');
+      shots.alert = await frame('alert', '23-wild-reads-alert.png');
+      shots.wary = await frame('wary', '24-wild-reads-wary.png');
+      shots.settle = await frame('settle', '25-wild-reads-settle.png');
+      const bg = await frame(null, '../tmp/wild-reads-background.png');
+      await p.evaluate(() => {
+        globalThis.__dragonveinWild.hideDragon(false);
+        globalThis.__dragonveinWild.poseAs(null, 0);
+        globalThis.__dragonveinWild.hold(false);
+        globalThis.__dragonveinWind?.release();
+      });
+
+      // --- the measurement -------------------------------------------------------------------
+      const [cx, cy] = sc0.dragon.px;
+      const rad = (sc0.dragon.widthPx / 2) * DISC_GROW;
+      const { w, h } = bg.png;
+      const inDisc = [];
+      for (let y = Math.max(0, Math.floor(cy - rad)); y <= Math.min(h - 1, Math.ceil(cy + rad)); y++) {
+        for (let x = Math.max(0, Math.floor(cx - rad)); x <= Math.min(w - 1, Math.ceil(cx + rad)); x++) {
+          if ((x - cx) ** 2 + (y - cy) ** 2 <= rad * rad) inDisc.push(y * w + x);
+        }
+      }
+      const differs = (a, b, i) => Math.max(Math.abs(a.px[i * 3] - b.px[i * 3]),
+        Math.abs(a.px[i * 3 + 1] - b.px[i * 3 + 1]), Math.abs(a.px[i * 3 + 2] - b.px[i * 3 + 2])) > DIFF;
+      /** The dragon's own pixels in a frame: those inside the disc that the background has not. */
+      const silhouette = (f) => {
+        let area = 0, x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, edge = 0;
+        for (const i of inDisc) {
+          if (!differs(f.png, bg.png, i)) continue;
+          area++;
+          const x = i % w, y = Math.floor(i / w);
+          x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+          // Within a pixel and a half of the disc's edge: a mask that touches it is being clipped.
+          if ((x - cx) ** 2 + (y - cy) ** 2 >= (rad - 1.5) ** 2) edge++;
+        }
+        if (area === 0) return { area, wPx: 0, hPx: 0, edge };
+        return { area, wPx: x1 - x0 + 1, hPx: y1 - y0 + 1, edge };
+      };
+      const changed = (f) => inDisc.reduce((n, i) => n + (differs(f.png, shots.wander.png, i) ? 1 : 0), 0);
+      const base = silhouette(shots.wander);
+      say(`wild tells: the measured disc is ${rad.toFixed(0)} px in radius (${DISC_GROW}× the rest sphere's ` +
+        `${(sc0.dragon.widthPx / 2).toFixed(0)} px) centred on the dragon; a changed pixel differs by more than ` +
+        `${DIFF}/255 in a channel; wander's silhouette, shadow included, is ${base.area} px of it`);
+      if (base.area < 400) errors.push(`wild tells: wander's silhouette is only ${base.area} px — too few to measure a share of`);
+      const rows = [['wander', shots.wander], ['control (wander again)', control], ['alert', shots.alert], ['wary', shots.wary], ['settle', shots.settle]];
+      const got = {};
+      for (const [name, f] of rows) {
+        const s = silhouette(f);
+        const n = changed(f);
+        const pct = (100 * n) / Math.max(1, base.area);
+        const dh2 = s.hPx - base.hPx, dw = s.wPx - base.wPx;
+        got[name] = { pct, dh: dh2, dw, s };
+        const a = f.at.dragon.attitude;
+        say(`  ${name}: (a) ${pct.toFixed(1)} % of wander's silhouette changed (${n} px) · (b) box ${s.wPx}×${s.hPx} px, ` +
+          `Δwidth ${dw >= 0 ? '+' : ''}${dw} px Δheight ${dh2 >= 0 ? '+' : ''}${dh2} px · silhouette ${s.area} px` +
+          `${s.edge > 0 ? ` · WARNING ${s.edge} px of it touch the disc's edge` : ''}`);
+        say(`     tells: look ${fmt(a.look)} neck ${fmt(a.neck)} head ${fmt(a.head)} lower ${fmt(a.lower)} tail ${fmt(a.tail)} ` +
+          `fold ${fmt(a.fold)} rise ${fmt(a.rise)} rear ${fmt(a.rear)}; walk ${fmt(f.at.dragon.walkWeight)}; ` +
+          `the sim still says '${f.at.wild.state}'`);
+        if (s.area === 0) errors.push(`wild tells: nothing of the dragon is inside the measured disc for '${name}'`);
+        if (s.edge > 0.05 * Math.max(1, s.area)) {
+          errors.push(`wild tells: ${name}'s silhouette reaches the edge of the measured disc (${s.edge} px of ${s.area}) — ` +
+            `grow DISC_GROW past ${DISC_GROW} or the numbers are clipped`);
+        }
+      }
+      // The control says whether any of this can be trusted.
+      const ctl = got['control (wander again)'];
+      say(`wild tells: the control — the same pose photographed twice — moved ${ctl.pct.toFixed(2)} % of the silhouette ` +
+        `and its box by ${ctl.dw}×${ctl.dh} px. Anything near the bars below would mean the measurement is noise.`);
+      if (ctl.pct > 3) {
+        errors.push(`wild tells: the control changed ${ctl.pct.toFixed(1)} % of the silhouette with the same pose — ` +
+          `the frames are not comparable, so (a) cannot be read`);
+      }
+      // The bars: criterion 2, for alert and for wary, each against wander.
+      for (const name of ['alert', 'wary']) {
+        const g = got[name];
+        if (g.pct < AREA_BAR) {
+          errors.push(`wild tells (criterion 2a): '${name}' changes ${g.pct.toFixed(1)} % of the dragon's silhouette ` +
+            `against wander, under the ${AREA_BAR} % a player can read at ${sc0.dragon.widthPx.toFixed(0)} px`);
+        }
+        if (Math.max(Math.abs(g.dh), Math.abs(g.dw)) < BOX_BAR) {
+          errors.push(`wild tells (criterion 2b): '${name}' moves the silhouette's box by only ${g.dw}×${g.dh} px ` +
+            `against wander, under the ${BOX_BAR} px of outline a player notices at a glance`);
+        }
+      }
+      for (const [file, what] of [['22-wild-reads-wander.png', 'wander at the default orbit: the reference pose'],
+        ['23-wild-reads-alert.png', 'alert at the default orbit: reared, neck up, wings lifted'],
+        ['24-wild-reads-wary.png', 'wary at the default orbit: crouched, wings folded, tail down'],
+        ['25-wild-reads-settle.png', 'settle at the default orbit: the idle it eases back into']]) {
+        say(`shot: ${SHOTS}/${file}  (${what})`);
+      }
+      await rm(WORK, { force: true, recursive: true });
+      for (const e of wildErrors) errors.push(`wild tells: ${e}`);
+      say(`wild tells: ${wildErrors.length} page error(s)`);
+    } catch (e) {
+      errors.push(`wild tells drill failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       await ctx.close();
     }
