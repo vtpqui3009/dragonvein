@@ -13,6 +13,82 @@ archive once two newer run entries sit above it.
 
 ---
 
+## 2026-10-18 · run 36 · M8b — the tells amplified in the body, and the keeper marker
+
+**Step**: `M8b`, still the first step in reading order that is not `DONE`. **The acceptance
+criteria for the step are run 33's six and run 35's seventh, unchanged.** This run does not
+rewrite them. What follows is this run's own acceptance criteria for the one gap left —
+criterion 6 — written before any code, per §3.2.
+
+**Step 0's push worked** (`44979df`); the marker is removed by this commit.
+
+**The owner answered run 35's blocking question on 2026-10-18**: `docs/DECISIONS.md` §"M8b
+criterion 6: amplify the tells, and add the keeper marker" — **options 1 and 2 together**.
+Amplify the tells so the reading stays in the body (`docs/GDD.md` §The loop: taming is
+"reading its behaviour, not throwing a ball"), and ship the keeper marker as a **visibility**
+aid for the player's own avatar, answering gameplay's D2 on its own terms. Option 3, the
+camera, is closed by §"The camera stays a diorama". **Criterion 6 is still judged on the body
+alone**, so the marker carries no dragon-state information.
+
+**Ownership**: `src/render/` (the tells, the marker), `src/main.ts` (the wiring and the
+`?test` hook), `tools/playtest.mjs` (the drill and the shots) and `tests/`. Cross-directory,
+so **one sequential owner: the integrator**, per CLAUDE.md §3.3.
+
+### Acceptance criteria for this run
+
+1. **The clearance gate covers the new poses before any amplitude moves, and in its own
+   commit.** Run 35 called a bigger pose risky; the owner's note says the hazard is already
+   gated. It is gated *for a flap*: `src/render/flight-probe.ts` poses only
+   `flight.pose(t, flap, glide)`, which is the walk at rest with the flight on top and **no
+   attitude layer at all**. An alert rear-up is not a flap, so the gate is extended first:
+   the probe takes an attitude schedule — every named state in `ATTITUDES`, the eased
+   transitions between them, each with the keeper to either side, and each over the walk at
+   several gait phases — and `tests/dragon-flight.test.ts` asserts the same bars it already
+   asserts for the flap: every wing vertex's clearance to the body's own swept tubes > 0, the
+   two wings never touching, no finger crossing its neighbour. Checkable:
+   `npx vitest run tests/dragon-flight.test.ts` green, with the pre-amplification baseline
+   clearances printed in this entry.
+2. **The tells read in the body at the camera the player actually has.** A new `gate:smoke`
+   drill, `wild tells at the player's camera`: the sim held, the **default orbit** and no
+   `closeUp`, the island's spin pinned, the dragon at one fixed place and heading, posed into
+   `wander`, `alert`, `wary` and `settle` in turn through a `?test`-only hook that sets the
+   attitude and nothing else. For `alert` and for `wary`, each against `wander`, measured
+   inside the dragon's own screen disc:
+   - **(a)** pixels differing by more than 8 of 255 in any channel ≥ **15 %** of the dragon's
+     drawn silhouette area;
+   - **(b)** the silhouette's bounding box moves by ≥ **5 px** in height or in width.
+
+   Both bars are set here, before the change, and from the reading that caused the finding:
+   the dragon is 97 px wide, so 5 px of outline is about the stroke width of the HUD's own
+   text — the least a player sees at a glance — and 15 % of the silhouette is a change to
+   about a seventh of the creature. Run 35's tells are measured on the same drill first and
+   reported as the baseline.
+3. **Named shots at the player's camera**, so a critic scores criterion 6 at a framing a
+   player gets rather than at 3.3 units: `artifacts/shots/22-wild-reads-wander.png`,
+   `23-wild-reads-alert.png`, `24-wild-reads-wary.png`, `25-wild-reads-settle.png`, all at the
+   default orbit, the dragon in the same place in all four, with the pixel numbers of
+   criterion 2 in `playtest.log`. The close framings 17–21 stay: they prove the tells exist,
+   and these four prove they read.
+4. **No wing through the body, and no new interpenetration, anywhere in the amplified range.**
+   Criterion 1's cases green at the shipped amplitudes, and `gate:smoke`'s existing
+   assertions unchanged: the dragon does not float, sink, slide, leave the island or get
+   stuck.
+5. **The keeper can be found.** A through-geometry marker above the keeper, scoped to
+   visibility: `26-wild-keeper-marked.png` at the player's camera with something drawn in
+   front of the keeper, and a `gate:smoke` assertion that the marker's own pixels are on
+   screen above the keeper's projected position **even when `keeperSeen()` is false**. It
+   carries no dragon-state information, so criterion 6 stays judged on the body alone.
+6. **Budgets unmoved, and no budget raised.** `npm run gates` exits 0: heap ≤ 40 960 B/frame
+   with `wild:{"dragon":true,"keeper":true}`, `cpuFrameMs` p95 < 3.5 ms, draw calls ≤ 180,
+   meshgen ≤ 120 ms. The marker is one draw at most, and the tells add no per-frame
+   allocation.
+7. **Three critics in fresh context on a frozen tree**, scored against `docs/RUBRIC.md`, with
+   M8b closing only at ≥ 8.0 from all three (§3.6). Per §4, criterion 6 is decided by whether
+   a critic lists a `blocking` or `major` defect pointing at the dragon's **body** reading in
+   shots 22–25, not by a sub-score.
+
+---
+
 ## 2026-10-13 · owner session · the loop moves ahead of look dev
 
 No code. Two owner decisions, and one session stood down.
@@ -940,4 +1016,3 @@ so under `CLAUDE.md` §3.6 this is a new run's cycle 1.
 
 ---
 
-- run started 2026-10-18T03:27:15Z
