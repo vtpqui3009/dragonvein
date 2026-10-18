@@ -2246,6 +2246,14 @@ const simNow = new Float64Array(5);
 let loadedWorld: string | null = null;
 /** `?test` only: hold the sim still, so a save cannot race the world it describes. */
 let simHeld = false;
+/**
+ * `?test` only: whether a hold freezes the **pose** as well as the sim. Holding both is the
+ * photograph (the frame on disk is the moment the drill reached). Holding the sim alone lets a
+ * pose that is still easing arrive while the world cannot move on under it — which is the only
+ * way to photograph a short state at the pose it asks for, since the tells take two or three
+ * seconds to ease and `wary` can be over before they land (run 36, C0).
+ */
+let poseHeld = false;
 /** `?test` only: pin the island's spin at this angle (radians), so a drill can aim at the deck. */
 let spinPinned: number | null = null;
 
@@ -2703,6 +2711,13 @@ function readWild() {
         look: v.attitude.look, neck: v.attitude.neck, head: v.attitude.head, lower: v.attitude.lower, tail: v.attitude.tail,
         fold: v.attitude.fold, rise: v.attitude.rise, rear: v.attitude.rear,
       },
+      // What those channels are easing toward, so a drill can tell an arrived pose from one
+      // still on its way (tools/playtest.mjs `shoot`). A copy, like everything else here.
+      attitudeGoal: {
+        look: v.attitude.targets.look, neck: v.attitude.targets.neck, head: v.attitude.targets.head,
+        lower: v.attitude.targets.lower, tail: v.attitude.targets.tail, fold: v.attitude.targets.fold,
+        rise: v.attitude.targets.rise, rear: v.attitude.targets.rear,
+      },
     } : { ready: false, error: wildError },
     keeperView: { pos: keeper.position.toArray(), yaw: keeper.rotation.y, ring: KEEPER_UNIFORMS.uMark.value.toArray(), visible: keeper.visible },
     taps: { ...taps, lastGoal: [...taps.lastGoal] },
@@ -2774,8 +2789,13 @@ declare global {
      * not for the deck's collision circles, which stop below the keeper's own height.
      */
     keeperSeen: () => boolean;
-    /** Hold the sim still (true) or let it run. */
-    hold: (on: boolean) => void;
+    /**
+     * Hold the sim still (true) or let it run. `pose` false holds the sim *only*: the dragon's
+     * pose keeps easing (the tells, the walk ramp, the gait clock) while the world cannot change
+     * state under it, which is how a drill waits for a pose to arrive without the sim moving on.
+     * `pose` true — the default, and what a photograph wants — freezes both.
+     */
+    hold: (on: boolean, pose?: boolean) => void;
     /** The world exactly as it was loaded, before its first tick. */
     loaded: () => World | null;
   } | undefined;
@@ -3063,7 +3083,7 @@ if (TEST_HOOKS) {
       }
       return true;
     },
-    hold: (on) => { simHeld = on; },
+    hold: (on, pose = true) => { simHeld = on; poseHeld = on && pose; },
     loaded: () => (loadedWorld ? JSON.parse(loadedWorld) as World : null),
   };
 }
@@ -3413,7 +3433,13 @@ function frame(now: number): void {
     // second or more, and in run 35 the take-off shot was captured after the dragon had landed
     // and the wary shot after it had gone back to alert. Held, the frame that lands is the
     // moment the drill reached, which is the moment the log line reports.
-    updateWild(now, simHeld ? 0 : frameMs < MAX_CATCH_UP_MS ? frameMs / 1000 : MAX_CATCH_UP_MS / 1000,
+    //
+    // `hold(true, false)` holds the sim but *not* the pose, so the tells can finish easing into
+    // the state the drill reached while that state cannot change under them. The tells take two
+    // to three seconds to arrive and `wary` can be over in less, which is why the alternative —
+    // waiting with the sim live — photographed `wary`'s pose a third of the way in, or the
+    // dragon back in `alert` (run 36, C0).
+    updateWild(now, poseHeld ? 0 : frameMs < MAX_CATCH_UP_MS ? frameMs / 1000 : MAX_CATCH_UP_MS / 1000,
       simAccMs / TICK_MS < 1 ? simAccMs / TICK_MS : 1);
     collectGpuTimings();
     const timed = gpuTimer && idleQueries.length > 0 ? idleQueries.pop() ?? null : null;

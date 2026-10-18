@@ -1789,7 +1789,67 @@ try {
      * rather than moving either of them, so the shot is still the moment the drill reached.
      * Up to ±23°, which keeps the keeper-to-dragon line across the screen.
      */
+    /**
+     * **The shutter waits for the tells to arrive** (run 36, C0). `shoot` used to hold the world
+     * on the frame after a `waitWild` returned, which is the frame the sim *entered* the state
+     * on — so every tell the project has ever photographed was caught mid-ease, a third to a
+     * half of the way to its pose: run 36 shipped `alert` at rear 0.80 / neck 0.46 / rise 0.45
+     * and this drill photographed 0.553 / 0.361 / 0.359, and `wander`, whose fold is 0, was
+     * photographed at fold 0.378 still unwinding out of a graze. Two critics could not read the
+     * tells in those images, and this is part of the reason: they were reading a pose that does
+     * not exist except in transit.
+     *
+     * So, before the hold: **stop the sim, then let the pose arrive.** `hold(true, false)` holds
+     * the world without holding the pose, so the state the drill reached cannot change while the
+     * tells ease into it; then wait until every channel is on the target `setTargets` last asked
+     * for (`attitudeGoal`). `DragonAttitude.update` lands a channel exactly on its goal once
+     * within SETTLED of it, so "arrived" is an equality rather than a tolerance — except `look`,
+     * whose goal is the bearing to the keeper, and which is only exactly reachable because the
+     * hold has stopped both actors; it keeps LOOK_ARRIVED, 0.02 rad (about half a pixel of head
+     * turn at this framing), so a caller that has not held the world still gets a sane answer.
+     *
+     * Waiting with the sim *live* was tried first and does not work: the tells take two to three
+     * seconds to ease, and `wary` lasts less than that — the dragon had walked off and gone back
+     * to `alert` before its own pose arrived, which is both why the measurement has to hold the
+     * world and a finding in its own right (a player does not see the end of a short state's
+     * ease either).
+     *
+     * This changes no asserted behaviour. Every `waitWild` condition, and so every state each
+     * caption claims, is exactly as run 33 wrote it, and the caption check below still compares
+     * the state at capture against the state the drill waited for. A shot taken while a flight
+     * is running is exempt: there the attitude is decaying to zero anyway and the subject is a
+     * take-off, so waiting for the last thousandth would photograph a landing instead.
+     */
+    const EASE_KEYS = ['neck', 'head', 'lower', 'tail', 'fold', 'rise', 'rear'];
+    const LOOK_ARRIVED = 0.02;
+    const arrived = (x) => {
+      const a = x.dragon?.attitude, g = x.dragon?.attitudeGoal;
+      if (!a || !g) return false;
+      return EASE_KEYS.every((k) => Math.abs(a[k] - g[k]) <= 1e-9) && Math.abs(a.look - g.look) <= LOOK_ARRIVED;
+    };
+    const gap = (x) => {
+      const a = x.dragon?.attitude ?? {}, g = x.dragon?.attitudeGoal ?? {};
+      return [...EASE_KEYS, 'look'].map((k) => `${k} ${fmt(a[k])}→${fmt(g[k])}`).join(' ');
+    };
+    const waitForTells = async (name, r) => {
+      if (!r) return;
+      const flying = (x) => (x.dragon?.flap ?? 0) > 0 || (x.dragon?.glide ?? 0) > 0 || (x.dragon?.altitude ?? 0) > 0;
+      const start = await wildRead(p);
+      if (flying(start)) { say(`  tells: ${name} is a flight shot — the attitude is decaying to rest, not arriving, so the shutter does not wait`); return; }
+      // The world stops here; the pose does not. The state cannot change under the ease.
+      await p.evaluate(() => globalThis.__dragonveinWild.hold(true, false));
+      const t0 = Date.now();
+      try {
+        const at = await waitWild(p, (x) => arrived(x), 12_000, `the tells of '${r.wild.state}' to arrive`);
+        say(`  tells: arrived for '${r.wild.state}' in ${((Date.now() - t0) / 1000).toFixed(1)} s of easing with the sim held (${gap(at)})`);
+      } catch (e) {
+        const at = await wildRead(p);
+        errors.push(`wild: ${name}'s tells never reached the pose '${r.wild.state}' asks for: ${gap(at)} (${e instanceof Error ? e.message : String(e)})`);
+      }
+    };
+
     const shoot = async (name, what, r, { dist = 3.0, elev = 24, withKeeper = true } = {}) => {
+      await waitForTells(name, r);
       const framed = await p.evaluate(([d, e, k]) => {
         const h = globalThis.__dragonveinWild;
         h.hold(true);                       // the world stops here: this frame is the photograph

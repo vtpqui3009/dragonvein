@@ -190,6 +190,15 @@ export class DragonAttitude implements AttitudeLayer {
     }
   }
 
+  /**
+   * The targets every channel is easing toward: what `setTargets` last asked for, not what the
+   * dragon is doing. The `?test` hook reports it so a drill can tell a pose that has *arrived*
+   * from one still on its way — tools/playtest.mjs photographed mid-ease tells for three runs
+   * (`alert` at rear 0.553 against a target of 0.80) and nobody could see it from the outside.
+   * The object is the live one: read it, never write it.
+   */
+  get targets(): Readonly<AttitudeTargets> { return this.goal; }
+
   /** Set the targets for state `state` with the keeper `look` radians off the snout. Allocation-free. */
   setTargets(state: string, look: number): void {
     const a = ATTITUDES[state] ?? ATTITUDES['wander']!;
