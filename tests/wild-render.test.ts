@@ -20,6 +20,7 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { wild } from '../src/core/genome';
+import { buildDragonArrays } from '../src/assets/dragon/arrays';
 import { buildDragon } from '../src/assets/dragon/builder';
 import { flightParams } from '../src/assets/dragon/flight';
 import { walkParams } from '../src/assets/dragon/walk';
@@ -175,6 +176,78 @@ describe('the tells (DragonAttitude)', () => {
         expect(lifted[i], `seed ${seed} ${l.name} rises`).toBeGreaterThan(0.1);
         void drop;
       });
+    }
+  });
+
+  /**
+   * The tail against the deck, measured on the **skin** rather than on a joint (M8b criterion 2,
+   * C1). A joint-only check is what let two tail defects through: the rear-up's lift held the tip
+   * clear while the root half of the tail still swung down with the body (fixed by loading
+   * walk.ts REAR_TAIL_SHARE toward the root), and `wary`'s crouch lowers the tail's root before
+   * the tail channel does anything at all, so the channel's own sign was not the whole story.
+   *
+   * What is barred, and why it is this and not "above zero". The mesh's own lowest vertex at rest
+   * is already *below* y = 0 — the foot's skin dips about 0.086 under the holder's origin on the
+   * dragons measured — so y = 0 is not where this dragon's geometry meets the deck; its own
+   * standing low point is. The bar is therefore per dragon and relative to that: **the outer tail
+   * (the two segments a player sees behind the body, tail1 and tail2) never goes lower than the
+   * dragon's own lowest standing vertex**, in any state, at any point of any ease, standing or
+   * walking at any gait phase. Worst margin over the probe set when this was written: 0.058 on
+   * the dragon whose tail hangs lowest while crouched.
+   *
+   * The tail's *root* and the belly are deliberately not barred here: the crouch puts the body's
+   * underside into the deck (0.285 below the origin at `wary` against 0.209 before the tells were
+   * amplified, on fixture #5), between the hind legs where the deck hides it. That is a
+   * pre-existing condition of `lower` and it is recorded as a finding, not pinned as if this
+   * commit had introduced it.
+   */
+  it('never puts the outer tail below the deck, in any state, at any point of an ease', () => {
+    for (const seed of [1, 3, 5, 7]) {
+      const g = wild(seed);
+      const a = buildDragonArrays(g);
+      const fp = flightParams(g), wp = walkParams(g);
+      const walk = new DragonWalk(a.rig, wp);
+      new DragonFlight(walk, a.rig, fp);
+      const att = new DragonAttitude(a.rig, fp);
+      const n = a.position.length / 3;
+      /** The lowest skinned vertex among those the given bones carry (empty = the whole mesh). */
+      const lowest = (bones: Set<number>) => {
+        const M = walk.bones.map((b) => b.matrixWorld.elements);
+        let lo = Infinity;
+        for (let v = 0; v < n; v++) {
+          let y = 0, best = 0, mine = bones.size === 0;
+          for (let j = 0; j < 4; j++) {
+            const w = a.skinWeight[4 * v + j]!;
+            if (w === 0) continue;
+            const b = a.skinIndex[4 * v + j]!;
+            const e = M[b]!;
+            y += w * (e[1]! * a.position[3 * v]! + e[5]! * a.position[3 * v + 1]! + e[9]! * a.position[3 * v + 2]! + e[13]!);
+            if (bones.has(b) && w > best && w > 0.5) { best = w; mine = true; }
+          }
+          if (mine && y < lo) lo = y;
+        }
+        return lo;
+      };
+      // The dragon's own standing low point: the floor this one meets the deck at.
+      walk.attitude = null;
+      walk.pose(null);
+      const standing = lowest(new Set());
+      walk.attitude = att;
+      const outer = new Set([BONE.tail1, BONE.tail2]);
+      for (const [state, goal] of Object.entries(ATTITUDES)) {
+        for (const look of [0, goal.lookShare * LOOK_MAX]) {
+          for (const [t, w] of [[null, 0], [wp.period * 0.25, 1], [wp.period * 0.75, 1]] as [number | null, number][]) {
+            // Partway through the ease as well as at the end of it: a transition pose is a pose.
+            for (const frac of [0.33, 0.67, 1]) {
+              att.setRaw({ look: look * frac, neck: goal.neck * frac, head: goal.head * frac, lower: goal.lower * frac,
+                tail: goal.tail * frac, fold: goal.fold * frac, rise: goal.rise * frac, rear: goal.rear * frac });
+              walk.pose(t, w);
+              expect(lowest(outer), `seed ${seed} outer tail in ${state} at ${Math.round(frac * 100)} % of the ease, walk ${w}`)
+                .toBeGreaterThanOrEqual(standing);
+            }
+          }
+        }
+      }
     }
   });
 });

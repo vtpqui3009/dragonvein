@@ -16,9 +16,9 @@ import type { AttitudeLayer } from './walk';
  *   alert    it rears up on its hind legs, the neck rises, the wings lift and half-open, and
  *            the head turns to the keeper: the widest, tallest silhouette it has;
  *   wary     the body crouches low (the legs' IK bends the knees), the wings fold hard against
- *            the flanks, the neck drops, the tail tucks, and the head looks back over the
- *            shoulder at the keeper — the sim has already turned its tail to the keeper and is
- *            walking it off: the lowest, narrowest silhouette it has;
+ *            the flanks, the neck drops, the tail drops as far as the deck allows, and the head
+ *            looks back over the shoulder at the keeper — the sim has already turned its tail to
+ *            the keeper and is walking it off: the lowest, narrowest silhouette it has;
  *   settle   it eases back into the idle: head level, a softer, lower stance, a glance;
  *   flee     the M7c flap and glide (src/render/flight.ts), driven by the flight's progress.
  *
@@ -30,6 +30,20 @@ import type { AttitudeLayer } from './walk';
  * taming is "reading its behaviour, not throwing a ball") and the body moves far enough to be
  * read: the whole stance changes, not a joint. Three channels do the carrying, and all three
  * are measured in units the flap already proves safe:
+ *
+ * **The tail, and what "tucks" can mean here** (run 36, C1). Run 33's design note and this
+ * file's own description of `wary` both say the tail tucks, and a frightened animal does drop
+ * its tail: a tail held high reads as aggression, which is the wrong creature. Two measurements
+ * bound how far that can go. First, the channel's sign is the opposite of what its comment said
+ * for the whole of M8b — positive `tail` *lifts* the tip, because the tail points backwards (see
+ * `AttitudeTargets.tail`). Second, `wary` already crouches at `lower` 0.50, which lowers the
+ * tail's root before the channel does anything, so the deck, not the rig, sets the limit: with
+ * the tail's own skin measured against each dragon's own standing low point, +0.15 leaves the
+ * visible tail 0.058 clear of it, +0.10 leaves 0.032, and 0 puts it 0.090 *under* the deck. So
+ * `wary` carries +0.15 — the lowest tail the geometry allows while crouched, 23° of root turn
+ * below the +0.55 it shipped with — and a tail that actually goes *beneath* the body would need
+ * a rig that can swing it out of the sagittal plane, which this one cannot. `alert` keeps +0.30:
+ * a rearing dragon lifts its tail, and the negative sign drove the tip toward the deck there.
  *
  *   fold   the wings fold in — elbow, wrist and fan — exactly the motion the upstroke makes,
  *          at `p.fold` / `p.wristFold` scale with the same narrow-fan guard (`foldScaleOf`);
@@ -62,7 +76,15 @@ export interface AttitudeTargets {
   head: number;
   /** Body lowered, 0..1 of the leg's drop. */
   lower: number;
-  /** Tail curled down (+). */
+  /**
+   * The tail's own curl, radians, spread over its three bones. **Positive lifts the tip, negative
+   * drops it** — the sign reads backwards from the turn because the tail points along −x, so a
+   * nose-down rotation of each segment swings the part *behind* the hips upward. Measured, not
+   * reasoned: on fixture #31, whose tip sits 4.9 units behind the hips, `tail` +0.55 puts that
+   * tip at +1.18 against a rest height of +0.35, and 0 puts it at −0.03. The comment here said
+   * "curled down (+)" from M8b until run 36 measured it (CLAUDE.md §Never: "a comment has twice
+   * asserted the opposite of what the renderer did. Measure the pixels, not the prose").
+   */
   tail: number;
   /** Wings folded in, 0..1 of the flap's own full fold (elbow, wrist and the fan closing with them). */
   fold: number;
@@ -90,7 +112,7 @@ export const ATTITUDES: Readonly<Record<string, Readonly<Omit<AttitudeTargets, '
   graze: { lookShare: 0, neck: -0.95, head: -0.40, lower: 0.25, tail: 0.10, fold: 0.80, rise: -0.15, rear: 0 },
   wander: { lookShare: 0, neck: -0.08, head: 0, lower: 0, tail: 0, fold: 0, rise: 0, rear: 0 },
   alert: { lookShare: 1, neck: 0.46, head: -0.25, lower: 0, tail: 0.30, fold: 0.10, rise: 0.45, rear: 0.80 },
-  wary: { lookShare: 0.85, neck: -0.50, head: 0.30, lower: 0.50, tail: 0.55, fold: 0.90, rise: -0.15, rear: 0 },
+  wary: { lookShare: 0.85, neck: -0.50, head: 0.30, lower: 0.50, tail: 0.15, fold: 0.90, rise: -0.15, rear: 0 },
   settle: { lookShare: 0.35, neck: -0.20, head: -0.05, lower: 0.30, tail: 0.10, fold: 0.25, rise: -0.10, rear: 0 },
   flee: { lookShare: 0, neck: 0, head: 0, lower: 0, tail: 0, fold: 0, rise: 0, rear: 0 },
 };

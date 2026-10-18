@@ -144,12 +144,23 @@ export const REAR_SINK = 0.26;
  * A rearing dragon lifts its tail against the pitch, as a counterweight — and it must, because
  * the pitch is about the pelvis and a dragon's tail is long: #31 of the probe set carries its
  * tip 4.9 units behind the hips, so 20° of rigid nose-up would sweep that tip 1.3 units
- * *through the deck*. Each tail segment counter-pitches this share of the body's pitch, spread
- * over the three of them, so the tail curves up out of the turn instead of swinging down with
- * it. 1 holds the tip's rest direction; above 1 lifts it clear. Measured against every probe
- * dragon's own tail length, which is the only honest way to pick it (the longest tail decides).
+ * *through the deck*. The tail counter-pitches this much of the body's pitch in total, so it
+ * curves up out of the turn instead of swinging down with it. 1 holds the tip's rest direction;
+ * above 1 lifts it clear.
  */
-export const REAR_TAIL_LIFT = 1.45;
+export const REAR_TAIL_LIFT = 1.70;
+/**
+ * ... and this is how that lift is spread over the three tail bones, root first. It is **not**
+ * even, and the reason is measured: spread evenly, the cumulative turn at the root is still
+ * 1 − 1.70/3 ≈ +0.43 of the pitch, i.e. the root half of the tail swings down with the body
+ * nearly as hard as if nothing countered it, and the root is both the thickest part of the tail
+ * and the part the crouch has already lowered. The tip was clear and the root was 0.147 under
+ * the deck on #31 — which is the part a player sees, because it is the part beside the dragon
+ * rather than behind it. Loaded toward the root, the cumulative turn is 1 − 1.70·0.6 ≈ −0.02 of
+ * the pitch at the root, −0.53 at the middle and −0.70 at the tip: the tail leaves the hips
+ * already turning up. Shares sum to 1; REAR_TAIL_LIFT is the total.
+ */
+const REAR_TAIL_SHARE = [0.6, 0.3, 0.1] as const;
 /**
  * The forelegs fold this share of the hind legs' tuck: their thighs hang beside the wings' roots,
  * and folded as far they rise into the skin where the wing grows from the shoulder.
@@ -307,9 +318,9 @@ export class DragonWalk {
     turn(L[BONE.spine1]!, (shoulders - hips) / 2, -pitch, -hipRoll, this.q);
     turn(L[BONE.spine2]!, (shoulders - hips) / 2, 0, shoulderRoll, this.q);
     for (let i = 0; i < NECK.length; i++) turn(L[NECK[i]!]!, (-NECK_COUNTER * shoulders) / NECK.length, 0, -shoulderRoll / NECK.length, this.q);
-    const tailLift = -(REAR_PITCH * rear * REAR_TAIL_LIFT) / TAIL.length;
+    const tailLift = -REAR_PITCH * rear * REAR_TAIL_LIFT;
     for (let i = 0; i < TAIL.length; i++) {
-      turn(L[TAIL[i]!]!, k * w.tailSway * Math.sin(hipA - TAIL_LAG * (i + 1)), tailLift, 0, this.q);
+      turn(L[TAIL[i]!]!, k * w.tailSway * Math.sin(hipA - TAIL_LAG * (i + 1)), tailLift * REAR_TAIL_SHARE[i]!, 0, this.q);
     }
     if (fl) fl.locals(L);
     if (att) att.locals(L);
