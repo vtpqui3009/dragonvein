@@ -39,8 +39,14 @@ import { ATTITUDES, LOOK_MAX, type AttitudeChannels, type DragonAttitude } from 
  *   wing's), carried by the same posed skeleton (src/assets/dragon/clearance.ts). A *wing
  *   vertex* is any vertex with weight on a wing bone; the skin weights hand every vertex on or
  *   inside the body to the body (rig.ts WING_JUNCTION), so all of them start outside it. The
- *   least clearance is reported over them all, and again over the *free wing* alone (the
- *   vertices wholly on wing bones, beyond the junction band), with each one's rest value;
+ *   least clearance is reported over them all, and again split in two — the *free wing* (the
+ *   vertices wholly on wing bones, beyond the junction band) and the *junction band* itself
+ *   (the wing-root skin rig.ts WING_JUNCTION blends onto the flank) — each with its rest value.
+ *   The split is the point: the band lies *on* the body's surface by construction, within 0.001
+ *   to 0.045 of the tubes before anything moves, so the minimum over all vertices is nearly
+ *   always the band's and says nothing about the wing. A free-wing vertex entering the body is a
+ *   wing through a flank; a band vertex a thousandth inside the tube it is wrapped around is the
+ *   band being what it is. Two numbers, two defects, read separately;
  * - **wing to wing**: the least distance between a left-wing vertex and a right-wing one
  *   (exact below WING_PAIR_RANGE, else reported as at least that), and the gap across the
  *   body's midplane between the two wings (a positive gap separates every face of one wing
@@ -207,6 +213,12 @@ export interface FlightProbe {
   body: { min: number; at: FlightSample; vertex: number; rest: number[]; perSample: number[] };
   /** The same, over the free wing only: the vertices wholly on wing bones, beyond the junction band. */
   free: { min: number; restMin: number; at: FlightSample };
+  /**
+   * The same, over the junction band only: the vertices with part of their weight on the body
+   * (rig.ts WING_JUNCTION), which lie on the flank by construction. `body.min` is the lesser of
+   * this and `free.min`; this is the one that moves when the body moves under a folded wing.
+   */
+  junction: { min: number; restMin: number; at: FlightSample };
   wingToWing: { min: number; exactBelow: number; at: FlightSample };
   midplaneGap: { min: number; at: FlightSample };
   fingers: { minGapDeg: number; crossings: number; at: FlightSample };
@@ -314,13 +326,15 @@ export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: Fligh
       skin(d.position[3 * v]!, d.position[3 * v + 1]!, d.position[3 * v + 2]!, bi, bw, 4, posed, 3 * i);
     }
   };
-  let closest = -1, freeBest = Infinity;
+  let closest = -1, freeBest = Infinity, juncBest = Infinity;
   const bodyMin = () => {
     let best = Infinity;
     freeBest = Infinity;
+    juncBest = Infinity;
     for (let i = 0; i < verts.length; i++) {
       const x = posed[3 * i]!, y = posed[3 * i + 1]!, z = posed[3 * i + 2]!;
       if (isFree[i]) { const f = field.distance(x, y, z, freeBest); if (f < freeBest) freeBest = f; }
+      else { const j = field.distance(x, y, z, juncBest); if (j < juncBest) juncBest = j; }
       const d2 = field.distance(x, y, z, best);
       if (d2 < best) { best = d2; closest = verts[i]!; }
     }
@@ -332,7 +346,7 @@ export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: Fligh
   flight.pose(0, 0, 0);
   poseAll();
   const restClearance = bodyMin();
-  const freeRest = freeBest;
+  const freeRest = freeBest, juncRest = juncBest;
 
   const inv = new THREE.Matrix4();
   const p3 = new THREE.Vector3(), q3 = new THREE.Vector3();
@@ -370,6 +384,7 @@ export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: Fligh
   const air = { footMin: Infinity, footRest, legSpanMax: -Infinity, legSpanMin: Infinity };
 
   let free = { min: Infinity, restMin: freeRest, at: samples[0]! };
+  let junction = { min: Infinity, restMin: juncRest, at: samples[0]! };
   let body = { min: Infinity, at: samples[0]!, vertex: -1 }, pair = { min: Infinity, at: samples[0]! }, mid = { min: Infinity, at: samples[0]! };
   let fing = { minGapDeg: Infinity, crossings: 0, at: samples[0]! };
   const perSample: number[] = [];
@@ -381,6 +396,7 @@ export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: Fligh
     perSample.push(b);
     if (b < body.min) body = { min: b, at: s, vertex: closest };
     if (freeBest < free.min) free = { ...free, min: freeBest, at: s };
+    if (juncBest < junction.min) junction = { ...junction, min: juncBest, at: s };
     // The midplane in the body's frame: undo the pelvis's (rigid, in flight) motion.
     inv.copy(bones[0]!.matrixWorld).invert();
     candL.length = 0; candR.length = 0;
@@ -430,7 +446,7 @@ export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: Fligh
   walk.attitude = attitudeOnEntry;
   return {
     airborne: air,
-    samples: samples.length, wingVerts: verts.length, junctionVerts: isFree.filter((f) => !f).length, restClearance, free,
+    samples: samples.length, wingVerts: verts.length, junctionVerts: isFree.filter((f) => !f).length, restClearance, free, junction,
     body: { ...body, rest: [0, 1, 2].map((c) => d.position[3 * body.vertex + c]!), perSample },
     wingToWing: { ...pair, exactBelow: WING_PAIR_RANGE },
     midplaneGap: mid,

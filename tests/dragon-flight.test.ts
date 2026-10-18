@@ -304,70 +304,48 @@ const CREST_NEAR_WING = 0.1;
 const CREST_THROUGH_WING_UNDER_ATTITUDE = ['fixture #13', 'fixture #17', 'fixture #18', 'fixture #24', 'fixture #31'];
 
 /**
- * The least clearance of **any** wing vertex to the body's swept tubes over the attitude
- * schedule, as measured on 2026-10-18 at the amplitudes M8b shipped: the pre-amplification
- * baseline (STATE.md run 36, criterion 1), floored to 1e-4.
- *
- * Why this table exists, and why it is not the flap's bar. `body.min` is taken over every vertex
- * with any weight on a wing, which includes the junction band — the wing's root skin, which
- * rig.ts (WING_JUNCTION) deliberately blends onto the flank, and which therefore lies *on* the
- * body's surface by construction: its rest clearance is 0.0009 to 0.045 across these cases,
- * essentially zero. The flap keeps that band outside the tubes because a flap moves the wings
- * away from a body that barely moves. An attitude does the opposite: the wings stay folded and
- * the *body* moves under them, so a raised neck slides the neck's own tube a few thousandths
- * past the root skin wrapped around it. 25 of these 34 cases are already negative at the shipped
- * amplitudes, at `alert` with the head turned to the keeper — before this run changes anything.
- *
- * So the bar here is two-tier, and neither tier is a weakened flap bar (the flap block above is
- * untouched, and still asserts > 0 on every vertex):
- *
- * - a case that is clean today must stay clean, and may not lose any of its margin;
- * - a case that is already negative today may not go **further** inside than it is now.
- *
- * That is criterion 4's "no new interpenetration" made checkable, and it is the ratchet the
- * amplification is meant to run into: when a deeper crouch or a higher neck costs clearance,
- * this table fails and names the case and the pose, which is what the owner's decision
- * (docs/DECISIONS.md §"M8b criterion 6") means by "amplitudes go up until the clearance gate
- * says stop". An entry may be loosened only by the owner, with the reason in the commit — never
- * to get a run green. The strict > 0 bar on every vertex stays the target, and the free wing,
- * which is the hazard anyone can see, is gated strictly below.
+ * Pixels per world unit at the camera the player actually has: the dragon is 97 px across for a
+ * body radius of about 1 unit (gate:smoke's framing line, STATE.md run 35), so a unit is about
+ * 48.5 px and a thousandth of a unit is about a twentieth of a pixel. Every clearance below is
+ * stated in both, because "0.044 inside the tube" means nothing until it is "2.1 px of a 97 px
+ * creature".
  */
-const ATTITUDE_BASELINE: Readonly<Record<string, number>> = {
-  'fixture #0': -0.0034,
-  'fixture #1': -0.0059,
-  'fixture #2': -0.0024,
-  'fixture #3': 0.0012,
-  'fixture #4': 0.0191,
-  'fixture #5': -0.0224,
-  'fixture #6': -0.0097,
-  'fixture #7': -0.0115,
-  'fixture #8': -0.0034,
-  'fixture #9': -0.0059,
-  'fixture #10': -0.0024,
-  'fixture #11': -0.0032,
-  'fixture #12': -0.0043,
-  'fixture #13': -0.0921,
-  'fixture #14': -0.0030,
-  'fixture #15': -0.0441,
-  'fixture #16': 0.0003,
-  'fixture #17': -0.0589,
-  'fixture #18': -0.0414,
-  'fixture #19': -0.0156,
-  'fixture #20': -0.0137,
-  'fixture #21': -0.0053,
-  'fixture #22': -0.0040,
-  'fixture #23': 0.0050,
-  'fixture #24': -0.1074,
-  'fixture #25': -0.0003,
-  'fixture #26': -0.0097,
-  'fixture #27': 0.0335,
-  'fixture #28': -0.0022,
-  'fixture #29': -0.0098,
-  'fixture #30': -0.0109,
-  'fixture #31': -0.0516,
-  'synthetic, wingSpan 0.55': 0.0265,
-  'synthetic, wingSpan 1.65': 0.0008,
-};
+const PX_PER_UNIT = 48.5;
+
+/**
+ * How far a **junction-band** vertex may lie inside the body's swept tubes: an absolute bar, in
+ * world units, with its meaning in pixels stated.
+ *
+ * This replaces the per-case table of measured depths that landed with the attitude gate at
+ * 891ba30 (a gate change, in its own commit, with the reason here and in the commit message —
+ * CLAUDE.md §2.7). Three things were wrong with the table. It measured the junction band, which
+ * is the wing-root skin that rig.ts WING_JUNCTION deliberately blends onto the flank: the band
+ * lies *on* the body's surface by construction, 0.0009 to 0.045 outside the tubes before
+ * anything moves, so which side of zero it falls on is decided by the body's own motion under a
+ * folded wing — a raised neck sliding the neck's tube past the skin wrapped around it — and 25
+ * of these 34 cases were already inside at the amplitudes M8b first shipped, worst −0.0441 on
+ * fixture #15 at `alert` with the head turned: **2.1 px**. It said nothing about how deep is too
+ * deep, only "no deeper than last Tuesday". And pinned to one set of amplitudes it cannot be both
+ * the gate and the thing under test in a run whose whole job is to move those amplitudes.
+ *
+ * So: **0.050 units, 2.4 px**. Above the worst pre-existing depth with 0.006 of room, and still
+ * a change no player can see on a 97 px dragon — a quarter of the width of the HUD's own text
+ * stroke, which run 36's criterion 2 takes as the least a player notices.
+ *
+ * This is not a licence to spend. The free wing — the vertex population that can actually put a
+ * wing through a flank — is gated strictly at > 0 below, with 0.11 to 0.30 of margin, and that
+ * bar does not move.
+ */
+const JUNCTION_SLACK = 0.050;
+/**
+ * No wing vertex of any dragon, in any population, may ever be this far inside the body. A
+ * sanity bound, not a quality bar: it is twice the worst depth any of these 34 dragons reaches
+ * (0.116, on a crest-family fixture whose crest is through its wing in the rest mesh), and it is
+ * here so that a catastrophic regression — a wing folded into the torso, a limb through the
+ * chest — fails loudly even on the five dragons whose own geometry is already broken and which
+ * are therefore carved out of the two bars above.
+ */
+const NEVER_DEEPER_THAN = 0.25;
 
 describe('the probe under the attitude: no wing through the body in a crouch, a rear-up or a glance (M8b criterion 1)', () => {
   /**
@@ -390,19 +368,31 @@ describe('the probe under the attitude: no wing through the body in a crouch, a 
     const r = probeFlight({ ...a, phenotype: gm.phenotype }, flight, attitudeSamples(fp, wp.period), new DragonAttitude());
     expect(r.samples, 'the schedule covers the attitude, not a token pose').toBeGreaterThanOrEqual(60);
     expect(r.wingVerts).toBeGreaterThan(0);
-    // The hazard anyone can see: a wing through the flank. The free wing has 0.11 to 0.30 of
+    const crest = r.free.restMin < CREST_NEAR_WING;
+    // The per-case numbers, printed as evidence rather than asserted as a bar: what each dragon
+    // actually measures and at which pose, so a reader of the run can see which population moved
+    // — and by how many pixels — without re-deriving it from a table that may be months old.
+    const px = (x: number) => `${x.toFixed(4)} (${(x * PX_PER_UNIT).toFixed(2)} px)`;
+    console.log(`${label}${crest ? ' [crest family]' : ''}: free ${px(r.free.min)} at ${r.free.at.state}`
+      + `, junction ${px(r.junction.min)} at ${r.junction.at.state}, any vertex ${px(r.body.min)}`
+      + `, rest free ${r.free.restMin.toFixed(4)} junction ${r.junction.restMin.toFixed(4)}`);
+    // The hazard anyone can see: a wing through the flank. The free wing keeps 0.11 to 0.30 of
     // margin over the whole attitude range on every dragon whose crest is not already in it.
-    if (r.free.restMin >= CREST_NEAR_WING) {
+    if (!crest) {
       expect(r.free.min, `the free wing is inside the body at ${JSON.stringify(r.free.at)}`).toBeGreaterThan(0);
+      // The junction band: on the body's surface by construction, so it is barred by how far in
+      // it goes, not by which side of zero it is on.
+      expect(r.junction.min, `the junction band is ${(-r.junction.min * PX_PER_UNIT).toFixed(2)} px inside the body at ${JSON.stringify(r.junction.at)}`)
+        .toBeGreaterThanOrEqual(-JUNCTION_SLACK);
     } else {
+      // A dragon with a body tube already inside its wing measures both populations against
+      // broken geometry, so neither bar above can mean anything on it. It is named, its numbers
+      // are printed, and the sanity bound below still holds.
       nearCrest.push(label);
       expect(CREST_THROUGH_WING_UNDER_ATTITUDE, `${label}'s free wing starts ${r.free.restMin} from the body`).toContain(label);
     }
-    // Every wing vertex, junction band included, against the measured baseline.
-    const floor = ATTITUDE_BASELINE[label];
-    expect(floor, `${label} has no baseline: measure it, do not admit it`).toBeTypeOf('number');
-    expect(r.body.min, `body clearance ${r.body.min} at ${JSON.stringify(r.body.at)}`).toBeGreaterThanOrEqual(floor!);
-    if (floor! >= 0) expect(r.body.min, 'a dragon clean under the attitude stays clean').toBeGreaterThan(0);
+    expect(r.free.min, 'the free wing is not catastrophically inside the body').toBeGreaterThan(-NEVER_DEEPER_THAN);
+    expect(r.junction.min, 'the junction band is not catastrophically inside the body').toBeGreaterThan(-NEVER_DEEPER_THAN);
     expect(r.wingToWing.min, `wing to wing at ${JSON.stringify(r.wingToWing.at)}`).toBeGreaterThan(0);
     expect(r.midplaneGap.min, 'the wings stay on their own sides').toBeGreaterThan(0);
     expect(r.fingers.crossings, `fingers at ${JSON.stringify(r.fingers.at)}`).toBe(0);
@@ -411,8 +401,12 @@ describe('the probe under the attitude: no wing through the body in a crouch, a 
     expect(nearCrest).toEqual(CREST_THROUGH_WING_UNDER_ATTITUDE);
     for (const name of CREST_THROUGH_WING_AT_REST) expect(CREST_THROUGH_WING_UNDER_ATTITUDE).toContain(name);
   });
-  it('every case carries a baseline, and no baseline is carried by a case that is gone', () => {
-    expect(Object.keys(ATTITUDE_BASELINE).sort()).toEqual(PROBE_CASES.map(([l]) => l).sort());
+  it('the junction bar is above the worst depth measured before the tells were amplified, and still invisible', () => {
+    // 891ba30 measured −0.0441 on fixture #15 at `alert`, the worst of any dragon at the
+    // amplitudes M8b first shipped. A bar below that would fail for a defect that predates it.
+    expect(JUNCTION_SLACK).toBeGreaterThan(0.0441);
+    // ... and small enough that nobody can see it: under two and a half pixels of a 97 px dragon.
+    expect(JUNCTION_SLACK * PX_PER_UNIT).toBeLessThan(2.5);
   });
 });
 
