@@ -96,7 +96,19 @@ of them is a decision the owner made today:
    records the owner choosing to keep `ORBIT_LIMITS` over a ground-level follow camera or a
    wider zoom clamp, with the reasons. **Only the owner reopens it.**
 
-**So: owner, which of 1, 2 or 3?** A run that guesses here spends a cycle on the wrong one. If
+**ANSWERED, 2026-10-18: options 1 and 2 together.** `docs/DECISIONS.md` §"M8b criterion 6"
+has the reasoning. In short: the reading stays in the **body** (§GDD's "reading its behaviour,
+not throwing a ball"), so amplify the tells; and the keeper marker ships too, because D2 is a
+major on its own — a 21 px avatar lost behind a bush is a visibility defect, not an answer to
+the dragon's legibility. Any dragon-state cue stays supplementary; criterion 6 is still judged
+on the body alone.
+
+**The wing hazard is already gated, which run 35 did not connect.** `src/assets/dragon/
+clearance.ts` `TubeField` measures a posed body, `tools/dragon-flight.mjs` fails on any wing
+vertex clearance ≤ 0, and `tests/dragon-flight.test.ts` covers it — all built by M7c. Raise the
+amplitudes until that gate or the art-critic stops you; interpenetration cannot ship silently.
+
+~~So: owner, which of 1, 2 or 3?~~ A run that guesses here spends a cycle on the wrong one. If
 the answer is 1, or 1 and 2 together, M8b closes in one run: the sim, the input, the save, the
 budgets and the drills are all done and green, and only the pose amplitudes and the keeper
 marker remain. **Option 2's keeper marker is worth doing whichever way you answer** — D2 is a

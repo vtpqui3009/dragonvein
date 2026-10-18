@@ -188,3 +188,46 @@ orbiting the island as it does today".
 view that would show a bred dragon's geometry at its most legible. M8b's keeper avatar is
 therefore read at diorama distance, and the gene inspector (M9) carries the burden of making
 the genome visible up close instead.
+
+## 2026-10-18 · M8b criterion 6: amplify the tells, and add the keeper marker
+
+**The question run 35 escalated.** At the camera the player actually has, the dragon is 97 px
+wide and the keeper 21 px. The posture tells M8b built — head up on alert, `lower` 0.289 on
+wary against 0.063 on wander, tail turned away — do not read at that size. Two critics
+measured it independently (gameplay D1, art A9). Run 35 offered three ways out and refused to
+guess, which was right.
+
+**Decision: option 1 and option 2 together.** Amplify the tells so the reading stays in the
+body, and add the keeper marker. Option 3 (the camera) stays closed — see §"The camera stays a
+diorama", 2026-10-17.
+
+**Why not option 2 alone, which is the cheap one.** `docs/GDD.md` §The loop says taming works
+by "reading its behaviour, not throwing a ball", and §Pillars puts the genome's visibility
+first. A dragon whose state is legible only from a ring under its feet is a health bar with a
+model attached: the creature stops carrying meaning and the UI carries it instead. Criterion 6
+says the reaction must read *without* the indicator, and run 33 allows a calm indicator to
+supplement the tells, never to replace them. Taking option 2 alone would mean changing a
+criterion to match what was built, which is what `CLAUDE.md` §7 exists to stop.
+
+**Why option 1's hazard is smaller than it looked.** Run 35 called a bigger pose risky because
+"a wing through the flank is a blocking defect in place of a major". That risk is already
+measured and already gated, by machinery M7c built for exactly this:
+
+- `src/assets/dragon/clearance.ts` `TubeField` gives the signed distance to the body's swept
+  tubes, and measures a *posed* body (`centre`, then `refresh()`);
+- `tools/dragon-flight.mjs` fails when any wing vertex's clearance to the body is ≤ 0;
+- `tests/dragon-flight.test.ts` covers it, including the rest-pose case.
+
+So a deeper crouch, a fold, or a rear-up is not a gamble on whether geometry interpenetrates.
+It is a change whose failure mode a gate already catches before it ships. Amplitudes go up
+until the clearance gate or the art-critic says stop.
+
+**Scope of the marker, so it does not drift into answering the wrong question.** The keeper
+marker is a **visibility** aid for the player's own avatar: gameplay's D2 is a major in its own
+right, because a player cannot currently see either actor while approaching through the trees
+and the crystals. A 21 px avatar that disappears behind a bush is not a legibility question
+about the dragon at all. Any *dragon*-state cue remains supplementary under run 33's wording,
+and criterion 6 is still judged on the body alone.
+
+**If the owner disagrees**, this is one line to revert and the two options are independent: the
+marker can ship without the amplification, or the amplification without the marker.
