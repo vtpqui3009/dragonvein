@@ -6,11 +6,33 @@ import type { Anchors, Graph } from '../assets/dragon/graph';
 import { buildRig, stationWeights, type Rig } from '../assets/dragon/rig';
 import { tubeStations } from '../assets/dragon/skin';
 import type { DragonFlight } from './flight';
+// Both live in src/render/, so this import is inside one layer: docs/ARCHITECTURE.md §Ownership
+// lets `render` import `core`, `assets` and `three`, and tools/check-layers.mjs only forbids
+// render → sim/ui/audio/content. Nothing here reaches outside the layer.
+import { ATTITUDES, LOOK_MAX, type AttitudeChannels, type DragonAttitude } from './wild';
 
 /**
- * Measures a flap (M7c criterion 3): poses a dragon's skeleton through a schedule of flight
- * samples and, at each, skins its wing vertices on the CPU exactly as the shader does
- * (Σ wᵢ·Sᵢ·p over the bones' skinning matrices) and measures:
+ * Measures a *posed* dragon against itself: it poses the skeleton through a schedule of samples
+ * and, at each, skins its wing vertices on the CPU exactly as the shader does (Σ wᵢ·Sᵢ·p over
+ * the bones' skinning matrices) and measures how close the wings come to the body, to each
+ * other and to crossing their own fingers.
+ *
+ * Two schedules feed it, and they cover two different kinds of motion:
+ *
+ * - **the flap** (M7c criterion 3, `flightSamples`): the wings' own beat, glide, the ramps in
+ *   and the crossfade between them, over the walk at rest. This is what the probe was built
+ *   for, and the wingtip-travel and airborne-feet numbers below are only about it;
+ * - **the attitude** (M8b criterion 1, `attitudeSamples`): how the wild dragon holds itself —
+ *   ./wild.ts `DragonAttitude` on top of the walk, a raised neck, a crouch, a tail tucked
+ *   under, the head turned back over the shoulder — at rest and while walking, with and
+ *   without a flap riding over it. An alert rear-up is not a flap: it moves the *body* under
+ *   wings that are folded against it, which is the other way a wing ends up inside a flank,
+ *   and until M8b the probe did not pose the attitude layer at all. The amplitudes of those
+ *   tells are meant to grow (docs/DECISIONS.md §"M8b criterion 6: amplify the tells, and add
+ *   the keeper marker"), so the gate covers the poses first and the amplitudes move after.
+ *
+ * What it measures, at every sample of either schedule:
+ *
  *
  * - **body clearance**: the least signed distance from any deformed wing vertex to the body's
  *   own swept tubes (torso, neck, head, tail, legs and the crown: every tube that is not a
@@ -27,9 +49,33 @@ import type { DragonFlight } from './flight';
  *   each finger's mid and tip from the wrist must keep their rest order, strictly; the least
  *   neighbour gap is reported in degrees and any crossing counted;
  * - **wingtip travel**: the leading tip's height range over the full-weight flap samples
- *   against the half-span (the leading tip's rest distance from the midline).
+ *   against the half-span (the leading tip's rest distance from the midline). Flap samples
+ *   only: a tip that does not move over an attitude pose is a tip held still, not a defect.
  */
-export interface FlightSample { t: number; flap: number; glide: number; kind: 'flap' | 'glide' | 'ramp' | 'cross' }
+
+/**
+ * One pose to measure. `t`, `flap` and `glide` are the flight's (src/render/flight.ts `set`).
+ *
+ * A sample that names a `state` is an attitude sample: the probe hangs the caller's
+ * `DragonAttitude` on the walk, puts it at this pose, and poses the walk at `walkT` (null at
+ * rest) with weight `walkW` under it, with the flight's weights on top. A sample with no
+ * `state` is the flap case the probe has always measured, posed by `flight.pose(t, flap, glide)`
+ * with no attitude layer at all — byte for byte what it was before M8b.
+ */
+export interface FlightSample {
+  t: number; flap: number; glide: number;
+  kind: 'flap' | 'glide' | 'ramp' | 'cross' | 'attitude';
+  /** Attitude samples: the name this sample reports as — a state in `ATTITUDES`, or a corner's label. */
+  state?: string;
+  /** Attitude samples: the keeper's bearing off the snout, radians, handed to `setTargets`. */
+  look?: number;
+  /** Attitude samples: the channels set directly (`setRaw`), for a pose no named state holds. */
+  raw?: AttitudeChannels;
+  /** Attitude samples: the walk clock to pose under the attitude, null for the walk at rest. */
+  walkT?: number | null;
+  /** Attitude samples: the walk's weight, 0 standing still, 1 walking. */
+  walkW?: number;
+}
 
 /** Wing-to-wing distance is resolved exactly below this; further apart is reported as this. */
 export const WING_PAIR_RANGE = 1.0;
@@ -51,6 +97,102 @@ export function flightSamples(p: FlightParams, cycles = 2, perCycle = 32): Fligh
       out.push({ t, flap: 1 - w, glide: w, kind: 'cross' });
     }
   }
+  return out;
+}
+
+/**
+ * The attitude channels that hold a pose, in the order a corner's label spells them. `look` is
+ * not among them because it is swept separately, at ±LOOK_MAX and 0, over every pose below:
+ * its reachable range is the same whatever the other channels are doing.
+ */
+const CHANNELS = ['neck', 'head', 'lower', 'tail'] as const;
+type Channel = (typeof CHANNELS)[number];
+
+/**
+ * The gait phases an attitude is measured over while walking, as fractions of the walk's period.
+ * A quarter and three quarters put the girdles at opposite ends of their swing and the body at
+ * opposite ends of its roll, which is the pair that moves a flank furthest under a folded wing;
+ * a footfall (phase 0, ½) is the walk's own extreme in pitch and is already covered at rest,
+ * where `walkW` 0 holds the body still and the attitude alone moves it.
+ */
+const GAIT = [0.25, 0.75] as const;
+
+/**
+ * The attitude schedule (M8b criterion 1): the poses ./wild.ts `DragonAttitude` can reach, each
+ * posed over the walk, so the clearance gate sees a crouch and a rear-up and not only a flap.
+ *
+ * It is deliberately wider than the six named states. `DragonAttitude.update` eases every
+ * channel with its own rate (`RATE`), so during a change of state the channels are *not* at one
+ * state's values together: for the second or so a transition takes, the pose is some mixture,
+ * and over a session every mixture inside the box spanned by the channels' per-state minima and
+ * maxima is reachable. The corners of that box are the poses no named state visits and the ones
+ * a gate on the named states alone would miss, so they are measured too — by setting the
+ * channels directly through `setRaw`, which is what that probe-only method exists for.
+ *
+ * The schedule, for `look` at −LOOK_MAX, 0 and +LOOK_MAX (the keeper to either side and dead
+ * ahead, which is the channel that turns the head back over the shoulder):
+ *
+ * - every named state in `ATTITUDES`, snapped, over the walk at rest;
+ * - every corner of the per-channel box, over the walk at rest;
+ * - walking (`walkW` 1) at the two gait phases of `GAIT`: every named state with the keeper to
+ *   one side, and every box corner with the keeper ahead — `wary` walks off while crouched, so
+ *   the crouch has to be measured in motion and not only standing;
+ * - a handful with a flap riding over the attitude, because `flee`'s ramp starts while the
+ *   previous state's ease is still running: the wings are already beating while the body is
+ *   still crouched or reared.
+ *
+ * That is 18 + 48 + 44 + 8 = 118 samples per dragon, about the size of the flap schedule the
+ * unit test already runs on all 27 fixture genomes.
+ */
+export function attitudeSamples(p: FlightParams, walkPeriod: number): FlightSample[] {
+  const out: FlightSample[] = [];
+  const looks = [-LOOK_MAX, 0, LOOK_MAX];
+  // A flapping sample is taken partway into the downstroke, where the wing is nearest the flank.
+  const flapT = p.period * 0.35;
+  const named = (state: string, look: number, walkT: number | null, walkW: number, flap = 0) =>
+    out.push({ t: flap > 0 ? flapT : 0, flap, glide: 0, kind: 'attitude', state, look, walkT, walkW });
+  const corner = (c: { label: string; raw: AttitudeChannels }, look: number, walkT: number | null, walkW: number, flap = 0) =>
+    out.push({
+      t: flap > 0 ? flapT : 0, flap, glide: 0, kind: 'attitude',
+      state: c.label, look, raw: { ...c.raw, look }, walkT, walkW,
+    });
+
+  // The per-channel box over every named state, and its corners.
+  const lo = {} as Record<Channel, number>, hi = {} as Record<Channel, number>;
+  for (const c of CHANNELS) { lo[c] = Infinity; hi[c] = -Infinity; }
+  for (const a of Object.values(ATTITUDES)) {
+    for (const c of CHANNELS) { lo[c] = Math.min(lo[c], a[c]); hi[c] = Math.max(hi[c], a[c]); }
+  }
+  const corners: { label: string; raw: AttitudeChannels }[] = [];
+  for (let mask = 0; mask < 1 << CHANNELS.length; mask++) {
+    const raw: AttitudeChannels = { look: 0, neck: 0, head: 0, lower: 0, tail: 0 };
+    const parts: string[] = [];
+    CHANNELS.forEach((c, k) => {
+      const up = ((mask >> k) & 1) === 1;
+      raw[c] = up ? hi[c] : lo[c];
+      parts.push(`${c}${up ? '+' : '−'}`);
+    });
+    corners.push({ label: `corner ${parts.join(' ')}`, raw });
+  }
+
+  const states = Object.keys(ATTITUDES);
+  for (const look of looks) {
+    for (const s of states) named(s, look, null, 0);
+    for (const c of corners) corner(c, look, null, 0);
+  }
+  for (const phase of GAIT) {
+    const walkT = walkPeriod * phase;
+    for (const s of states) named(s, LOOK_MAX, walkT, 1);
+    for (const c of corners) corner(c, 0, walkT, 1);
+  }
+  // The overlap: wings beating while the body is still in the state it is leaving.
+  for (const flap of [0.35, 0.8]) {
+    named('alert', LOOK_MAX, null, 0, flap);
+    named('wary', LOOK_MAX, null, 0, flap);
+    named('wary', LOOK_MAX, walkPeriod * GAIT[0], 1, flap);
+  }
+  corner(corners[0]!, -LOOK_MAX, null, 0, 0.6); // every channel at its minimum
+  corner(corners[corners.length - 1]!, -LOOK_MAX, null, 0, 0.6); // and at its maximum
   return out;
 }
 
@@ -86,9 +228,40 @@ export interface ProbeDragon {
 
 const toMesh = (c: readonly number[]): [number, number, number] => [c[0]!, c[2]!, -c[1]!];
 
-export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: FlightSample[]): FlightProbe {
+/**
+ * Measure `samples` on `d`. `attitude` is the layer an attitude sample is posed through
+ * (./wild.ts); pass null, as every flap-only caller does, and nothing about the measurement
+ * changes — a sample with no `state` takes the same `flight.pose` path it always took.
+ *
+ * The probe owns `walk.attitude` while it runs: it hangs `attitude` on the walk for an attitude
+ * sample, takes it off again for a flap one and for the rest pose every number is referenced to,
+ * and puts back whatever the caller had on entry before it returns. So a caller that drives a
+ * live dragon can probe it without its pose leaking into the measurement or the measurement's
+ * into its pose.
+ */
+export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: FlightSample[], attitude: DragonAttitude | null = null): FlightProbe {
   const { rig } = d;
+  const walk = flight.walk;
+  const attitudeOnEntry = walk.attitude;
   const bones = flight.walk.bones;
+  /**
+   * Pose one sample. An attitude sample snaps the layer to its pose (`setRaw` for a box corner,
+   * `setTargets` for a named state) and poses the walk under it with the flight's weights on
+   * top; anything else is the flap path, with no attitude layer at all.
+   */
+  const poseSample = (s: FlightSample) => {
+    if (s.state === undefined) {
+      walk.attitude = null;
+      flight.pose(s.t, s.flap, s.glide);
+      return;
+    }
+    if (attitude === null) throw new Error(`probeFlight: sample "${s.state}" needs an attitude layer, none was given`);
+    flight.set(s.t, s.flap, s.glide);
+    walk.attitude = attitude;
+    if (s.raw !== undefined) attitude.setRaw(s.raw);
+    else { attitude.setTargets(s.state, s.look ?? 0); attitude.snap(); }
+    walk.pose(s.walkT ?? null, s.walkW ?? 0);
+  };
   const nv = d.position.length / 3;
   // Which bones are a wing's, and which wing (0 left, 1 right).
   const wingOf = new Int8Array(rig.parent.length).fill(-1);
@@ -154,7 +327,8 @@ export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: Fligh
     return best;
   };
 
-  // Rest.
+  // Rest: the walk still, the flight at weight 0 and no attitude, whatever the caller was doing.
+  walk.attitude = null;
   flight.pose(0, 0, 0);
   poseAll();
   const restClearance = bodyMin();
@@ -201,7 +375,7 @@ export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: Fligh
   const perSample: number[] = [];
   const candL: number[] = [], candR: number[] = [];
   for (const s of samples) {
-    flight.pose(s.t, s.flap, s.glide);
+    poseSample(s);
     poseAll();
     const b = bodyMin();
     perSample.push(b);
@@ -250,7 +424,10 @@ export function probeFlight(d: ProbeDragon, flight: DragonFlight, samples: Fligh
       }
     }
   }
+  // Leave it at rest, and leave the walk's attitude as the caller had it.
+  walk.attitude = null;
   flight.pose(0, 0, 0);
+  walk.attitude = attitudeOnEntry;
   return {
     airborne: air,
     samples: samples.length, wingVerts: verts.length, junctionVerts: isFree.filter((f) => !f).length, restClearance, free,

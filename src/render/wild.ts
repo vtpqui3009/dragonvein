@@ -40,6 +40,14 @@ export interface AttitudeTargets {
   tail: number;
 }
 
+/**
+ * The eased channels themselves: a pose of the attitude layer, with no state behind it. Every
+ * channel of `AttitudeTargets` but `lookShare`, which is not a pose — it is the share of the
+ * keeper's bearing a state takes, and `setTargets` has already multiplied it into `look` by the
+ * time anything moves.
+ */
+export type AttitudeChannels = Omit<AttitudeTargets, 'lookShare'>;
+
 /** Each named state's pose (look is filled per frame). */
 export const ATTITUDES: Readonly<Record<string, Readonly<Omit<AttitudeTargets, 'look'>>>> = {
   graze: { lookShare: 0, neck: -0.75, head: -0.3, lower: 0.12, tail: 0.05 },
@@ -106,6 +114,30 @@ export class DragonAttitude implements AttitudeLayer {
     this.head = ease(this.head, g.head, RATE.head, dt);
     this.lower = ease(this.lower, g.lower, RATE.lower, dt);
     this.tail = ease(this.tail, g.tail, RATE.tail, dt);
+  }
+
+  /**
+   * **Probe-only** (src/render/flight-probe.ts): put every channel at a given value and hold it
+   * there, bypassing the table in `ATTITUDES`.
+   *
+   * Nothing in the game calls this, and nothing should: the game's poses come from a named state
+   * through `setTargets`, which is what keeps the sim's vocabulary and the mesh's one the same.
+   * The clearance gate needs it because `update` eases each channel at its own rate, so the poses
+   * the dragon actually passes through are not only the six named ones — they fill the whole box
+   * spanned by the channels' per-state extremes, and a transition can put a graze's neck over a
+   * wary's crouch with the head turned full over the shoulder, which no state asks for. A gate
+   * that measured the named states alone would not see that pose until a player did. `look` is
+   * clamped to ±LOOK_MAX as `setTargets` clamps it; the targets are set to the same values, so a
+   * later `update` holds the pose rather than dragging it back to whatever was asked for last.
+   */
+  setRaw(c: Readonly<AttitudeChannels>): void {
+    const g = this.goal;
+    g.lookShare = 1;
+    this.look = g.look = Math.max(-LOOK_MAX, Math.min(LOOK_MAX, c.look));
+    this.neck = g.neck = c.neck;
+    this.head = g.head = c.head;
+    this.lower = g.lower = c.lower;
+    this.tail = g.tail = c.tail;
   }
 
   /** Jump straight to the targets (a load, a first frame). */

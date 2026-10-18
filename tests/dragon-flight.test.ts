@@ -18,6 +18,18 @@
  *   neighbour, each wingtip travels ≥ 30 % of the half-span, and in full flight the feet are
  *   ≥ 0.3 off the ground with every leg tucked to ≤ 95 % of its length. Two fixtures have a frill
  *   through a wing in the rest mesh already (graph.ts); they are named, not skipped.
+ *
+ * And, since M8b criterion 1, the same clearance bars under the wild dragon's *attitude*
+ * (src/render/wild.ts `DragonAttitude`, `attitudeSamples`): the tells M8b poses — a raised neck,
+ * a crouch, a tucked tail, the head turned back over the shoulder — move the body under wings
+ * that are folded against it, which the flap schedule never does, because it poses the walk at
+ * rest with no attitude layer at all. The attitude block asserts the three bars that mean
+ * something for a held pose (nothing through the body, the wings apart and on their own sides,
+ * the fingers in order) and deliberately does not assert the flap's own two (wingtip travel,
+ * feet off the ground): a dragon standing on the grass has its feet on the grass and its wingtips
+ * still, so asserting those here would be a gate that fails for being right. The amplitudes of
+ * those tells are about to grow (docs/DECISIONS.md §"M8b criterion 6"), and this is the gate that
+ * says how far they may: it is in place, with a measured baseline, before anything moves.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -31,8 +43,9 @@ import { fullGraph } from '../src/assets/dragon/graph';
 import { BODY_BONES, BONE } from '../src/assets/dragon/rig';
 import { walkParams } from '../src/assets/dragon/walk';
 import { DragonFlight, FLIGHT_RAMP_S } from '../src/render/flight';
-import { flightSamples, probeFlight } from '../src/render/flight-probe';
+import { attitudeSamples, flightSamples, probeFlight, type FlightProbe } from '../src/render/flight-probe';
 import { DragonWalk } from '../src/render/walk';
+import { DragonAttitude, LOOK_MAX } from '../src/render/wild';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 type Recipe =
@@ -223,19 +236,26 @@ describe('rest → flap → glide → rest', () => {
   });
 });
 
+/** Every fixture genome and the two synthetic spans: what the probe is run on, flap or attitude. */
+const PROBE_CASES: [string, Genome][] = [
+  ...genomes.map((g, i) => [`fixture #${i}`, g] as [string, Genome]),
+  ['synthetic, wingSpan 0.55', genomeOf(pheno({ wingSpan: 0.55 }))],
+  ['synthetic, wingSpan 1.65', genomeOf(pheno({ wingSpan: 1.65 }))],
+];
+/**
+ * Fixtures whose crest already pierces a wing in the rest mesh, before anything moves: a frill
+ * spine through the hand or forearm (graph.ts builds both; M7c does not change the graph). Their
+ * flap is measured like any other, but a clearance that is negative at rest cannot be positive
+ * in flight. Named here so the static defect stays visible: if this set changes, look again.
+ *
+ * The attitude block below carves out exactly these two and no others: a pose that is inside the
+ * body only because the rest mesh already was is the same old defect, but a third name appearing
+ * in either list is a new one.
+ */
+const CREST_THROUGH_WING_AT_REST = ['fixture #13', 'fixture #24'];
+
 describe('the probe: no wing through the body or the other wing, fingers in order, a visible stroke', () => {
-  const cases: [string, Genome][] = [
-    ...genomes.map((g, i) => [`fixture #${i}`, g] as [string, Genome]),
-    ['synthetic, wingSpan 0.55', genomeOf(pheno({ wingSpan: 0.55 }))],
-    ['synthetic, wingSpan 1.65', genomeOf(pheno({ wingSpan: 1.65 }))],
-  ];
-  /**
-   * Fixtures whose crest already pierces a wing in the rest mesh, before anything moves: a frill
-   * spine through the hand or forearm (graph.ts builds both; M7c does not change the graph). Their
-   * flap is measured like any other, but a clearance that is negative at rest cannot be positive
-   * in flight. Named here so the static defect stays visible: if this set changes, look again.
-   */
-  const CREST_THROUGH_WING_AT_REST = ['fixture #13', 'fixture #24'];
+  const cases = PROBE_CASES;
   const pierced: string[] = [];
   it.each(cases)('%s', (label, gm) => {
     const a = buildDragonArrays(gm);
@@ -259,5 +279,179 @@ describe('the probe: no wing through the body or the other wing, fingers in orde
   });
   it('the only dragons not clean at rest are the known crest-through-wing fixtures', () => {
     expect(pierced).toEqual(CREST_THROUGH_WING_AT_REST);
+  });
+});
+
+/**
+ * A free wing — the vertices wholly on wing bones, beyond the junction band — that starts this
+ * close to one of the body's own tubes is in the crest's path before anything moves. The number
+ * is a measurement, not a taste: over the 34 cases below, the free wing's rest clearance is
+ * either ≥ 0.299 (29 of them, the wing well out in the air) or ≤ 0.036 (five of them, a frill
+ * spine lying against or through the membrane). There is a clear order of magnitude of empty
+ * space on either side of 0.1, so which family a dragon is in is not a judgement call.
+ */
+const CREST_NEAR_WING = 0.1;
+/**
+ * The five dragons in that family, and what the attitude gate found about them: 13 and 24 have
+ * the crest through the wing in the rest mesh already (above); 17, 18 and 31 have it within
+ * 0.0013, 0.0023 and 0.035 of the wing at rest, and when the neck rises — `ATTITUDES.alert`, or
+ * any transition passing through a raised neck — the crest it carries goes *through* the
+ * membrane, by 0.059, 0.041 and 0.052. That is a pre-existing defect of the graph (graph.ts
+ * builds the crest and the wing without consulting each other), the same one as 13 and 24, and
+ * it is three names wider than anyone knew before this gate existed. It is recorded here, not
+ * fixed here: this commit moves no geometry and no amplitude.
+ */
+const CREST_THROUGH_WING_UNDER_ATTITUDE = ['fixture #13', 'fixture #17', 'fixture #18', 'fixture #24', 'fixture #31'];
+
+/**
+ * The least clearance of **any** wing vertex to the body's swept tubes over the attitude
+ * schedule, as measured on 2026-10-18 at the amplitudes M8b shipped: the pre-amplification
+ * baseline (STATE.md run 36, criterion 1), floored to 1e-4.
+ *
+ * Why this table exists, and why it is not the flap's bar. `body.min` is taken over every vertex
+ * with any weight on a wing, which includes the junction band — the wing's root skin, which
+ * rig.ts (WING_JUNCTION) deliberately blends onto the flank, and which therefore lies *on* the
+ * body's surface by construction: its rest clearance is 0.0009 to 0.045 across these cases,
+ * essentially zero. The flap keeps that band outside the tubes because a flap moves the wings
+ * away from a body that barely moves. An attitude does the opposite: the wings stay folded and
+ * the *body* moves under them, so a raised neck slides the neck's own tube a few thousandths
+ * past the root skin wrapped around it. 25 of these 34 cases are already negative at the shipped
+ * amplitudes, at `alert` with the head turned to the keeper — before this run changes anything.
+ *
+ * So the bar here is two-tier, and neither tier is a weakened flap bar (the flap block above is
+ * untouched, and still asserts > 0 on every vertex):
+ *
+ * - a case that is clean today must stay clean, and may not lose any of its margin;
+ * - a case that is already negative today may not go **further** inside than it is now.
+ *
+ * That is criterion 4's "no new interpenetration" made checkable, and it is the ratchet the
+ * amplification is meant to run into: when a deeper crouch or a higher neck costs clearance,
+ * this table fails and names the case and the pose, which is what the owner's decision
+ * (docs/DECISIONS.md §"M8b criterion 6") means by "amplitudes go up until the clearance gate
+ * says stop". An entry may be loosened only by the owner, with the reason in the commit — never
+ * to get a run green. The strict > 0 bar on every vertex stays the target, and the free wing,
+ * which is the hazard anyone can see, is gated strictly below.
+ */
+const ATTITUDE_BASELINE: Readonly<Record<string, number>> = {
+  'fixture #0': -0.0034,
+  'fixture #1': -0.0059,
+  'fixture #2': -0.0024,
+  'fixture #3': 0.0012,
+  'fixture #4': 0.0191,
+  'fixture #5': -0.0224,
+  'fixture #6': -0.0097,
+  'fixture #7': -0.0115,
+  'fixture #8': -0.0034,
+  'fixture #9': -0.0059,
+  'fixture #10': -0.0024,
+  'fixture #11': -0.0032,
+  'fixture #12': -0.0043,
+  'fixture #13': -0.0921,
+  'fixture #14': -0.0030,
+  'fixture #15': -0.0441,
+  'fixture #16': 0.0003,
+  'fixture #17': -0.0589,
+  'fixture #18': -0.0414,
+  'fixture #19': -0.0156,
+  'fixture #20': -0.0137,
+  'fixture #21': -0.0053,
+  'fixture #22': -0.0040,
+  'fixture #23': 0.0050,
+  'fixture #24': -0.1074,
+  'fixture #25': -0.0003,
+  'fixture #26': -0.0097,
+  'fixture #27': 0.0335,
+  'fixture #28': -0.0022,
+  'fixture #29': -0.0098,
+  'fixture #30': -0.0109,
+  'fixture #31': -0.0516,
+  'synthetic, wingSpan 0.55': 0.0265,
+  'synthetic, wingSpan 1.65': 0.0008,
+};
+
+describe('the probe under the attitude: no wing through the body in a crouch, a rear-up or a glance (M8b criterion 1)', () => {
+  /**
+   * The bars that mean something for a held pose, over `attitudeSamples`: every named state in
+   * `ATTITUDES` and every corner of the box the independently eased channels can reach, each
+   * with the keeper to either side and dead ahead, each over the walk at rest and walking, and a
+   * few with a flap riding over them. 118 samples a dragon, and every number reported is the
+   * least over all of them, so a failure names the pose it failed at.
+   *
+   * The flap's own two bars are not asserted here, and must not be: a standing dragon's feet are
+   * on the ground and its wingtips do not travel. See this file's header.
+   */
+  const nearCrest: string[] = [];
+  it.each(PROBE_CASES)('%s', (label, gm) => {
+    const a = buildDragonArrays(gm);
+    const fp = flightParams(gm);
+    const wp = walkParams(gm);
+    const walk = new DragonWalk(a.rig, wp);
+    const flight = new DragonFlight(walk, a.rig, fp);
+    const r = probeFlight({ ...a, phenotype: gm.phenotype }, flight, attitudeSamples(fp, wp.period), new DragonAttitude());
+    expect(r.samples, 'the schedule covers the attitude, not a token pose').toBeGreaterThanOrEqual(60);
+    expect(r.wingVerts).toBeGreaterThan(0);
+    // The hazard anyone can see: a wing through the flank. The free wing has 0.11 to 0.30 of
+    // margin over the whole attitude range on every dragon whose crest is not already in it.
+    if (r.free.restMin >= CREST_NEAR_WING) {
+      expect(r.free.min, `the free wing is inside the body at ${JSON.stringify(r.free.at)}`).toBeGreaterThan(0);
+    } else {
+      nearCrest.push(label);
+      expect(CREST_THROUGH_WING_UNDER_ATTITUDE, `${label}'s free wing starts ${r.free.restMin} from the body`).toContain(label);
+    }
+    // Every wing vertex, junction band included, against the measured baseline.
+    const floor = ATTITUDE_BASELINE[label];
+    expect(floor, `${label} has no baseline: measure it, do not admit it`).toBeTypeOf('number');
+    expect(r.body.min, `body clearance ${r.body.min} at ${JSON.stringify(r.body.at)}`).toBeGreaterThanOrEqual(floor!);
+    if (floor! >= 0) expect(r.body.min, 'a dragon clean under the attitude stays clean').toBeGreaterThan(0);
+    expect(r.wingToWing.min, `wing to wing at ${JSON.stringify(r.wingToWing.at)}`).toBeGreaterThan(0);
+    expect(r.midplaneGap.min, 'the wings stay on their own sides').toBeGreaterThan(0);
+    expect(r.fingers.crossings, `fingers at ${JSON.stringify(r.fingers.at)}`).toBe(0);
+  });
+  it('the dragons whose crest lies against a wing are exactly the five named, and they include the two the flap found', () => {
+    expect(nearCrest).toEqual(CREST_THROUGH_WING_UNDER_ATTITUDE);
+    for (const name of CREST_THROUGH_WING_AT_REST) expect(CREST_THROUGH_WING_UNDER_ATTITUDE).toContain(name);
+  });
+  it('every case carries a baseline, and no baseline is carried by a case that is gone', () => {
+    expect(Object.keys(ATTITUDE_BASELINE).sort()).toEqual(PROBE_CASES.map(([l]) => l).sort());
+  });
+});
+
+describe('extending the probe did not move the flap it already measured', () => {
+  /**
+   * The point of this block: `probeFlight` grew an argument and a second posing path, and the
+   * numbers the flap gate has been reading since M7c must be the same numbers afterwards. So the
+   * same schedule is run three ways — the argument omitted, the argument explicitly null, and a
+   * live `DragonAttitude` already hung on the walk and snapped into `wary` — and all three must
+   * agree exactly, not within a tolerance. The third way is the one with teeth: it proves the
+   * probe takes the attitude layer *off* for a flap sample and for the rest pose every clearance
+   * is referenced to, instead of silently measuring whatever pose the caller left behind. And it
+   * proves the layer goes back on afterwards, so probing a live dragon does not flatten it.
+   */
+  const key = (r: FlightProbe) => ({
+    body: r.body.min,
+    wingToWing: r.wingToWing.min,
+    midplane: r.midplaneGap.min,
+    crossings: r.fingers.crossings,
+    rest: r.restClearance,
+    tips: r.tips.map((t) => t.travel),
+    feet: r.airborne.footMin,
+  });
+  it.each([['fixture #0', genomes[0]!], ['fixture #7', genomes[7]!]] as [string, Genome][])('%s', (_label, gm) => {
+    const a = buildDragonArrays(gm);
+    const fp = flightParams(gm);
+    const run = (attitude: DragonAttitude | null | undefined, hang: boolean) => {
+      const walk = new DragonWalk(a.rig, walkParams(gm));
+      const flight = new DragonFlight(walk, a.rig, fp);
+      if (hang && attitude) { attitude.setTargets('wary', LOOK_MAX); attitude.snap(); walk.attitude = attitude; }
+      const r = probeFlight({ ...a, phenotype: gm.phenotype }, flight, flightSamples(fp, 2, 16), attitude);
+      return { r, walk };
+    };
+    const base = run(undefined, false);
+    expect(base.walk.attitude, 'nothing was hung on the walk, nothing is there after').toBe(null);
+    expect(key(run(null, false).r)).toEqual(key(base.r));
+    const live = new DragonAttitude();
+    const hung = run(live, true);
+    expect(key(hung.r)).toEqual(key(base.r));
+    expect(hung.walk.attitude, 'the caller\'s attitude layer is put back').toBe(live);
   });
 });
